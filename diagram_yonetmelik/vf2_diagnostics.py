@@ -1,0 +1,296 @@
+import copy
+from typing import Dict, List, Set, Tuple, Optional, Any
+import networkx as nx
+from networkx.algorithms import isomorphism
+
+from diagram_yonetmelik.schemas import RuleViolationItem, CandidateDiagnosticReport
+
+
+class ExplainableVF2Analyzer:
+    """
+    Nöro-sembolik kararlar için 3 Aşamalı Kademeli Kısıt Gevşetme Hunisi.
+    GNN Order Embedding filtresinden geçen fakat tam monomorfizmi sağlamayan
+    hatalı mimari bölgelerin kök nedenini yapılandırılmış teşhis raporuna dönüştürür.
+    """
+    def __init__(
+        self,
+        min_door_width_cm: float = 90.0,
+        min_fire_hall_area_m2: float = 3.0,
+        max_fire_hall_area_m2: float = 6.0,
+        max_escape_distance_m: float = 30.0
+    ):
+        self.min_w = min_door_width_cm
+        self.min_fh_area = min_fire_hall_area_m2
+        self.max_fh_area = max_fire_hall_area_m2
+        self.max_dist = max_escape_distance_m
+
+    def build_standard_fire_core_query(self) -> nx.Graph:
+        """
+        BYKHY Madde 34 / 38'e uygun standart kaçış şablonu:
+        Kat Koridoru (0) -> Yangın Güvenlik Holü (1, Çapa) -> Yangın Merdiveni (2) -> Dış Çıkış (3)
+        """
+        Q = nx.Graph()
+        Q.add_node(0, room_type="kat_koridoru", min_area=4.0)
+        Q.add_node(1, room_type="yangin_holu", min_area=3.0, max_area=6.0, is_anchor=True)
+        Q.add_node(2, room_type="yangin_merdiveni", min_area=5.0)
+        Q.add_node(3, room_type="dis_cikis", min_area=2.0)
+
+        Q.add_edge(0, 1, min_width=90.0, is_fire_resistant=True, max_dist=15.0)
+        Q.add_edge(1, 2, min_width=90.0, is_fire_resistant=True, max_dist=5.0)
+        Q.add_edge(2, 3, min_width=100.0, is_fire_resistant=True, max_dist=20.0)
+        return Q
+
+    def explain_candidate(
+        self,
+        query_pattern: nx.Graph,
+        target_subgraph: nx.Graph,
+        anchor_node_id: int
+    ) -> CandidateDiagnosticReport:
+        # Sorgu çapasını belirle
+        query_anchor = None
+        for n, d in query_pattern.nodes(data=True):
+            if d.get("is_anchor", False) or d.get("room_type") == "yangin_holu":
+                query_anchor = n
+                break
+        if query_anchor is None:
+            query_anchor = list(query_pattern.nodes())[0]
+
+        # -------------------------------------------------------------
+        # 0. TAM MONOMORFİZM DENETİMİ (%100 UYGUNLUK)
+        # -------------------------------------------------------------
+        full_match, mapping = self._run_strict_vf2(query_pattern, target_subgraph, query_anchor, anchor_node_id)
+        if full_match:
+            return CandidateDiagnosticReport(
+                anchor_node_id=anchor_node_id,
+                target_subgraph_nodes=list(target_subgraph.nodes()),
+                is_fully_compliant=True,
+                diagnostic_stage_reached=0,
+                violations=[],
+                partial_node_mapping=mapping,
+                summary_message="Yangın çekirdeği yönetmeliğe %100 uygundur."
+            )
+
+        # -------------------------------------------------------------
+        # AŞAMA 1: PARAMETRİK GEVŞETME (Topoloji ve Tipler Tam, Ölçüler Kusurlu)
+        # -------------------------------------------------------------
+        stage1_match, stage1_mapping = self._run_topology_and_types_vf2(query_pattern, target_subgraph, query_anchor, anchor_node_id)
+        if stage1_match:
+            violations = self._audit_parametric_violations(query_pattern, target_subgraph, stage1_mapping)
+            return CandidateDiagnosticReport(
+                anchor_node_id=anchor_node_id,
+                target_subgraph_nodes=list(target_subgraph.nodes()),
+                is_fully_compliant=False,
+                diagnostic_stage_reached=1,
+                violations=violations,
+                partial_node_mapping=stage1_mapping,
+                summary_message=f"Topolojik bağlantı tam fakat {len(violations)} adet parametrik kusur tespit edildi."
+            )
+
+        # -------------------------------------------------------------
+        # AŞAMA 2: ODA ROLÜ / TİPİ GEVŞETME (Salt İskelet Eşleşmesi)
+        # -------------------------------------------------------------
+        stage2_match, stage2_mapping = self._run_skeleton_only_vf2(query_pattern, target_subgraph, query_anchor, anchor_node_id)
+        if stage2_match:
+            violations = self._audit_role_violations(query_pattern, target_subgraph, stage2_mapping)
+            return CandidateDiagnosticReport(
+                anchor_node_id=anchor_node_id,
+                target_subgraph_nodes=list(target_subgraph.nodes()),
+                is_fully_compliant=False,
+                diagnostic_stage_reached=2,
+                violations=violations,
+                partial_node_mapping=stage2_mapping,
+                summary_message=f"Mekan fonksiyon uyuşmazlığı: Şablon iskeleti bulundu ancak {len(violations)} odanın tipi hatalı."
+            )
+
+        # -------------------------------------------------------------
+        # AŞAMA 3: KISMİ HİZALAMA (BFS İle Kopuk Kapı / Eksik Mekan Tespiti)
+        # -------------------------------------------------------------
+        violations, partial_map = self._run_partial_bfs_alignment(query_pattern, target_subgraph, query_anchor, anchor_node_id)
+        return CandidateDiagnosticReport(
+            anchor_node_id=anchor_node_id,
+            target_subgraph_nodes=list(target_subgraph.nodes()),
+            is_fully_compliant=False,
+            diagnostic_stage_reached=3,
+            violations=violations,
+            partial_node_mapping=partial_map,
+            summary_message="Ağır topolojik kusur: Zorunlu kapı bağlantısı veya mekan kat planında mevcut değil."
+        )
+
+    def _run_strict_vf2(self, Q: nx.Graph, T: nx.Graph, q_anc: int, t_anc: int) -> Tuple[bool, Dict[int, int]]:
+        def node_match(n1, n2):
+            if n2.get("is_anchor", False) and n1.get("_is_target_anchor", False):
+                return True
+            return (
+                n1.get("room_type") == n2.get("room_type") and
+                n1.get("area_m2", 0.0) >= n2.get("min_area", 0.0)
+            )
+
+        def edge_match(e1, e2):
+            return (
+                e1.get("door_width_cm", 0.0) >= e2.get("min_width", 90.0) and
+                (not e2.get("is_fire_resistant", False) or e1.get("is_fire_resistant", False))
+            )
+
+        T_copy = T.copy()
+        for n in T_copy.nodes():
+            T_copy.nodes[n]["_is_target_anchor"] = (n == t_anc)
+
+        matcher = isomorphism.GraphMatcher(T_copy, Q, node_match=node_match, edge_match=edge_match)
+        for iso in matcher.subgraph_monomorphisms_iter():
+            rev = {v: k for k, v in iso.items()}
+            if rev.get(q_anc) == t_anc:
+                # Kümülatif rota kontrolü
+                total_dist = sum([T_copy[rev[u]][rev[v]].get("distance_m", 1.0) for u, v in Q.edges()])
+                if total_dist <= self.max_dist:
+                    return True, rev
+        return False, {}
+
+    def _run_topology_and_types_vf2(self, Q: nx.Graph, T: nx.Graph, q_anc: int, t_anc: int) -> Tuple[bool, Dict[int, int]]:
+        def node_match(n1, n2):
+            return n1.get("room_type") == n2.get("room_type")
+
+        T_copy = T.copy()
+        matcher = isomorphism.GraphMatcher(T_copy, Q, node_match=node_match)
+        for iso in matcher.subgraph_monomorphisms_iter():
+            rev = {v: k for k, v in iso.items()}
+            if rev.get(q_anc) == t_anc:
+                return True, rev
+        return False, {}
+
+    def _run_skeleton_only_vf2(self, Q: nx.Graph, T: nx.Graph, q_anc: int, t_anc: int) -> Tuple[bool, Dict[int, int]]:
+        matcher = isomorphism.GraphMatcher(T, Q)
+        for iso in matcher.subgraph_monomorphisms_iter():
+            rev = {v: k for k, v in iso.items()}
+            if rev.get(q_anc) == t_anc:
+                return True, rev
+        return False, {}
+
+    def _audit_parametric_violations(self, Q: nx.Graph, T: nx.Graph, mapping: Dict[int, int]) -> List[RuleViolationItem]:
+        items: List[RuleViolationItem] = []
+        # Oda alanları
+        for q_node, t_node in mapping.items():
+            qd = Q.nodes[q_node]
+            td = T.nodes[t_node]
+            min_a = qd.get("min_area", 0.0)
+            act_a = td.get("area_m2", 0.0)
+            if act_a < min_a:
+                items.append(RuleViolationItem(
+                    violation_code="ROOM_AREA_DEFICIT",
+                    target_node_id=t_node,
+                    expected_value=min_a,
+                    actual_value=act_a,
+                    diagnostic_stage=1,
+                    severity="CRITICAL",
+                    description_tr=f"{td.get('name_label', 'Mekan')} alanı yetersiz ({act_a:.1f} m² < {min_a:.1f} m²)",
+                    remedy_recommendation_tr="Mekan sınırları yönetmelik minimum alan şartına genişletilmeli.",
+                    regulation_reference="BYKHY Madde 34 / PAİY Madde 29"
+                ))
+
+        # Kapı genişlikleri ve yangın dayanımı
+        total_dist = 0.0
+        for q_u, q_v in Q.edges():
+            t_u, t_v = mapping.get(q_u), mapping.get(q_v)
+            if t_u and t_v and T.has_edge(t_u, t_v):
+                qed = Q[q_u][q_v]
+                ted = T[t_u][t_v]
+                w_act = ted.get("door_width_cm", 0.0)
+                w_req = qed.get("min_width", 90.0)
+                if w_act < w_req:
+                    items.append(RuleViolationItem(
+                        violation_code="DOOR_WIDTH_DEFICIT",
+                        target_edge=(t_u, t_v),
+                        expected_value=w_req,
+                        actual_value=w_act,
+                        diagnostic_stage=1,
+                        severity="CRITICAL",
+                        description_tr=f"Kapı net genişliği yetersiz ({w_act:.0f} cm < {w_req:.0f} cm)",
+                        remedy_recommendation_tr=f"Kapı kasası en az {w_req:.0f} cm genişletilmelidir.",
+                        regulation_reference="BYKHY Madde 38"
+                    ))
+                if qed.get("is_fire_resistant", False) and not ted.get("is_fire_resistant", False):
+                    items.append(RuleViolationItem(
+                        violation_code="FIRE_DOOR_MISSING",
+                        target_edge=(t_u, t_v),
+                        expected_value=True,
+                        actual_value=False,
+                        diagnostic_stage=1,
+                        severity="CRITICAL",
+                        description_tr="Kaçış güzergahındaki kapıda yangın dayanımı (EI60/EI90) eksik.",
+                        remedy_recommendation_tr="Kapı yangına ve dumana en az 60 dakika dayanıklı sertifikalı kapı ile değiştirilmelidir.",
+                        regulation_reference="BYKHY Madde 34"
+                    ))
+                total_dist += ted.get("distance_m", 1.0)
+
+        if total_dist > self.max_dist:
+            items.append(RuleViolationItem(
+                violation_code="TOTAL_ROUTE_EXCEEDED",
+                expected_value=self.max_dist,
+                actual_value=total_dist,
+                diagnostic_stage=1,
+                severity="CRITICAL",
+                description_tr=f"Toplam kaçış rotası mesafesi aşıldı ({total_dist:.1f} m > {self.max_dist:.1f} m)",
+                remedy_recommendation_tr="Yangın kaçış holü ve merdiven konumu bağımsız bölümlere yaklaştırılmalıdır.",
+                regulation_reference="BYKHY Madde 31"
+            ))
+        return items
+
+    def _audit_role_violations(self, Q: nx.Graph, T: nx.Graph, mapping: Dict[int, int]) -> List[RuleViolationItem]:
+        items = []
+        for q_n, t_n in mapping.items():
+            req_type = Q.nodes[q_n].get("room_type")
+            act_type = T.nodes[t_n].get("room_type")
+            if req_type != act_type:
+                items.append(RuleViolationItem(
+                    violation_code="ROOM_TYPE_MISMATCH",
+                    target_node_id=t_n,
+                    expected_value=req_type,
+                    actual_value=act_type,
+                    diagnostic_stage=2,
+                    severity="CRITICAL",
+                    description_tr=f"Mekan fonksiyon uyuşmazlığı: Beklenen '{req_type}' yerine '{act_type}' tespit edildi.",
+                    remedy_recommendation_tr=f"Bu mekan plan tadilatıyla '{req_type}' fonksiyonuna tahsis edilmeli.",
+                    regulation_reference="BYKHY Madde 34"
+                ))
+        return items
+
+    def _run_partial_bfs_alignment(self, Q: nx.Graph, T: nx.Graph, q_anc: int, t_anc: int) -> Tuple[List[RuleViolationItem], Dict[int, int]]:
+        items = []
+        mapping = {q_anc: t_anc}
+
+        # Çapa komşularını tara
+        for q_neighbor in Q.neighbors(q_anc):
+            req_type = Q.nodes[q_neighbor].get("room_type")
+            matched_t = None
+            for t_neighbor in T.neighbors(t_anc):
+                if T.nodes[t_neighbor].get("room_type") == req_type:
+                    matched_t = t_neighbor
+                    break
+            if matched_t:
+                mapping[q_neighbor] = matched_t
+            else:
+                # İlgili mekan kat planında var mı ama kapı mı kopuk?
+                found_in_T = [n for n, d in T.nodes(data=True) if d.get("room_type") == req_type]
+                if found_in_T:
+                    items.append(RuleViolationItem(
+                        violation_code="MISSING_DOOR_CONNECTION",
+                        target_node_id=found_in_T[0],
+                        expected_value=f"Kapı bağlantısı: {t_anc} <-> {found_in_T[0]}",
+                        actual_value="Bağlantı Yok",
+                        diagnostic_stage=3,
+                        severity="CRITICAL",
+                        description_tr=f"'{req_type}' mevcuttur ancak çapa mekana doğrudan kapı bağlantısı bulunmuyor.",
+                        remedy_recommendation_tr="Duvar üzerinde yönetmeliğe uygun yangın geçiş kapısı açılmalıdır.",
+                        regulation_reference="BYKHY Madde 34 / 38"
+                    ))
+                else:
+                    items.append(RuleViolationItem(
+                        violation_code="MISSING_ROOM_NODE",
+                        expected_value=req_type,
+                        actual_value="Yok",
+                        diagnostic_stage=3,
+                        severity="CRITICAL",
+                        description_tr=f"Katta zorunlu '{req_type}' hacmi hiç çizilmemiş.",
+                        remedy_recommendation_tr=f"Kat planına bağımsız yangın kaçışına hizmet eden bir '{req_type}' projelendirilmelidir.",
+                        regulation_reference="BYKHY Madde 34"
+                    ))
+        return items, mapping

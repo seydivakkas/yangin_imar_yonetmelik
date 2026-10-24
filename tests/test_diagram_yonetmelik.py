@@ -1,0 +1,271 @@
+import copy
+import math
+import os
+import pytest
+import torch
+import networkx as nx
+import ezdxf
+from shapely.geometry import Polygon, LineString, Point
+
+from diagram_yonetmelik.schemas import (
+    RoomPolygonInput,
+    DoorGeometryInput,
+    RuleViolationItem,
+    CandidateDiagnosticReport,
+    BuildingProgramSummary,
+    PipelineConfig,
+)
+from diagram_yonetmelik.cad_ingest import (
+    TurkishArchitecturalLabelClassifier,
+    WallLinePolygonizer,
+    DXFFloorplanParser,
+)
+from diagram_yonetmelik.cv_analyzer import FloorplanImageAnalyzer
+from diagram_yonetmelik.spatial_rag import (
+    FloorplanToRAGExtractor,
+    MultiFloor3DRAGBuilder,
+)
+from diagram_yonetmelik.gnn_order import (
+    compute_rwpe,
+    violation_energy,
+    OrderEmbeddingLoss,
+    SpatialOrderGNN,
+    nx_subgraph_to_pyg_data,
+)
+from diagram_yonetmelik.spminer import (
+    ArchitecturalSPMiner,
+    ArchitecturalGraphCoarsener,
+)
+from diagram_yonetmelik.vf2_diagnostics import ExplainableVF2Analyzer
+from diagram_yonetmelik.basement_audit import BasementComplianceAuditor
+from diagram_yonetmelik.evacuation import (
+    Building3DEvacuationSimulator,
+    CounterfactualEvacuationOptimizer,
+)
+from diagram_yonetmelik.regulatory_rag import (
+    build_turkish_building_regulations_corpus,
+    HybridRegulatoryRetriever,
+    LocalMimarLLMReportGenerator,
+)
+from diagram_yonetmelik.orchestrator import DiagramYonetmelikPipeline
+from diagram_yonetmelik.sample_generator import (
+    generate_sample_building_dxf,
+    generate_sample_floorplan_image,
+)
+
+
+class TestGNNAndOrderEmbeddingMath:
+    def test_1wl_rwpe_distinguishes_c6_from_two_c3_triangles(self):
+        # 1-WL kısıtını test et: 6'lı ring koridor (C6) ile 2 ayrık üçgen oda (2 x C3)
+        # Standart MPNN ikisinde de aynı komşu sayısını görür, ancak RWPE 3. adımda ayrışır!
+        c6_edges = torch.tensor([[0, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 0],
+                                 [1, 2, 3, 4, 5, 0, 0, 1, 2, 3, 4, 5]], dtype=torch.long)
+        two_c3_edges = torch.tensor([[0, 1, 2, 1, 2, 0, 3, 4, 5, 4, 5, 3],
+                                     [1, 2, 0, 0, 1, 2, 4, 5, 3, 3, 4, 5]], dtype=torch.long)
+
+        rwpe_c6 = compute_rwpe(c6_edges, num_nodes=6, walk_steps=6)
+        rwpe_two_c3 = compute_rwpe(two_c3_edges, num_nodes=6, walk_steps=6)
+
+        # 3. adımda üçgende dönüş olasılığı > 0 iken 6'lı ringde 0'dır
+        step3_c6 = rwpe_c6[:, 2]
+        step3_two_c3 = rwpe_two_c3[:, 2]
+        assert not torch.allclose(step3_c6, step3_two_c3, atol=1e-3)
+
+    def test_order_embedding_partial_order_and_loss(self):
+        # G_q <= G_u <==> E(z_q, z_u) == 0
+        z_q = torch.tensor([[1.0, 2.0, 3.0]])
+        z_pos = torch.tensor([[2.0, 3.0, 4.0]])   # z_q <= z_pos (Tüm boyutlarda büyük veya eşit)
+        z_neg = torch.tensor([[0.5, 1.0, 2.0]])   # z_q > z_neg (İhlal)
+
+        e_pos = violation_energy(z_q, z_pos)
+        e_neg = violation_energy(z_q, z_neg)
+
+        assert e_pos.item() == 0.0
+        assert e_neg.item() > 0.0
+
+        loss_fn = OrderEmbeddingLoss(margin=1.0)
+        loss_val = loss_fn(z_q, z_pos, z_neg)
+        assert loss_val.item() >= 0.0
+
+
+class TestCADAndSpatialGeometry:
+    def test_line_soup_polygonizer(self):
+        polygonizer = WallLinePolygonizer(snap_tolerance_cm=5.0, wall_thickness_cm=20.0)
+        # 4m x 4m bir oda sınır çizgileri (cm cinsinden)
+        lines = [
+            LineString([(0, 0), (400, 0)]),
+            LineString([(400, 0), (400, 400)]),
+            LineString([(400, 400), (0, 400)]),
+            LineString([(0, 400), (0, 0)]),
+        ]
+        # Kapı eşiği
+        door = DoorGeometryInput(
+            door_id=1,
+            geometry=LineString([(150, 0), (250, 0)]),
+            width_cm=100.0
+        )
+        polys = polygonizer.polygonize_rooms_from_lines(lines, [door], unit_scale=0.01)
+        assert len(polys) >= 1
+        assert polys[0].area >= 10.0  # 16 m²
+
+    def test_concave_l_corridor_walking_distance(self):
+        extractor = FloorplanToRAGExtractor()
+        # L tipi içbükey koridor poligonu
+        poly = Polygon([
+            (0, 0), (10, 0), (10, 3), (3, 3), (3, 10), (0, 10)
+        ])
+        start_pt = Point(1, 8)
+        portal_pt = Point(8, 1)
+
+        # Düz çizgi duvarın içinden geçeceği için görünürlük mesafesi Öklid'den büyük olmalı
+        geodesic_dist = extractor._compute_geodesic_walking_distance(poly, start_pt, portal_pt)
+        euclidean_dist = start_pt.distance(portal_pt)
+        assert geodesic_dist >= euclidean_dist
+
+
+class Test3DRAGAndGraphCoarsening:
+    def test_3d_multifloor_core_registration(self):
+        builder = MultiFloor3DRAGBuilder()
+        rooms = [
+            # Zemin
+            RoomPolygonInput(room_id=1, room_type="dis_cikis", polygon=Polygon([(0,0),(2,0),(2,2),(0,2)]), floor_level=0),
+            RoomPolygonInput(room_id=2, room_type="yangin_merdiveni", polygon=Polygon([(2,0),(5,0),(5,4),(2,4)]), floor_level=0),
+            # 1. Kat
+            RoomPolygonInput(room_id=102, room_type="yangin_merdiveni", polygon=Polygon([(2,0),(5,0),(5,4),(2,4)]), floor_level=1),
+            RoomPolygonInput(room_id=103, room_type="yangin_holu", polygon=Polygon([(5,0),(8,0),(8,3),(5,3)]), floor_level=1),
+        ]
+        doors = [
+            DoorGeometryInput(door_id=1, geometry=LineString([(2,1),(2,2)]), floor_level=0),
+            DoorGeometryInput(door_id=2, geometry=LineString([(5,1),(5,2)]), floor_level=1),
+        ]
+        res = builder.build_3d_building_rag(rooms, doors, unit_scale_to_meters=1.0)
+        assert res.total_floors >= 1
+        assert res.G_3d.number_of_nodes() >= 3
+
+        # Kaçış rotası testi
+        path, dist = builder.compute_3d_fire_escape_route(res.G_3d, start_node_id=103)
+        assert len(path) >= 2
+        assert dist > 0.0
+
+    def test_spminer_and_coarsening(self):
+        G = nx.Graph()
+        # Daire 1
+        G.add_node(1, room_type="daire_antresi", area_m2=6.0, floor_level=0)
+        G.add_node(2, room_type="salon", area_m2=25.0, floor_level=0)
+        G.add_node(3, room_type="oda", area_m2=12.0, floor_level=0)
+        G.add_edge(1, 2, door_width_cm=90.0, distance_m=3.0)
+        G.add_edge(1, 3, door_width_cm=90.0, distance_m=4.0)
+        # Koridor
+        G.add_node(10, room_type="kat_koridoru", area_m2=15.0, floor_level=0)
+        G.add_edge(10, 1, door_width_cm=90.0, distance_m=2.0)
+
+        spminer = ArchitecturalSPMiner(min_support=1)
+        motifs, prog = spminer.discover_frequent_modules(G)
+        assert prog.total_apartments >= 1
+
+        coarsened = ArchitecturalGraphCoarsener.coarsen_building_graph(G, motifs)
+        assert coarsened.coarsened_node_count < coarsened.original_node_count
+
+
+class TestExplainableVF2AndBasementCompliance:
+    def test_explainable_vf2_parametric_violation(self):
+        analyzer = ExplainableVF2Analyzer()
+        Q = analyzer.build_standard_fire_core_query()
+
+        # Hedef grafikte kapı genişliği 70cm olan kusurlu yangın holü
+        T = nx.Graph()
+        T.add_node(10, room_type="kat_koridoru", area_m2=20.0)
+        T.add_node(20, room_type="yangin_holu", area_m2=4.0, is_anchor=True)
+        T.add_node(30, room_type="yangin_merdiveni", area_m2=8.0)
+        T.add_node(40, room_type="dis_cikis", area_m2=5.0)
+
+        T.add_edge(10, 20, door_width_cm=70.0, is_fire_resistant=False, distance_m=5.0)  # KUSUR!
+        T.add_edge(20, 30, door_width_cm=90.0, is_fire_resistant=True, distance_m=2.0)
+        T.add_edge(30, 40, door_width_cm=100.0, is_fire_resistant=True, distance_m=5.0)
+
+        report = analyzer.explain_candidate(Q, T, anchor_node_id=20)
+        assert not report.is_fully_compliant
+        assert report.diagnostic_stage_reached == 1
+        codes = [v.violation_code for v in report.violations]
+        assert "DOOR_WIDTH_DEFICIT" in codes
+
+    def test_basement_auditor_violations(self):
+        auditor = BasementComplianceAuditor()
+        prog = BuildingProgramSummary(
+            total_apartments=16,
+            required_shelter_area_m2=64.0
+        )
+        G = nx.Graph()
+        # Sığınak alanı 40m² < 64m² (Kusur!) ve Airlock yok
+        G.add_node(1, room_type="siginak", area_m2=40.0, floor_level=-1)
+        G.add_node(2, room_type="kat_koridoru", area_m2=15.0, floor_level=-1)
+        G.add_edge(1, 2)
+
+        # Kapalı otoparktan doğrudan yangın merdivenine yasaklı kapı (Kusur!)
+        G.add_node(3, room_type="kapali_otopark", area_m2=200.0, floor_level=-1)
+        G.add_node(4, room_type="yangin_merdiveni", area_m2=10.0, floor_level=-1)
+        G.add_edge(3, 4)
+
+        viols = auditor.audit_basement_graph(G, prog)
+        codes = [v.violation_code for v in viols]
+        assert "SHELTER_AREA_DEFICIT" in codes
+        assert "PARKING_DIRECT_EXIT_PROHIBITED" in codes
+
+
+class TestEvacuationAndComputerVision:
+    def test_evacuation_simulation_and_optimization(self):
+        G = nx.Graph()
+        G.add_node(1, room_type="salon", area_m2=20.0, floor_level=1)
+        G.add_node(2, room_type="yangin_holu", area_m2=3.5, floor_level=1)
+        G.add_node(3, room_type="yangin_merdiveni", area_m2=6.0, floor_level=1)
+        G.add_node(4, room_type="yangin_merdiveni", area_m2=6.0, floor_level=0)
+        G.add_node(5, room_type="dis_cikis", area_m2=10.0, floor_level=0)
+
+        G.add_edge(1, 2, door_width_cm=70.0, distance_m=6.0, usable_in_fire=True)
+        G.add_edge(2, 3, door_width_cm=70.0, distance_m=3.0, usable_in_fire=True)
+        G.add_edge(3, 4, door_width_cm=90.0, distance_m=6.6, is_vertical=True, usable_in_fire=True)
+        G.add_edge(4, 5, door_width_cm=90.0, distance_m=4.0, usable_in_fire=True)
+
+        sim = Building3DEvacuationSimulator(target_evacuation_threshold_sec=50.0)
+        rep = sim.simulate_evacuation(G)
+        assert rep.total_evacuation_time_sec > 0.0
+
+        opt = CounterfactualEvacuationOptimizer()
+        opt_res = opt.optimize_building_design(G, target_time_sec=50.0)
+        assert opt_res.optimized_evacuation_time_sec <= rep.total_evacuation_time_sec
+
+    def test_opencv_floorplan_image_analyzer(self):
+        img_path = "test_plan.png"
+        generate_sample_floorplan_image(img_path)
+        try:
+            cv_engine = FloorplanImageAnalyzer(pixels_per_meter=50.0)
+            rooms, doors, debug_img = cv_engine.analyze_image_file(img_path)
+            assert len(rooms) >= 2
+            assert debug_img is not None
+        finally:
+            if os.path.exists(img_path):
+                os.remove(img_path)
+
+
+class TestEndToEndPipeline:
+    def test_full_pipeline_on_sample_dxf(self):
+        dxf_path = "test_sample_building.dxf"
+        annotated_path = "test_annotated_building.dxf"
+        generate_sample_building_dxf(dxf_path)
+
+        try:
+            doc = ezdxf.readfile(dxf_path)
+            pipe = DiagramYonetmelikPipeline()
+            output = pipe.run_full_pipeline(doc, output_annotated_dxf_path=annotated_path)
+
+            assert output.building_3d_result.total_floors >= 1
+            assert output.building_3d_result.total_rooms >= 5
+            assert len(output.official_markdown_report) > 100
+            assert os.path.exists(annotated_path)
+        finally:
+            for p in [dxf_path, annotated_path]:
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
