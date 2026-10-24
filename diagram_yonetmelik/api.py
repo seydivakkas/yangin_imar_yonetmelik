@@ -245,3 +245,9 @@ def download_annotated_dxf():
     output: DiagramYonetmelikPipelineOutput = CACHED_RESULT["last"]
     output.annotated_dxf_document.saveas(out_dxf_path)
     return FileResponse(out_dxf_path, filename="denetlenmis_diagram_yonetmelik.dxf", media_type="application/dxf")
+
+
+# Frontend static files mounting
+frontend_dist = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "dist")
+if os.path.exists(frontend_dist):
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
