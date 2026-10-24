@@ -18,110 +18,313 @@ from diagram_yonetmelik.schemas import (
 def build_turkish_building_regulations_corpus() -> List[RegulatoryClauseChunk]:
     return [
         RegulatoryClauseChunk(
-            chunk_id="BYKHY-M34",
+            chunk_id="BYKHY-M30",
             regulation_code="tr_yangin",
-            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 34",
-            clause_hierarchy="Yangın Güvenlik Holleri / Mekan Boyutları ve Dayanım",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 30",
+            clause_hierarchy="Kaçış Yolları Tanımı ve Sürekliliği",
             text_tr=(
-                "Yangın güvenlik holleri; kaçış merdivenlerine duman ve sıcaklık geçişini engellemek "
-                "amacıyla düzenlenir. Hol taban alanı 3.0 m²'den az, 6.0 m²'den fazla olamaz. "
-                "Hole açılan kapılar yangına ve dumana en az 60 dakika dayanıklı (EI60), "
-                "kendiliğinden kapanan duman sızdırmaz nitelikte olmalıdır."
+                "Kaçış yolları, bir yapının herhangi bir noktasından yer seviyesindeki cadde veya sokağa "
+                "kadar olan engellenmemiş ve kesintisiz yoldur. Hiçbir kaçış yolu üzerinde kilitli, "
+                "geçişi engelleyen bölüntü veya tahliyeyi aksatan çıkmaz oda bulunamaz."
             ),
             legal_mandatory_status="ZORUNLU",
-            numerical_limits={"min_area_m2": 3.0, "max_area_m2": 6.0, "fire_rating_min": 60.0},
-            relevant_room_types=["yangin_holu"],
-            relevant_violation_codes=["ROOM_AREA_DEFICIT", "FIRE_DOOR_MISSING", "ROOM_TYPE_MISMATCH"]
-        ),
-        RegulatoryClauseChunk(
-            chunk_id="BYKHY-M38",
-            regulation_code="tr_yangin",
-            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 38",
-            clause_hierarchy="Kaçış Merdiveni ve Yangın Kapıları Genişliği",
-            text_tr=(
-                "Kaçış merdiveni kapılarının ve yangın güvenlik holü çıkış kapılarının "
-                "temiz net geçiş genişliği hiçbir koşulda 90 cm'den (0.90 m) az olamaz. "
-                "Kullanıcı yükü 50 kişiyi aşan mekanlarda kapı genişliği en az 120 cm olmalıdır."
-            ),
-            legal_mandatory_status="ZORUNLU",
-            numerical_limits={"min_door_width_cm": 90.0, "min_door_width_large_cm": 120.0},
-            relevant_room_types=["yangin_holu", "yangin_merdiveni", "kat_koridoru", "dis_cikis"],
-            relevant_violation_codes=["DOOR_WIDTH_DEFICIT", "EVACUATION_BOTTLENECK"]
+            numerical_limits={},
+            relevant_room_types=["kat_koridoru", "hol", "yangin_holu", "dis_cikis"],
+            relevant_violation_codes=["BYKHY_M30_KACIS_YOLU_KESINTILI"]
         ),
         RegulatoryClauseChunk(
             chunk_id="BYKHY-M31",
             regulation_code="tr_yangin",
-            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 31",
-            clause_hierarchy="Kaçış Yolu Uzaklıkları ve Rota Mesafesi",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 31 & Madde 48",
+            clause_hierarchy="Çıkış ve Kaçış Merdiveni Sayısı / Yüksek Binalar",
             text_tr=(
-                "Konut binalarında herhangi bir daire kapısından veya bağımsız mekanın en uzak noktasından "
-                "yangın güvenlik holüne veya kaçış merdivenine olan yürüyüş mesafesi tek yönde "
-                "en fazla 30.0 metredir. Sprinkler sistemi bulunan yapılarda bu mesafe azami 45.0 m alınabilir."
+                "Yapı yüksekliği 21.50 m'yi aşan veya kat adedi 8 ve üzeri olan binalarda, "
+                "her katta en az 2 adet birbirinden bağımsız, duman sızdırmaz kaçış merdiveni düzenlenmesi mecburidir. "
+                "Kullanıcı yükü 500 kişiyi aşan binalarda en az 3, 1000 kişiyi aşanlarda en az 4 merdiven gerekir."
             ),
             legal_mandatory_status="ZORUNLU",
-            numerical_limits={"max_route_distance_m": 30.0, "max_route_sprinkler_m": 45.0},
+            numerical_limits={"min_stairs_high_rise": 2, "high_rise_height_m": 21.50},
+            relevant_room_types=["yangin_merdiveni", "dikey_cekirdek"],
+            relevant_violation_codes=["BYKHY_M31_KACIS_MERDIVEN_SAYISI_YETERSIZ"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="BYKHY-M32",
+            regulation_code="tr_yangin",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 32 & Madde 89",
+            clause_hierarchy="Kaçış Merdiveni Kovanı Havalandırması ve Basınçlandırma",
+            text_tr=(
+                "Kaçış merdiveni kovanlarının dış cepheden en az 1.0 m² açılabilir pencere ile tabii olarak "
+                "havalandırılması veya yüksek binalarda (yapı yüksekliği ≥21.50 m) merdiven kovasında "
+                "en az 50 Pa pozitif basınçlandırma sağlanması zorunludur."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"min_window_m2": 1.0, "min_pressurization_pa": 50.0},
+            relevant_room_types=["yangin_merdiveni"],
+            relevant_violation_codes=["BYKHY_M32_MERDIVEN_BASINCLANDIRMA_EKSIK", "BYKHY_M32_MERDIVEN_HAVALANDIRMASI_YOK"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="BYKHY-M33",
+            regulation_code="tr_yangin",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 33 & Madde 34",
+            clause_hierarchy="Kaçış Kapıları Temiz Genişlik, Açılış Yönü ve Yangın Dayanımı",
+            text_tr=(
+                "Kaçış kapılarının temiz geçiş genişliği tek kanatta 90 cm'den, çift kanatta 140 cm'den az olamaz. "
+                "Yüksek binalarda veya yangın güvenlik holü kapılarında temiz genişlik asgari 120 cm olmalıdır. "
+                "Kapılar kaçış yönünde dışa doğru açılmalı, en az 60 dakika yangına ve dumana dayanıklı (EI60) "
+                "ve kendiliğinden kapanır olmalıdır. Eşik yüksekliği 1.5 cm'yi geçemez."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"min_door_cm": 90.0, "min_door_high_rise_cm": 120.0, "max_threshold_cm": 1.5},
+            relevant_room_types=["yangin_holu", "yangin_merdiveni", "kat_koridoru", "dis_cikis"],
+            relevant_violation_codes=[
+                "BYKHY_M33_KACIS_KAPISI_GENISLIK_DEFICIT",
+                "BYKHY_M33_KAPI_YANGINA_DAYANIKSIZ",
+                "DOOR_WIDTH_DEFICIT",
+                "EVACUATION_BOTTLENECK"
+            ]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="BYKHY-M34",
+            regulation_code="tr_yangin",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 34",
+            clause_hierarchy="Yangın Güvenlik Holleri / Mekan Boyutları ve Duman İzolasyonu",
+            text_tr=(
+                "Yangın güvenlik holleri; kaçış merdivenlerine duman ve sıcaklık geçişini engellemek amacıyla düzenlenir. "
+                "Hol taban alanı 3.0 m²'den az, 6.0 m²'den fazla olamaz. Koridordan merdivene doğrudan geçiş yasaktır. "
+                "Hole açılan kapılar yangına ve dumana en az 60 dakika dayanıklı (EI60), kendiliğinden kapanan nitelikte olmalıdır."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"min_area_m2": 3.0, "max_area_m2": 6.0, "fire_rating_min": 60.0},
+            relevant_room_types=["yangin_holu"],
+            relevant_violation_codes=[
+                "BYKHY_M34_YANGIN_GUVENLIK_HOLU_EKSIK",
+                "BYKHY_M34_YANGIN_HOLU_ALAN_YETERSIZ",
+                "ROOM_AREA_DEFICIT"
+            ]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="BYKHY-M40",
+            regulation_code="tr_yangin",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 40 & PAİY Madde 36",
+            clause_hierarchy="Merdiven Basamak ve Rıht Boyutları (Blondel Kuralı)",
+            text_tr=(
+                "Kaçış merdivenlerinde basamak basma genişliği 28 cm'den az, rıht yüksekliği 17.5 cm'den fazla olamaz. "
+                "Basamak ve rıht ölçüleri 2R + B = 60..64 cm Blondel formülünü sağlamak zorundadır."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"max_riser_cm": 17.5, "min_tread_cm": 28.0, "blondel_min": 60.0, "blondel_max": 64.0},
+            relevant_room_types=["yangin_merdiveni", "merdiven"],
+            relevant_violation_codes=["BYKHY_M40_MERDIVEN_RIHT_BASAMAK_UYUMSUZ"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="BYKHY-M41",
+            regulation_code="tr_yangin",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 41 & PAİY Madde 36",
+            clause_hierarchy="Kaçış Merdiveni Kol ve Sahanlık Genişlikleri",
+            text_tr=(
+                "Kaçış merdivenlerinde merdiven kolu temiz genişliği ve ara sahanlık genişliği hiçbir noktada "
+                "1.20 m'den az olamaz. Sahanlık genişliği merdiven kolu genişliğinden az olamaz."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"min_flight_width_m": 1.20, "min_landing_width_m": 1.20},
+            relevant_room_types=["yangin_merdiveni", "merdiven"],
+            relevant_violation_codes=["BYKHY_M41_MERDIVEN_KOL_VEYA_SAHANLIK_DAR"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="BYKHY-M48",
+            regulation_code="tr_yangin",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 48",
+            clause_hierarchy="Kaçış Merdivenleri Arasındaki Mesafe / Köşegen (Diyagonal) Kuralı",
+            text_tr=(
+                "İki kaçış merdiveni arasındaki kuş uçuşu mesafe; kat planının en uzak iki noktası arasındaki "
+                "diyagonal mesafenin en az 1/3'ü (sprinkler varsa) veya en az 1/2'si (sprinkler yoksa) kadar olmalıdır. "
+                "Yangın merdivenlerinin birbirine bitişik veya çok yakın yerleştirilmesi yasaktır."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"diagonal_ratio_sprinkler": 0.333, "diagonal_ratio_nosprinkler": 0.5},
+            relevant_room_types=["yangin_merdiveni"],
+            relevant_violation_codes=["BYKHY_M48_MERDIVENLER_ARASI_MESAFE_YETERSIZ"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="BYKHY-M52",
+            regulation_code="tr_yangin",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 52 & Madde 53",
+            clause_hierarchy="Çıkmaz Koridor ve Azami Kaçış Mesafesi Sınırları",
+            text_tr=(
+                "Kaçış koridorlarında tek yönde kaçış imkanı veren çıkmaz koridor mesafesi; sprinklersiz binalarda "
+                "en fazla 15.0 m, sprinkler sistemi bulunan binalarda en fazla 20.0 m olabilir. "
+                "İki yönde kaçış sağlanan mekanlarda azami yürüyüş mesafesi sırasıyla 30.0 m ve 45.0 m'dir."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"max_dead_end_nosprinkler_m": 15.0, "max_dead_end_sprinkler_m": 20.0, "max_travel_m": 30.0},
             relevant_room_types=["kat_koridoru", "daire_antresi", "salon", "oda"],
-            relevant_violation_codes=["TOTAL_ROUTE_EXCEEDED"]
+            relevant_violation_codes=["BYKHY_M52_CIKMAZ_KORIDOR_MESAFESI_ASILDI", "BYKHY_M53_AZAMI_KACIS_MESAFESI_ASILDI", "TOTAL_ROUTE_EXCEEDED"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="BYKHY-M60",
+            regulation_code="tr_yangin",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 60 & Otopark Yönetmeliği",
+            clause_hierarchy="Kapalı Otopark Yangın İzolasyonu ve Düşey Çekirdek Geçiş Yasağı",
+            text_tr=(
+                "Kapalı otopark alanlarından kaçış merdivenlerine ve asansör hollerine doğrudan kapı açılamaz. "
+                "Geçişler mutlaka yangına en az 60 dakika dayanıklı (EI60) duman tahliyeli bir yangın güvenlik holü "
+                "üzerinden sağlanmalıdır."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"fire_door_rating": 60.0},
+            relevant_room_types=["otopark", "kapali_otopark", "yangin_holu"],
+            relevant_violation_codes=["BYKHY_M60_OTOPARK_DOGRADAN_MERDIVEN_BAGLANTISI", "PARKING_DIRECT_EXIT_PROHIBITED"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="BYKHY-M62",
+            regulation_code="tr_yangin",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 62",
+            clause_hierarchy="Acil Durum ve İtfaiyeci Asansörü Zorunluluğu",
+            text_tr=(
+                "Yapı yüksekliği 51.50 m'yi aşan veya 10 kat ve üzeri binalarda, itfaiyenin kullanımına mahsus "
+                "en az 1 adet acil durum / yangın asansörü bulunması zorunludur. Asansör kuyusu basınçlandırmalı, "
+                "önünde yangın güvenlik holü bulunmalı ve yedek acil durum jeneratöründen beslenmelidir."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"min_height_m": 51.50, "min_floors": 10},
+            relevant_room_types=["yangin_asansoru", "asansor", "dikey_cekirdek"],
+            relevant_violation_codes=["BYKHY_M62_ACIL_DURUM_YANGIN_ASANSORU_YOK"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="BYKHY-M74",
+            regulation_code="tr_yangin",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 74",
+            clause_hierarchy="Yangın Dolapları ve Sabit Boru Tesisatı Yerleşimi",
+            text_tr=(
+                "Her katta kat koridorlarında ve çıkış hollerinde, aralarındaki mesafe 30 metreden fazla olmayacak "
+                "şekilde yangın dolapları yerleştirilmelidir. Yangın dolapları hortum boyu 20-30 metre olup, "
+                "kat alanının her noktasına erişim sağlanmalıdır."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"max_hose_distance_m": 30.0},
+            relevant_room_types=["kat_koridoru", "hol"],
+            relevant_violation_codes=["BYKHY_M74_YANGIN_DOLABI_MESAFE_ASIMI"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="BYKHY-M96",
+            regulation_code="tr_yangin",
+            article_title="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 96",
+            clause_hierarchy="Otomatik Yağmurlama (Sprinkler) Sistemi Zorunluluğu",
+            text_tr=(
+                "Yapı yüksekliği 21.50 m'yi aşan konut binalarında, toplam inşaat alanı 5000 m²'den fazla olan yapılarda "
+                "ve 20 araçtan fazla kapalı otoparklarda tüm kaçış yollarını ve bağımsız bölümleri koruyan "
+                "otomatik sprinkler sistemi yapılması mecburidir."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"high_rise_height_m": 21.50, "max_parking_cars_nosprinkler": 20},
+            relevant_room_types=["bina_geneli", "otopark", "kat_koridoru"],
+            relevant_violation_codes=["BYKHY_M96_OTOMATIK_SPRINKLER_ZORUNLULUGU"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="PAIY-M5",
+            regulation_code="tr_imar",
+            article_title="Planlı Alanlar İmar Yönetmeliği - Madde 5",
+            clause_hierarchy="Genel İlkeler ve Engelli Erişilebilirliği Standartları",
+            text_tr=(
+                "Bina girişleri, ortak kat koridorları ve hollerde tekerlekli sandalyenin serbestçe dönüş yapabilmesi için "
+                "en az Ø 1.50 m çapında bir manevra dairesi alanı sağlanmalıdır. Kapı eşik yüksekliği pahlı ve azami 1.5 cm olmalıdır."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"min_turning_diameter_m": 1.50, "max_threshold_cm": 1.5},
+            relevant_room_types=["kat_koridoru", "hol", "dis_cikis"],
+            relevant_violation_codes=["PAIY_M5_ENGELLI_MANEVRA_ALANI_YETERSIZ"]
         ),
         RegulatoryClauseChunk(
             chunk_id="PAIY-M29",
             regulation_code="tr_imar",
-            article_title="Planlı Alanlar İmar Yönetmeliği - Madde 29",
-            clause_hierarchy="Konut Bağımsız Bölüm Asgari Mekan Boyutları",
+            article_title="Planlı Alanlar İmar Yönetmeliği - Madde 29 & Madde 30",
+            clause_hierarchy="Kat Koridoru ve Ortak Hol Asgari Temiz Boyutları",
             text_tr=(
-                "Her konutta en az 1 oturma odası (en az 12.00 m², dar kenar en az 3.00 m), "
-                "1 yatak odası (en az 9.00 m², dar kenar en az 2.50 m), 1 mutfak (en az 3.30 m²) "
-                "ve 1 banyo/wc bulunması zorunludur."
+                "Bağımsız bölümlere ulaşan ortak kat koridorlarının net temiz genişliği hiçbir noktada "
+                "1.20 m'den az olamaz. Kat tavan net yüksekliği en az 2.40 m olmalıdır."
             ),
             legal_mandatory_status="ZORUNLU",
-            numerical_limits={"min_living_room_area": 12.0, "min_bedroom_area": 9.0},
-            relevant_room_types=["salon", "oda", "mutfak", "banyo_wc"],
-            relevant_violation_codes=["ROOM_AREA_DEFICIT"]
+            numerical_limits={"min_corridor_width_m": 1.20, "min_ceiling_height_m": 2.40},
+            relevant_room_types=["kat_koridoru", "koridor"],
+            relevant_violation_codes=["PAIY_M29_KAT_KORIDORU_GENISLIK_YETERSIZ"]
         ),
         RegulatoryClauseChunk(
-            chunk_id="SIGINAK-M8",
-            regulation_code="tr_siginak",
-            article_title="Sığınak Yönetmeliği - Madde 4 ve 8",
-            clause_hierarchy="Serpinti Sığınağı Ayrılma Zorunluluğu ve Alan Hesabı",
+            chunk_id="PAIY-M30",
+            regulation_code="tr_imar",
+            article_title="Planlı Alanlar İmar Yönetmeliği - Madde 30",
+            clause_hierarchy="Işıklıklar ve Havalandırma Bacaları",
             text_tr=(
-                "12 veya daha fazla bağımsız bölümü bulunan konut yapılarında serpinti sığınağı yapılması mecburidir. "
-                "Sığınak alanı; daire başına 4 kişi kabulü ile kişi başına en az 1.0 m² net taban alanı "
-                "esas alınarak hesaplanır. Net sığınak alanı WC ve hol hariç 12.0 m²'den az olamaz."
+                "Doğrudan dış cepheye penceresi açılmayan banyo, WC ve benzeri ıslak hacimler için taban alanı "
+                "en az 0.45 m² ve dar kenarı en az 0.60 m olan havalandırma bacası yapılması zorunludur."
             ),
             legal_mandatory_status="ZORUNLU",
-            numerical_limits={"min_shelter_area_per_person": 1.0, "min_shelter_total_m2": 12.0},
-            relevant_room_types=["siginak", "siginak_holu"],
-            relevant_violation_codes=["SHELTER_AREA_DEFICIT", "SHELTER_ROOM_MISSING", "SHELTER_MANDATORY_MISSING"]
+            numerical_limits={"min_vent_shaft_m2": 0.45, "min_vent_shaft_dim_m": 0.60},
+            relevant_room_types=["banyo", "wc", "banyo_wc", "isiklik"],
+            relevant_violation_codes=["PAIY_M30_HAVALANDIRMA_BACASI_YETERSIZ"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="PAIY-M34",
+            regulation_code="tr_imar",
+            article_title="Planlı Alanlar İmar Yönetmeliği - Madde 34",
+            clause_hierarchy="Asansörler ve Kat Holü Bekleme Derinlikleri",
+            text_tr=(
+                "4 kat ve üzeri binalarda asansör yapılması mecburidir. 10 kat ve üzeri binalarda en az 2 asansör "
+                "(biri sedye taşımaya uygun) yapılmalıdır. Asansör kapısı önündeki bekleme holü derinliği konutlarda "
+                "en az 1.50 m, sedye asansöründe ve yüksek binalarda en az 1.80 m olmalıdır."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"min_lobby_depth_normal_m": 1.50, "min_lobby_depth_high_rise_m": 1.80},
+            relevant_room_types=["asansor", "kat_koridoru", "hol"],
+            relevant_violation_codes=["PAIY_M34_ASANSOR_KAT_HOLU_DAR"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="PAIY-M40",
+            regulation_code="tr_imar",
+            article_title="Planlı Alanlar İmar Yönetmeliği - Madde 40",
+            clause_hierarchy="Çatı Terasları, Parapet ve Korkuluk Güvenlik Yükseklikleri",
+            text_tr=(
+                "Çatı teraslarında, balkonlarda ve ortak teras alanlarında düşme tehlikesini önleyen korkuluk "
+                "veya parapet yüksekliği en az 1.10 m olmalıdır."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"min_parapet_m": 1.10},
+            relevant_room_types=["teras", "cati_terasi", "balkon"],
+            relevant_violation_codes=["PAIY_M40_TERAS_PARAPET_YUKSEKLIK_DEFICIT"]
         ),
         RegulatoryClauseChunk(
             chunk_id="SIGINAK-M9",
             regulation_code="tr_siginak",
-            article_title="Sığınak Yönetmeliği - Madde 9",
-            clause_hierarchy="Sığınak Giriş ve Gaz Sızdırmazlık Holü Topolojisi",
+            article_title="Sığınak Yönetmeliği - Madde 4, 8 ve 9",
+            clause_hierarchy="Serpinti Sığınağı Ayrılma Zorunluluğu ve Alan Hesabı",
             text_tr=(
-                "Sığınak girişleri mutlaka iki kapılı bir hava kilidi / gaz sızdırmazlık holü (airlock) "
-                "üzerinden yapılmalıdır. Kapılar gaz sızdırmaz ve yangına dayanıklı olmalı, "
-                "ayrıca acil kaçış çıkışı (imdat bacası) bulunmalıdır."
+                "12 veya daha fazla bağımsız bölümü bulunan konut yapılarında serpinti sığınağı yapılması mecburidir. "
+                "Sığınak alanı; daire başına 4 kişi kabulü ile kişi başına en az 1.0 m² net taban alanı esas alınarak hesaplanır. "
+                "Net sığınak alanı WC ve hol hariç 12.0 m²'den az olamaz."
             ),
             legal_mandatory_status="ZORUNLU",
-            numerical_limits={},
+            numerical_limits={"min_shelter_area_per_person": 1.0, "min_shelter_total_m2": 12.0},
             relevant_room_types=["siginak", "siginak_holu"],
-            relevant_violation_codes=["SHELTER_AIRLOCK_MISSING"]
+            relevant_violation_codes=[
+                "SIGINAK_M9_SIGINAK_ALANI_BULUNAMADI",
+                "SIGINAK_M9_SIGINAK_ALANI_YETERSIZ",
+                "SHELTER_AREA_DEFICIT",
+                "SHELTER_ROOM_MISSING"
+            ]
         ),
         RegulatoryClauseChunk(
-            chunk_id="OTOPARK-M6",
-            regulation_code="tr_otopark",
-            article_title="Otopark Yönetmeliği - Madde 6 ve BYKHY Madde 60",
-            clause_hierarchy="Kapalı Otopark Yangın İzolasyonu ve Kaçış Merdiveni Bağlantısı",
+            chunk_id="SIGINAK-M13",
+            regulation_code="tr_siginak",
+            article_title="Sığınak Yönetmeliği - Madde 13",
+            clause_hierarchy="Sığınak Girişi Gaz Sızdırmazlık Hava Kilidi (Airlock) ve Kaçış Bacası",
             text_tr=(
-                "Kapalı otoparklardan kaçış merdivenlerine ve asansör kovalarına doğrudan kapı açılamaz. "
-                "Geçişler mutlaka yangına en az 60 dakika dayanıklı (EI60) kapılarla teçhiz edilmiş "
-                "bir yangın güvenlik holü üzerinden sağlanmalıdır."
+                "Sığınak girişleri mutlaka iki kapılı bir hava kilidi / gaz sızdırmazlık holü (airlock, min 1.5 m²) "
+                "üzerinden yapılmalıdır. Kapılar gaz sızdırmaz ve yangına dayanıklı olmalı, ayrıca menfezli "
+                "acil durum kaçış çıkışı (imdat bacası) bulunmalıdır."
             ),
             legal_mandatory_status="ZORUNLU",
-            numerical_limits={"min_ramp_width_cm": 275.0, "max_ramp_slope_percent": 20.0},
-            relevant_room_types=["kapali_otopark", "yangin_holu", "otopark_rampasi"],
-            relevant_violation_codes=["PARKING_DIRECT_EXIT_PROHIBITED"]
+            numerical_limits={"min_airlock_m2": 1.50},
+            relevant_room_types=["siginak", "hava_kilidi"],
+            relevant_violation_codes=["SIGINAK_M13_HAVA_KILIDI_EKSIK", "SHELTER_AIRLOCK_MISSING"]
         ),
     ]
 
@@ -141,16 +344,19 @@ class HybridRegulatoryRetriever:
 
     def retrieve_for_violation(self, violation: RuleViolationItem, top_k: int = 1) -> List[RetrievedLegalEvidence]:
         candidates = []
+        v_code = violation.violation_code.upper()
+        v_ref = (violation.regulation_reference or "").upper()
+
         for chunk in self.corpus:
             # 1. Sembolik Filtreleme
-            matches_code = violation.violation_code in chunk.relevant_violation_codes
-            matches_reg = violation.regulation_reference and any(part in chunk.article_title for part in violation.regulation_reference.split())
+            matches_code = v_code in [c.upper() for c in chunk.relevant_violation_codes]
+            matches_code_partial = any(chunk_code.upper() in v_code or v_code in chunk_code.upper() for chunk_code in chunk.relevant_violation_codes)
+            matches_reg = bool(v_ref and any(part in chunk.article_title.upper() for part in v_ref.split() if len(part) > 2))
 
-            if matches_code or matches_reg:
-                # Sözcüksel Skor (Basit TF eşleşmesi)
-                lexical = 1.0 if matches_code else 0.5
-                sem = 0.8
-                score = 0.5 * lexical + 0.5 * sem
+            if matches_code or matches_code_partial or matches_reg:
+                lexical = 1.0 if matches_code else 0.8 if matches_code_partial else 0.5
+                sem = 0.9 if matches_reg else 0.6
+                score = 0.6 * lexical + 0.4 * sem
                 candidates.append(RetrievedLegalEvidence(
                     clause_chunk=chunk,
                     lexical_bm25_score=lexical,
@@ -196,20 +402,21 @@ class LocalMimarLLMReportGenerator:
         evidence_bundle = {}
         for idx, v in enumerate(all_violations, start=1):
             evs = self.retriever.retrieve_for_violation(v, top_k=1)
-            ref_title = evs[0].clause_chunk.article_title if evs else "BYKHY / İmar Yönetmeliği İlgili Maddesi"
+            ref_title = evs[0].clause_chunk.article_title if evs else (v.regulation_reference or "BYKHY / İmar Yönetmeliği İlgili Maddesi")
             evidence_bundle[f"violation_{idx}"] = {
                 "code": v.violation_code,
                 "description": v.description_tr,
                 "remedy": v.remedy_recommendation_tr,
-                "legal_article": ref_title
+                "legal_article": ref_title,
+                "floor_level": v.floor_level
             }
 
         # Deterministik Resmi Markdown Raporu Üret
         md_lines = [
-            f"# RESMİ MEKÂNSAL DENETİM VE TAHLİYE UYGUNLUK RAPORU",
+            f"# RESMİ KAT BAZLI MEKÂNSAL DENETİM VE TAHLİYE UYGUNLUK RAPORU",
             f"**Proje Adı:** {project_title}  ",
             f"**Tarih:** {now_str}  ",
-            f"**Yazılım Motoru:** DiagramYönetmelik (Nöro-Sembolik GNN + SFPE Simülatörü)  ",
+            f"**Yazılım Motoru:** DiagramYönetmelik (Nöro-Sembolik GNN + SFPE Yangın Tahliye Simülatörü)  ",
             "",
             "---",
             "## 1. YÖNETİCİ ÖZETİ VE BİNA PROGRAMI",
@@ -220,19 +427,20 @@ class LocalMimarLLMReportGenerator:
             f"- **Gereken Otopark Araç Kapasitesi:** {program.required_parking_stalls} Araç (Mevcut: {program.total_parking_capacity} Araç)",
             "",
             "---",
-            "## 2. MEVZUAT İHLALLERİ VE HUKUKİ DAYANAKLAR",
+            "## 2. KAT BAZLI VE BİNA GENELİ MEVZUAT İHLALLERİ VE HUKUKİ DAYANAKLAR",
         ]
 
         if not all_violations:
-            md_lines.append("> [!TIP]\n> Projede yönetmelik ihlali tespit edilmemiştir. Kaçış çekirdekleri tam uygundur.")
+            md_lines.append("> [!TIP]\n> Projede yönetmelik ihlali tespit edilmemiştir. Tüm katlar ve kaçış çekirdekleri tam uygundur.")
         else:
             for idx, v in enumerate(all_violations, start=1):
                 ev = evidence_bundle.get(f"violation_{idx}", {})
+                fl_str = "Zemin Kat" if v.floor_level == 0 else f"Bodrum Kat ({v.floor_level})" if v.floor_level < 0 else f"Kat {v.floor_level}"
                 md_lines.extend([
-                    f"### İhlal #{idx}: {v.violation_code} ({v.severity})",
+                    f"### İhlal #{idx} [{fl_str}]: {v.violation_code} ({v.severity})",
                     f"- **Açıklama:** {v.description_tr}",
                     f"- **Beklenen Şart:** `{v.expected_value}` | **Mevcut Durum:** `{v.actual_value}`",
-                    f"- **Hukuki Dayanak:** {ev.get('legal_article', 'İlgili Mevzuat')}",
+                    f"- **Hukuki Dayanak:** **{ev.get('legal_article', v.regulation_reference)}**",
                     f"- **Düzeltme Reçetesi:** {v.remedy_recommendation_tr}",
                     ""
                 ])
@@ -261,7 +469,7 @@ class LocalMimarLLMReportGenerator:
             "",
             "---",
             "## 4. SONUÇ VE MÜHENDİSLİK KANAATİ",
-            "Yapılan nöro-sembolik graf analizi ve SFPE hidrolik kalabalık simülasyonu sonucunda, "
+            "Yapılan nöro-sembolik kat bazlı graf analizi ve SFPE hidrolik kalabalık simülasyonu sonucunda, "
             "önerilen tadilat adımlarının uygulanması kaydıyla projenin **BYKHY (Yangın)**, "
             "**Planlı Alanlar İmar Yönetmeliği**, **Sığınak** ve **Otopark** yönetmeliklerine "
             "tam uygunluk sağlayacağı değerlendirilmiştir."

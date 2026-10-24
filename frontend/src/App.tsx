@@ -90,6 +90,24 @@ export const App: React.FC = () => {
     }
   };
 
+  // Load 12-Story High-Rise Audit
+  const runHighRiseAudit = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/audit/high-rise-12', { method: 'POST' });
+      if (res.ok) {
+        const json = await res.json();
+        setPipelineData(json);
+      } else {
+        console.warn('Backend high-rise endpoint returned error');
+      }
+    } catch (err) {
+      console.error('Failed to run 12-story high rise audit:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     runSampleAudit();
   }, []);
@@ -156,6 +174,7 @@ export const App: React.FC = () => {
         setActiveTab={setActiveTab}
         isLoading={isLoading}
         onRunAudit={runSampleAudit}
+        onRunHighRiseAudit={runHighRiseAudit}
         onUploadDXF={handleUploadDXF}
         onUploadImage={handleUploadImage}
       />

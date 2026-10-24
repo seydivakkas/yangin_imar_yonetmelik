@@ -51,6 +51,7 @@ from diagram_yonetmelik.regulatory_rag import (
 from diagram_yonetmelik.orchestrator import DiagramYonetmelikPipeline
 from diagram_yonetmelik.sample_generator import (
     generate_sample_building_dxf,
+    generate_high_rise_12_story_building_dxf,
     generate_sample_floorplan_image,
 )
 
@@ -303,3 +304,24 @@ class TestMultiFloorComprehensiveAuditor:
         assert "BYKHY_M34_YANGIN_HOLU_ALAN_YETERSIZ" in all_violation_codes
         assert "PAIY_M29_KAT_KORIDORU_GENISLIK_YETERSIZ" in all_violation_codes
         assert "BYKHY_M52_CIKMAZ_KORIDOR_MESAFESI_ASILDI" in all_violation_codes
+
+    def test_high_rise_12_story_dxf_generation_and_audit(self):
+        dxf_path = "test_sample_12_story.dxf"
+        try:
+            generate_high_rise_12_story_building_dxf(dxf_path)
+            doc = ezdxf.readfile(dxf_path)
+            pipe = DiagramYonetmelikPipeline()
+            output = pipe.run_full_pipeline(doc)
+            
+            # 12 kat + zemin + bodrum = en az 13-14 kat seviyesi
+            assert output.building_3d_result.total_floors >= 10
+            assert output.building_3d_result.total_rooms >= 40
+            assert len(output.diagnostic_reports) >= 10
+            assert len(output.official_markdown_report) > 500
+        finally:
+            if os.path.exists(dxf_path):
+                try:
+                    os.remove(dxf_path)
+                except Exception:
+                    pass
+

@@ -103,7 +103,7 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
                   Kuyruk: {b.peak_queue_length} kişi
                 </div>
                 <div className="text-[9px] text-gray-400">
-                  Bekleme: {b.total_waiting_time_s.toFixed(1)} sn
+                  Bekleme: {(b.total_waiting_time_s ?? 0).toFixed(1)} sn
                 </div>
               </div>
             </div>

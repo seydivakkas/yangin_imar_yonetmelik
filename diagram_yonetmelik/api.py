@@ -16,6 +16,7 @@ from diagram_yonetmelik.schemas import (
 from diagram_yonetmelik.orchestrator import DiagramYonetmelikPipeline
 from diagram_yonetmelik.sample_generator import (
     generate_sample_building_dxf,
+    generate_high_rise_12_story_building_dxf,
     generate_sample_floorplan_image,
 )
 from diagram_yonetmelik.evacuation import Building3DEvacuationSimulator
@@ -129,7 +130,7 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
 
     return {
         "metadata": {
-            "title": output.building_program.apartment_types_breakdown,
+            "title": f"Daire Dağılımı: {', '.join(f'{k} ({v} adet)' for k, v in output.building_program.apartment_types_breakdown.items())}" if output.building_program.apartment_types_breakdown else "Çok Katlı Konut Yapısı",
             "total_floors": output.building_3d_result.total_floors,
             "total_rooms": output.building_3d_result.total_rooms,
             "total_doors": output.building_3d_result.total_doors,
@@ -183,6 +184,17 @@ def health():
 def audit_sample():
     temp_dxf = os.path.join(tempfile.gettempdir(), "diag_sample.dxf")
     generate_sample_building_dxf(temp_dxf)
+    doc = ezdxf.readfile(temp_dxf)
+    output = pipeline.run_full_pipeline(doc)
+    data = serialize_building_3d_result(output)
+    CACHED_RESULT["last"] = output
+    return JSONResponse(content=data)
+
+
+@app.post("/api/audit/high-rise-12")
+def audit_high_rise_12():
+    temp_dxf = os.path.join(tempfile.gettempdir(), "diag_high_rise_12.dxf")
+    generate_high_rise_12_story_building_dxf(temp_dxf)
     doc = ezdxf.readfile(temp_dxf)
     output = pipeline.run_full_pipeline(doc)
     data = serialize_building_3d_result(output)

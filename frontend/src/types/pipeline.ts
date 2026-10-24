@@ -19,15 +19,24 @@ export interface DoorGeometryInput {
 }
 
 export interface RuleViolationItem {
-  rule_id: string;
-  category: string;
-  severity: 'critical' | 'major' | 'minor' | 'info';
-  description: string;
-  target_id: string;
-  target_type: string;
-  legal_basis: string;
+  rule_id?: string;
+  code?: string;
+  category?: string;
+  severity: 'CRITICAL' | 'MAJOR' | 'WARNING' | 'critical' | 'major' | 'minor' | 'info';
+  description?: string;
+  description_tr?: string;
+  target_id?: string;
+  target_node?: number;
+  target_edge?: [number, number];
+  target_type?: string;
+  legal_basis?: string;
+  regulation?: string;
   floor_level?: number;
   suggested_fix?: string;
+  remedy?: string;
+  actual_value?: any;
+  expected_value?: any;
+  spatial_coords?: [number, number] | [number, number, number];
 }
 
 export interface CandidateDiagnosticReport {
@@ -42,10 +51,18 @@ export interface CandidateDiagnosticReport {
 }
 
 export interface BuildingProgramSummary {
-  total_area_m2: number;
-  room_count_by_type: Record<string, number>;
-  floor_count: number;
-  vertical_core_count: number;
+  total_area_m2?: number;
+  room_count_by_type?: Record<string, number>;
+  floor_count?: number;
+  vertical_core_count?: number;
+  total_apartments?: number;
+  estimated_occupancy_persons?: number;
+  total_residential_area_m2?: number;
+  common_circulation_area_m2?: number;
+  required_shelter_area_m2?: number;
+  total_shelter_area_m2?: number;
+  required_parking_stalls?: number;
+  total_parking_capacity?: number;
 }
 
 export interface MacroNodeRecord {
@@ -57,78 +74,119 @@ export interface MacroNodeRecord {
 }
 
 export interface EdgeBottleneckRecord {
-  door_id: string;
-  flow_capacity_pers_s: number;
-  peak_queue_length: number;
-  total_waiting_time_s: number;
-  is_spillback_trigger: boolean;
+  door_id?: string;
+  edge?: [number, number];
+  flow_capacity_pers_s?: number;
+  peak_queue_length?: number;
+  max_queue_persons?: number;
+  total_waiting_time_s?: number;
+  spillback_blocked_sec?: number;
+  is_spillback_trigger?: boolean;
+  severity_score?: number;
+  is_critical?: boolean;
 }
 
 export interface SmokeZoneState {
-  time_s: number;
-  smoke_layer_height_m: number;
-  upper_layer_temp_c: number;
-  optical_density_od_m: number;
-  aset_threshold_exceeded: boolean;
+  time_s?: number;
+  smoke_layer_height_m?: number;
+  upper_layer_temp_c?: number;
+  optical_density_od_m?: number;
+  soot_density?: number;
+  is_tenable?: boolean;
+  aset_threshold_exceeded?: boolean;
+  aset_sec?: number;
+  rset_sec?: number;
 }
 
 export interface BuildingEvacuationReport {
-  total_evacuation_time_s: number;
-  max_flow_rate_pers_s: number;
-  total_occupants: number;
-  bottleneck_doors: EdgeBottleneckRecord[];
-  smoke_hazard_timeline: SmokeZoneState[];
-  aset_vs_rset_margin_s: number;
+  total_evacuation_time_s?: number;
+  total_evacuation_time_sec?: number;
+  max_flow_rate_pers_s?: number;
+  total_occupants?: number;
+  bottleneck_doors?: EdgeBottleneckRecord[];
+  bottlenecks_ranked?: EdgeBottleneckRecord[];
+  smoke_hazard_timeline?: SmokeZoneState[];
+  smoke_zone_states?: Record<string, SmokeZoneState>;
+  aset_vs_rset_margin_s?: number;
 }
 
 export interface DesignInterventionStep {
   step_id: string;
   action_type: string;
-  target_element_id: string;
-  parameter_name: string;
-  delta_value: number;
-  estimated_cost_try: number;
-  delta_evacuation_time_s: number;
+  target_element_id?: string;
+  target?: string;
+  parameter_name?: string;
+  delta_value?: number;
+  original_metric_value?: any;
+  new_metric_value?: any;
+  cost_index?: number;
+  estimated_cost_try?: number;
+  delta_evacuation_time_s?: number;
+  marginal_benefit_score?: number;
+  description_tr?: string;
+  floor_level?: number;
 }
 
 export interface CounterfactualOptimizationResult {
-  original_evacuation_time_s: number;
-  optimized_evacuation_time_s: number;
-  time_saved_s: number;
-  applied_interventions: DesignInterventionStep[];
-  remaining_violations: string[];
-}
-
-export interface RegulatoryClauseChunk {
-  clause_id: string;
-  regulation_name: string;
-  article_number: string;
-  full_text: string;
-  keywords: string[];
+  original_evacuation_time_s?: number;
+  baseline_evacuation_time_sec?: number;
+  optimized_evacuation_time_s?: number;
+  optimized_evacuation_time_sec?: number;
+  time_saved_s?: number;
+  time_savings_sec?: number;
+  total_remodeling_cost?: number;
+  applied_interventions?: DesignInterventionStep[];
+  intervention_steps?: DesignInterventionStep[];
+  remaining_violations?: string[];
 }
 
 export interface DiagramYonetmelikPipelineOutput {
-  pipeline_id: string;
-  timestamp: string;
-  building_name: string;
-  floors_analyzed: number[];
-  rooms_analyzed: number;
-  doors_analyzed: number;
-  graph_3d_summary: {
+  metadata?: {
+    title: string;
+    total_floors: number;
+    total_rooms: number;
+    total_doors: number;
+    verified_cores: number;
+    latency: Record<string, number>;
+  };
+  program?: {
+    total_apartments: number;
+    est_persons: number;
+    residential_area_m2: number;
+    circulation_area_m2: number;
+    required_shelter_m2: number;
+    required_parking: number;
+  };
+  nodes?: any[];
+  edges?: any[];
+  violations?: any[];
+  evacuation?: any;
+  optimization?: any;
+  report_markdown?: string;
+  evidence_json?: any;
+
+  // Legacy fields
+  pipeline_id?: string;
+  timestamp?: string;
+  building_name?: string;
+  floors_analyzed?: number[];
+  rooms_analyzed?: number;
+  doors_analyzed?: number;
+  graph_3d_summary?: {
     node_count: number;
     edge_count: number;
     floors: number[];
     vertical_shafts: number;
     fire_elevators_excluded: boolean;
   };
-  building_program: BuildingProgramSummary;
-  spminer_macro_nodes: MacroNodeRecord[];
-  vf2_diagnostics: CandidateDiagnosticReport[];
-  basement_compliance: RuleViolationItem[];
-  evacuation_report: BuildingEvacuationReport;
-  counterfactual_optimization: CounterfactualOptimizationResult;
+  building_program?: BuildingProgramSummary;
+  spminer_macro_nodes?: MacroNodeRecord[];
+  vf2_diagnostics?: CandidateDiagnosticReport[];
+  basement_compliance?: RuleViolationItem[];
+  evacuation_report?: BuildingEvacuationReport;
+  counterfactual_optimization?: CounterfactualOptimizationResult;
   dxf_annotated_path?: string;
-  regulatory_official_report: string;
+  regulatory_official_report?: string;
   cv_image_analysis?: {
     image_shape: [number, number];
     detected_rooms_count: number;

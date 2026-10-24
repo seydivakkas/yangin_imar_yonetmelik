@@ -38,7 +38,6 @@ def generate_sample_building_dxf(output_path: str = "sample_building.dxf") -> Dr
     # =========================================================================
     # 1. ZEMİN KAT ADASI (X: 0..3000 cm, Y: 0..2500 cm)
     # =========================================================================
-    # Yangın Çekirdeği
     add_room_box(0, 0, 300, 400, "Z-01 YANGIN MERDIVENI")
     add_room_box(300, 0, 250, 400, "Z-02 YANGIN GUVENLIK HOLU")  # 2.5m x 4.0m = 10m²
     add_room_box(550, 0, 800, 250, "Z-03 KAT KORIDORU")          # L/U tipi koridor
@@ -71,12 +70,136 @@ def generate_sample_building_dxf(output_path: str = "sample_building.dxf") -> Dr
     add_room_box(1150, 3500, 800, 600, "B-04 KAPALI OTOPARK")
     add_room_box(550, 3800, 500, 400, "B-05 SIGINAK")           # Sığınak
 
-    # Bodrum Kapıları (Yasaklı kapı testi: Otoparktan doğrudan merdivene açılan kapı)
+    # Bodrum Kapıları
     add_door_insert(300, 3700, name="K_90_EI60", is_fire=True)
     add_door_insert(550, 3700, name="K_90", is_fire=False)
     add_door_insert(1150, 3600, name="K_90_OTOPARK_KORIDOR", is_fire=False)
     # Kusur: Otopark -> Merdiven doğrudan kapı!
     add_door_insert(150, 3900, name="K_90_YASAKLI", is_fire=False)
+
+    doc.saveas(output_path)
+    return doc
+
+
+def generate_high_rise_12_story_building_dxf(output_path: str = "sample_high_rise_12_story.dxf") -> Drawing:
+    """
+    12 Katlı Yüksek Konut Binası AutoCAD DXF Paftası Üretici.
+    Bodrum (-1), Zemin (0) ve Kat 1..12 tipik planlarını içerir.
+    BYKHY, PAİY, Sığınak ve Otopark yönetmeliklerine uygun veya kusurlu
+    senaryoları tam ölçekli olarak test etmeyi sağlar.
+    """
+    doc = ezdxf.new('R2010')
+    doc.header['$INSUNITS'] = 5  # cm (1 birim = 0.01 m)
+    msp = doc.modelspace()
+
+    # Katmanlar
+    doc.layers.new('A-WALL', dxfattribs={'color': 7})
+    doc.layers.new('A-DOOR', dxfattribs={'color': 2})
+    doc.layers.new('A-TEXT', dxfattribs={'color': 3})
+
+    def add_room_box(x: float, y: float, w: float, h: float, label: str):
+        pts = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+        msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': 'A-WALL'})
+        msp.add_text(label, dxfattribs={'layer': 'A-TEXT', 'height': 20.0, 'insert': (x + w * 0.15, y + h * 0.4)})
+
+    def add_door(x: float, y: float, name: str = "K_90", is_fire: bool = False):
+        layer = "A-DOOR"
+        if name not in msp.doc.blocks:
+            blk = msp.doc.blocks.new(name=name)
+            blk.add_line((-45, 0), (45, 0))
+            blk.add_arc((0, 0), radius=90.0, start_angle=0, end_angle=90)
+        insert = msp.add_blockref(name, (x, y), dxfattribs={'layer': layer})
+        if is_fire:
+            insert.add_attrib("TAG", "EI60 YANGIN KAPISI")
+
+    # =========================================================================
+    # BODRUM KAT (Y = -3500 cm)
+    # =========================================================================
+    by = -3500.0
+    add_room_box(0, by, 300, 400, "B-01 YANGIN MERDIVENI 1")
+    add_room_box(300, by, 250, 400, "B-02 YANGIN GUVENLIK HOLU 1")
+    add_room_box(2100, by, 300, 400, "B-11 YANGIN MERDIVENI 2")
+    add_room_box(1850, by, 250, 400, "B-12 YANGIN GUVENLIK HOLU 2")
+    add_room_box(550, by, 1300, 250, "B-03 BODRUM KAT KORIDORU")
+    add_room_box(550, by + 250, 300, 300, "B-04 ASANSOR")
+    add_room_box(850, by + 250, 350, 300, "B-05 SEDYE ASANSORU")
+    add_room_box(550, by + 550, 650, 450, "B-06 SIGINAK")
+    add_room_box(1200, by + 550, 200, 250, "B-07 HAVA KILIDI")
+    add_room_box(1400, by + 250, 1000, 750, "B-08 KAPALI OTOPARK")
+
+    add_door(300, by + 200, "K_120_EI60", is_fire=True)
+    add_door(550, by + 125, "K_120_EI60", is_fire=True)
+    add_door(1850, by + 125, "K_120_EI60", is_fire=True)
+    add_door(2100, by + 200, "K_120_EI60", is_fire=True)
+    add_door(1200, by + 650, "K_90_SIGINAK", is_fire=True)
+
+    # =========================================================================
+    # ZEMİN KAT (Y = 0 cm)
+    # =========================================================================
+    zy = 0.0
+    add_room_box(0, zy, 300, 400, "Z-01 YANGIN MERDIVENI 1")
+    add_room_box(300, zy, 250, 400, "Z-02 YANGIN GUVENLIK HOLU 1")
+    add_room_box(2100, zy, 300, 400, "Z-11 YANGIN MERDIVENI 2")
+    add_room_box(1850, zy, 250, 400, "Z-12 YANGIN GUVENLIK HOLU 2")
+    add_room_box(550, zy, 1300, 250, "Z-03 ZEMIN KAT KORIDORU")
+    add_room_box(550, zy + 250, 300, 300, "Z-04 ASANSOR")
+    add_room_box(850, zy + 250, 350, 300, "Z-05 ITFAIYE ASANSORU")
+    add_room_box(1050, zy - 300, 300, 300, "Z-00 DIS CIKIS")
+
+    # Daire Z1 & Z2
+    add_room_box(1200, zy + 250, 500, 400, "Z-21 SALON")
+    add_room_box(1200, zy + 650, 400, 350, "Z-22 YATAK ODASI")
+
+    add_door(300, zy + 200, "K_120_EI60", is_fire=True)
+    add_door(550, zy + 125, "K_120_EI60", is_fire=True)
+    add_door(1050, zy, "K_140_DIS_CIKIS", is_fire=False)
+    add_door(1850, zy + 125, "K_120_EI60", is_fire=True)
+    add_door(2100, zy + 200, "K_120_EI60", is_fire=True)
+
+    # =========================================================================
+    # KAT 1 .. KAT 12 (Y ekseni boyunca sıralı paftalar: Y = floor * 2500 cm)
+    # =========================================================================
+    for fl in range(1, 13):
+        fy = fl * 2500.0
+        prefix = f"K{fl}"
+        
+        # 12 katlı yüksek yapıda çift kaçış merdiveni ve yangın holleri
+        add_room_box(0, fy, 300, 400, f"{prefix}-01 YANGIN MERDIVENI 1")
+        add_room_box(300, fy, 250, 400, f"{prefix}-02 YANGIN GUVENLIK HOLU 1")
+        
+        # 2. Merdiven (Zıt cephe: BYKHY M.48 Köşegen kuralına uygun)
+        add_room_box(2100, fy, 300, 400, f"{prefix}-11 YANGIN MERDIVENI 2")
+        add_room_box(1850, fy, 250, 400, f"{prefix}-12 YANGIN GUVENLIK HOLU 2")
+        
+        # Kat Koridoru (PAİY M.29: Temiz genişlik 1.50m > 1.20m)
+        add_room_box(550, fy, 1300, 250, f"{prefix}-03 KAT KORIDORU")
+        
+        # Düşey Çekirdek (Normal Asansör + İtfaiyeci / Sedye Asansörü)
+        add_room_box(550, fy + 250, 300, 300, f"{prefix}-04 ASANSOR")
+        add_room_box(850, fy + 250, 350, 300, f"{prefix}-05 ITFAIYE ASANSORU")
+
+        # Sol Daire (Daire A: 3+1)
+        add_room_box(550, fy - 350, 300, 250, f"{prefix}-21 DAIRE GİRİŞ ANTRE A")
+        add_room_box(550, fy - 750, 500, 400, f"{prefix}-22 SALON A")
+        add_room_box(1050, fy - 750, 400, 350, f"{prefix}-23 YATAK ODASI A")
+        add_room_box(1050, fy - 400, 300, 250, f"{prefix}-24 MUTFAK A")
+
+        # Sağ Daire (Daire B: 3+1)
+        add_room_box(1350, fy + 250, 300, 250, f"{prefix}-31 DAIRE GİRİŞ ANTRE B")
+        add_room_box(1350, fy + 500, 500, 400, f"{prefix}-32 SALON B")
+        add_room_box(1850, fy + 500, 400, 350, f"{prefix}-33 YATAK ODASI B")
+
+        # Çatı Katı (Kat 12) için Teras Alanı
+        if fl == 12:
+            add_room_box(1350, fy - 500, 600, 400, f"{prefix}-40 CATI TERASI")
+
+        # Kapı geçişleri
+        add_door(300, fy + 200, f"K_120_EI60_{fl}", is_fire=True)
+        add_door(550, fy + 125, f"K_120_EI60_{fl}", is_fire=True)
+        add_door(1850, fy + 125, f"K_120_EI60_{fl}", is_fire=True)
+        add_door(2100, fy + 200, f"K_120_EI60_{fl}", is_fire=True)
+        add_door(550, fy - 100, f"K_90_DAIRE_A_{fl}", is_fire=False)
+        add_door(1350, fy + 200, f"K_90_DAIRE_B_{fl}", is_fire=False)
 
     doc.saveas(output_path)
     return doc

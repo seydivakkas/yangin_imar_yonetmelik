@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Play, Upload, FileCode, Flame, CheckCircle2, AlertTriangle, Image as ImageIcon } from 'lucide-react';
+import { Play, Upload, FileCode, Flame, CheckCircle2, AlertTriangle, Image as ImageIcon, Layers } from 'lucide-react';
 import { ActiveTab, DiagramYonetmelikPipelineOutput } from '../types/pipeline';
 
 interface HeaderProps {
@@ -8,6 +8,7 @@ interface HeaderProps {
   setActiveTab: (tab: ActiveTab) => void;
   isLoading: boolean;
   onRunAudit: () => void;
+  onRunHighRiseAudit?: () => void;
   onUploadDXF: (file: File) => void;
   onUploadImage: (file: File) => void;
 }
@@ -18,6 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   isLoading,
   onRunAudit,
+  onRunHighRiseAudit,
   onUploadDXF,
   onUploadImage,
 }) => {
@@ -57,8 +59,11 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Project Selector Badge */}
         <div className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-xs">
-          <span className="text-gray-400">Proje:</span>
-          <span className="font-semibold text-gray-200">{data?.building_name || 'Atakent Konut A Blok (3 Katlı)'}</span>
+          <span className="font-semibold text-gray-200">
+            {typeof data?.metadata?.title === 'string'
+              ? data.metadata.title
+              : 'Çok Katlı Konut Yapısı (BYKHY/PAİY/Sığınak)'}
+          </span>
           {data ? (
             <span className="flex items-center gap-1 text-emerald-400 text-[11px] ml-1">
               <CheckCircle2 className="w-3.5 h-3.5" /> Denetlendi
@@ -131,10 +136,23 @@ export const Header: React.FC<HeaderProps> = ({
           <span>Plan Görseli</span>
         </button>
 
+        {onRunHighRiseAudit && (
+          <button
+            onClick={onRunHighRiseAudit}
+            disabled={isLoading}
+            className="px-2.5 py-1.5 rounded-lg border border-purple-500/40 bg-purple-950/30 text-purple-300 hover:bg-purple-900/40 hover:text-white text-xs font-mono transition-all flex items-center gap-1.5"
+            title="12 Katlı Yüksek Bina Paftasını Otomatik Üretip Tüm Yönetmelik Maddelerini Her Katta Denetle"
+          >
+            <Layers className="w-3.5 h-3.5 text-purple-400" />
+            <span>12 Katlı Bina</span>
+          </button>
+        )}
+
         <button
           onClick={onRunAudit}
           disabled={isLoading}
           className="btn-primary"
+          title="Örnek 3 Katlı Projeyi Denetle"
         >
           <Play className={`w-3.5 h-3.5 fill-current ${isLoading ? 'animate-spin' : ''}`} />
           <span>{isLoading ? 'Denetleniyor...' : 'Canlı Denetle'}</span>

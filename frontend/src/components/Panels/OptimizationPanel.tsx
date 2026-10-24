@@ -50,7 +50,7 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
     },
   ];
 
-  const totalCost = interventions.reduce((acc, cur) => acc + cur.estimated_cost_try, 0);
+  const totalCost = interventions.reduce((acc, cur) => acc + (cur.estimated_cost_try ?? 0), 0);
 
   return (
     <div className="space-y-4 p-4 text-xs font-sans text-gray-200 overflow-y-auto max-h-full">
@@ -136,7 +136,7 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
             <div className="flex items-center justify-between">
               <span className="badge badge-cyan text-[9px] font-mono">{step.step_id}</span>
               <span className="font-mono text-emerald-400 text-xs font-semibold">
-                {step.delta_evacuation_time_s.toFixed(1)} sn
+                {(step.delta_evacuation_time_s ?? 0).toFixed(1)} sn
               </span>
             </div>
 
@@ -150,7 +150,7 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
 
             <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1 border-t border-white/5">
               <span>Parametre: <code className="text-gray-300">{step.parameter_name}</code></span>
-              <span>Tahmini Maliyet: <strong className="text-gray-200">{step.estimated_cost_try.toLocaleString('tr-TR')} TL</strong></span>
+              <span>Tahmini Maliyet: <strong className="text-gray-200">{(step.estimated_cost_try ?? 0).toLocaleString('tr-TR')} TL</strong></span>
             </div>
           </div>
         ))}
