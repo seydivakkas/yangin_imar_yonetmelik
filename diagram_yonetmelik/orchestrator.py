@@ -25,6 +25,7 @@ from diagram_yonetmelik.gnn_order import (
 from diagram_yonetmelik.spminer import ArchitecturalSPMiner, ArchitecturalGraphCoarsener
 from diagram_yonetmelik.vf2_diagnostics import ExplainableVF2Analyzer
 from diagram_yonetmelik.basement_audit import BasementComplianceAuditor
+from diagram_yonetmelik.multi_floor_auditor import MultiFloorComprehensiveAuditor
 from diagram_yonetmelik.evacuation import (
     Building3DEvacuationSimulator,
     CounterfactualEvacuationOptimizer,
@@ -56,6 +57,10 @@ class DiagramYonetmelikPipeline:
         self.spminer = ArchitecturalSPMiner(gnn_model=self.gnn, min_support=self.config.spminer_min_support)
         self.vf2_analyzer = ExplainableVF2Analyzer(max_escape_distance_m=self.config.max_escape_route_distance_m)
         self.basement_auditor = BasementComplianceAuditor()
+        self.multi_floor_auditor = MultiFloorComprehensiveAuditor(
+            default_floor_height_m=self.config.default_floor_height_m,
+            high_rise_threshold_m=self.config.high_rise_threshold_m
+        )
         self.evac_sim = Building3DEvacuationSimulator(target_evacuation_threshold_sec=self.config.target_evacuation_time_sec)
         self.optimizer = CounterfactualEvacuationOptimizer()
         self.violation_annotator = DXFViolationAnnotator()
@@ -123,20 +128,28 @@ class DiagramYonetmelikPipeline:
         metrics["stage4_gnn_vf2_sec"] = round(time.perf_counter() - t0, 3)
 
         # -------------------------------------------------------------
-        # AŞAMA 5: BODRUM KAT MEVZUAT DENETİMİ (SIĞINAK & OTOPARK)
+        # AŞAMA 5: HER KAT İÇİN VE BİNA GENELİ KAPSAMLI MEVZUAT DENETİMİ
+        # (BYKHY M.31/33/34/40/48/52/53/60/62, PAİY M.5/29/30/34/36, Sığınak, Otopark)
         # -------------------------------------------------------------
         t0 = time.perf_counter()
-        basement_violations = self.basement_auditor.audit_basement_graph(G_3d, program)
-        if basement_violations:
-            diagnostic_reports.append(CandidateDiagnosticReport(
-                anchor_node_id=0,
-                target_subgraph_nodes=[],
-                is_fully_compliant=False,
-                diagnostic_stage_reached=2,
-                violations=basement_violations,
-                summary_message=f"Bodrum katta {len(basement_violations)} adet mevzuat ihlali tespit edildi."
-            ))
-        metrics["stage5_basement_audit_sec"] = round(time.perf_counter() - t0, 3)
+        existing_violation_keys: Set[Tuple[str, Any, Any, int]] = set()
+        for rep in diagnostic_reports:
+            for v in rep.violations:
+                existing_violation_keys.add((v.violation_code, v.target_node_id, v.target_edge, v.floor_level))
+
+        multi_floor_reports = self.multi_floor_auditor.audit_entire_building(G_3d, program)
+        for rep in multi_floor_reports:
+            filtered_violations = []
+            for v in rep.violations:
+                k = (v.violation_code, v.target_node_id, v.target_edge, v.floor_level)
+                if k not in existing_violation_keys:
+                    filtered_violations.append(v)
+                    existing_violation_keys.add(k)
+            if filtered_violations or rep.is_fully_compliant:
+                rep.violations = filtered_violations
+                diagnostic_reports.append(rep)
+
+        metrics["stage5_comprehensive_multi_floor_audit_sec"] = round(time.perf_counter() - t0, 3)
 
         # -------------------------------------------------------------
         # AŞAMA 6: 3B HİDROLİK TAHLİYE SİMÜLASYONU

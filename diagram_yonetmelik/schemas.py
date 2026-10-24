@@ -84,6 +84,7 @@ class RuleViolationItem:
     description_tr: str = ""
     remedy_recommendation_tr: str = ""
     regulation_reference: str = ""  # 'BYKHY Madde 34', 'Planlı Alanlar Madde 29', vb.
+    floor_level: int = 0
     spatial_coords: Optional[Tuple[float, float]] = None
 
 
@@ -256,6 +257,8 @@ class PipelineConfig:
     local_llm_model: str = "qwen2.5:14b"
     max_wall_thickness_m: float = 0.35
     default_unit_scale_to_m: float = 0.01  # varsayılan cm -> m
+    default_floor_height_m: float = 3.0
+    high_rise_threshold_m: float = 21.50
 
 
 @dataclass

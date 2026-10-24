@@ -26,6 +26,7 @@ export interface RuleViolationItem {
   target_id: string;
   target_type: string;
   legal_basis: string;
+  floor_level?: number;
   suggested_fix?: string;
 }
 
@@ -35,6 +36,7 @@ export interface CandidateDiagnosticReport {
   violation_energy: number;
   candidate_subgraph_nodes: string[];
   monomorphism_relaxation_stage: number;
+  floor_level?: number;
   root_cause_category?: string;
   violated_constraints: string[];
 }

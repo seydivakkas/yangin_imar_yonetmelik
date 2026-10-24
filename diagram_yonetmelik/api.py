@@ -84,6 +84,7 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
                 "description": viol.description_tr,
                 "remedy": viol.remedy_recommendation_tr,
                 "regulation": viol.regulation_reference,
+                "floor_level": viol.floor_level,
                 "spatial_coords": viol.spatial_coords
             })
 

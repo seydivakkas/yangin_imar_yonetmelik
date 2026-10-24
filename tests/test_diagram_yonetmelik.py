@@ -38,6 +38,7 @@ from diagram_yonetmelik.spminer import (
 )
 from diagram_yonetmelik.vf2_diagnostics import ExplainableVF2Analyzer
 from diagram_yonetmelik.basement_audit import BasementComplianceAuditor
+from diagram_yonetmelik.multi_floor_auditor import MultiFloorComprehensiveAuditor
 from diagram_yonetmelik.evacuation import (
     Building3DEvacuationSimulator,
     CounterfactualEvacuationOptimizer,
@@ -269,3 +270,36 @@ class TestEndToEndPipeline:
                         os.remove(p)
                     except Exception:
                         pass
+
+
+class TestMultiFloorComprehensiveAuditor:
+    def test_multi_floor_comprehensive_audit_rules(self):
+        auditor = MultiFloorComprehensiveAuditor(high_rise_threshold_m=21.50)
+        G = nx.Graph()
+
+        # Kat 7 (Yüksek Kat): Sadece 1 merdiven, yangın holü alanı 2.0m² (< 3.0m²), koridor 0.90m (< 1.20m)
+        G.add_node(101, room_type="oda", area_m2=25.0, floor_level=7, anchor_point=(2, 2))
+        G.add_node(102, room_type="kat_koridoru", area_m2=15.0, floor_level=7, polygon=Polygon([(0, 0), (1.0, 0), (1.0, 15.0), (0, 15.0)]), anchor_point=(0.5, 7.5))
+        G.add_node(103, room_type="yangin_holu", area_m2=2.0, floor_level=7, anchor_point=(1, 15))  # Kusur: 2m² < 3m²
+        G.add_node(104, room_type="yangin_merdiveni", area_m2=8.0, floor_level=7, anchor_point=(1, 18))  # Kusur: Tek merdiven
+
+        G.add_edge(101, 102, width_cm=80.0, weight=6.0)
+        G.add_edge(102, 103, width_cm=90.0, weight=20.0)  # Kusur: 20m > 15m çıkmaz koridor
+        G.add_edge(103, 104, width_cm=90.0, weight=2.0)
+
+        # Kat 0 (Zemin Kat)
+        G.add_node(1, room_type="kat_koridoru", area_m2=20.0, floor_level=0, polygon=Polygon([(0, 0), (1.5, 0), (1.5, 10.0), (0, 10.0)]), anchor_point=(0.75, 5))
+        G.add_node(2, room_type="yangin_merdiveni", area_m2=8.0, floor_level=0, anchor_point=(0.75, 10))
+        G.add_node(3, room_type="dis_cikis", area_m2=10.0, floor_level=0, anchor_point=(0.75, 12))
+        G.add_edge(1, 2, width_cm=120.0, weight=3.0)
+        G.add_edge(2, 3, width_cm=120.0, weight=2.0)
+
+        reports = auditor.audit_entire_building(G, custom_building_height_m=36.0)
+        assert len(reports) >= 2
+
+        all_violation_codes = [v.violation_code for rep in reports for v in rep.violations]
+        # Kat 7 kusurları
+        assert "BYKHY_M31_KACIS_MERDIVEN_SAYISI_YETERSIZ" in all_violation_codes
+        assert "BYKHY_M34_YANGIN_HOLU_ALAN_YETERSIZ" in all_violation_codes
+        assert "PAIY_M29_KAT_KORIDORU_GENISLIK_YETERSIZ" in all_violation_codes
+        assert "BYKHY_M52_CIKMAZ_KORIDOR_MESAFESI_ASILDI" in all_violation_codes

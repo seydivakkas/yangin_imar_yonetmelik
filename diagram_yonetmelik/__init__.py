@@ -63,6 +63,10 @@ from diagram_yonetmelik.basement_audit import (
     BasementComplianceAuditor,
 )
 
+from diagram_yonetmelik.multi_floor_auditor import (
+    MultiFloorComprehensiveAuditor,
+)
+
 from diagram_yonetmelik.evacuation import (
     Building3DEvacuationSimulator,
     CounterfactualEvacuationOptimizer,
