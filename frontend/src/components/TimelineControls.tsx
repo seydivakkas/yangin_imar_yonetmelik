@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, RotateCcw, Eye, Flame, Network, Layers, Maximize2, Split } from 'lucide-react';
+import { Play, Pause, RotateCcw, Eye, Flame, Network, Layers, Maximize2, Split, Building } from 'lucide-react';
 import { CameraPreset, WallHeightMode } from '../types/pipeline';
 
 interface TimelineControlsProps {
@@ -23,9 +23,12 @@ interface TimelineControlsProps {
   setShowRAGOverlay: (r: boolean) => void;
   showBottlenecks: boolean;
   setShowBottlenecks: (b: boolean) => void;
+  showBIMArchitecture?: boolean;
+  setShowBIMArchitecture?: (b: boolean) => void;
   cadDiffMode: 'before' | 'after' | 'both';
   setCadDiffMode: (m: 'before' | 'after' | 'both') => void;
 }
+
 
 export const TimelineControls: React.FC<TimelineControlsProps> = ({
   simulationTime,
@@ -48,6 +51,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   setShowRAGOverlay,
   showBottlenecks,
   setShowBottlenecks,
+  showBIMArchitecture = true,
+  setShowBIMArchitecture,
   cadDiffMode,
   setCadDiffMode,
 }) => {
@@ -110,22 +115,31 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
           <span className="font-mono text-cyan-400 text-[11px] w-8">{explodedZ.toFixed(1)}x</span>
         </div>
 
-        {/* Wall Height Mode */}
+        {/* Wall Height Mode (Dollhouse / Full / Slab) */}
         <div className="flex items-center gap-1">
-          <span className="text-gray-400 font-mono text-[11px] mr-1">Duvar:</span>
-          {(['full', 'cut', 'slab'] as WallHeightMode[]).map((mode) => {
+          <span className="text-gray-400 font-mono text-[11px] mr-1">Duvar Kesiti:</span>
+          {(['cut', 'full', 'slab'] as WallHeightMode[]).map((mode) => {
             const labels: Record<WallHeightMode, string> = {
+              cut: 'Dollhouse (1.2m)',
               full: 'Tam (2.8m)',
-              cut: 'Kesit (1.1m)',
-              slab: 'Döşeme',
+              slab: 'Plan (0.15m)',
             };
             return (
               <button
                 key={mode}
                 onClick={() => setWallHeightMode(mode)}
                 className={`px-2 py-0.5 rounded text-[11px] ${
-                  wallHeightMode === mode ? 'bg-blue-600/40 text-blue-300 border border-blue-500/40' : 'text-gray-400 hover:text-white bg-white/5'
+                  wallHeightMode === mode
+                    ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/50 font-semibold'
+                    : 'text-gray-400 hover:text-white bg-white/5'
                 }`}
+                title={
+                  mode === 'cut'
+                    ? 'Mimari Kesit / Dollhouse Modu (Pencereleri ve kapı kasalarını keserek içeriyi gösterir)'
+                    : mode === 'full'
+                    ? 'Tam Mimari Görünüm (2.80m)'
+                    : 'Sadece Plan Modu (0.15m)'
+                }
               >
                 {labels[mode]}
               </button>
@@ -135,6 +149,21 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
 
         {/* Feature Toggles */}
         <div className="flex items-center gap-1.5 border-l border-white/10 pl-2">
+          {setShowBIMArchitecture && (
+            <button
+              onClick={() => setShowBIMArchitecture(!showBIMArchitecture)}
+              className={`p-1.5 rounded flex items-center gap-1 text-[11px] ${
+                showBIMArchitecture
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold'
+                  : 'text-gray-500 bg-white/5'
+              }`}
+              title="Mimari Yapı Elemanları (Kolon, Duvar, Kapı, Pencere, Merdiven)"
+            >
+              <Building className="w-3.5 h-3.5" />
+              <span>BIM Mimari</span>
+            </button>
+          )}
+
           <button
             onClick={() => setShowSmoke(!showSmoke)}
             className={`p-1.5 rounded flex items-center gap-1 text-[11px] ${
@@ -149,9 +178,9 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
           <button
             onClick={() => setShowRAGOverlay(!showRAGOverlay)}
             className={`p-1.5 rounded flex items-center gap-1 text-[11px] ${
-              showRAGOverlay ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40' : 'text-gray-500 bg-white/5'
+              showRAGOverlay ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-semibold' : 'text-gray-500 bg-white/5'
             }`}
-            title="3B RAG Graf Topolojisi ve Çekirdek Şaftları"
+            title="3B RAG Graf Topolojisi ve Çekirdek Şaftları (Hayalet Katman)"
           >
             <Network className="w-3.5 h-3.5" />
             <span>3B Graf</span>
@@ -167,6 +196,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
             <Layers className="w-3.5 h-3.5" />
             <span>Darboğaz</span>
           </button>
+
 
           {/* CAD Diff Mode */}
           <button

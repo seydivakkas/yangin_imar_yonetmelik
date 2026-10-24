@@ -45,8 +45,9 @@ export const App: React.FC = () => {
 
   // Feature Toggles
   const [showSmoke, setShowSmoke] = useState<boolean>(true);
-  const [showRAGOverlay, setShowRAGOverlay] = useState<boolean>(true);
+  const [showRAGOverlay, setShowRAGOverlay] = useState<boolean>(false);
   const [showBottlenecks, setShowBottlenecks] = useState<boolean>(true);
+  const [showBIMArchitecture, setShowBIMArchitecture] = useState<boolean>(true);
   const [cadDiffMode, setCadDiffMode] = useState<'before' | 'after' | 'both'>('before');
 
   // Object Inspector
@@ -210,6 +211,7 @@ export const App: React.FC = () => {
             showSmoke={showSmoke}
             showRAGOverlay={showRAGOverlay}
             showBottlenecks={showBottlenecks}
+            showBIMArchitecture={showBIMArchitecture}
             cadDiffMode={cadDiffMode}
             onSelectElement={(el) => setSelectedElement(el)}
           />
@@ -236,6 +238,8 @@ export const App: React.FC = () => {
             setShowRAGOverlay={setShowRAGOverlay}
             showBottlenecks={showBottlenecks}
             setShowBottlenecks={setShowBottlenecks}
+            showBIMArchitecture={showBIMArchitecture}
+            setShowBIMArchitecture={setShowBIMArchitecture}
             cadDiffMode={cadDiffMode}
             setCadDiffMode={setCadDiffMode}
           />
