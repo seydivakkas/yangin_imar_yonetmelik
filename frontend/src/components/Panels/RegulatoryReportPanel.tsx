@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { FileText, Copy, Check, Scale } from 'lucide-react';
+import { FileText, Copy, Check, Scale, BookOpen } from 'lucide-react';
 import { DiagramYonetmelikPipelineOutput } from '../../types/pipeline';
 
 interface RegulatoryReportPanelProps {
   data: DiagramYonetmelikPipelineOutput | null;
+  onOpenArticle?: (articleId: string) => void;
 }
 
-export const RegulatoryReportPanel: React.FC<RegulatoryReportPanelProps> = ({ data }) => {
+export const RegulatoryReportPanel: React.FC<RegulatoryReportPanelProps> = ({ data, onOpenArticle }) => {
   const [copied, setCopied] = useState(false);
+
   const reportText = data?.regulatory_official_report || `
 # DİAGRAMYÖNETMELİK RESMİ MEVZUAT UYUMLULUK VE TAHLİYE DENETİM RAPORU
 
@@ -81,7 +83,35 @@ export const RegulatoryReportPanel: React.FC<RegulatoryReportPanelProps> = ({ da
         </button>
       </div>
 
+      {/* Raporda Atıfta Bulunan İlgili Maddeleri Aç */}
+      {onOpenArticle && (
+        <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+            <BookOpen className="w-3 h-3 text-cyan-400" />
+            İlgili Maddeleri İncele:
+          </span>
+          {[
+            { id: 'BYKHY-M31', label: 'BYKHY M.31 (Kaçış Merdiveni Sayısı)' },
+            { id: 'BYKHY-M32', label: 'BYKHY M.32 (Yangın Güvenlik Holü)' },
+            { id: 'BYKHY-M40', label: 'BYKHY M.40 (Kaçış Uzaklığı)' },
+            { id: 'PAIY-M29', label: 'PAİY M.29 (Kat Koridor Genişliği)' },
+            { id: 'SIGINAK-M9', label: 'Sığınak M.9 (Hava Kilidi)' },
+            { id: 'OTOPARK-M5', label: 'Otopark M.5 (Rampa & Hol)' },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => onOpenArticle(item.id)}
+              className="px-2 py-1 rounded bg-slate-800 hover:bg-cyan-950 border border-slate-700 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-300 text-[10px] font-medium transition flex items-center gap-1"
+            >
+              <span>{item.label}</span>
+              <span className="text-cyan-400">↗</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Markdown Document Paper Style Container */}
+
       <div className="glass-panel p-4 bg-[#0A0E1A]/90 font-mono text-[11px] leading-relaxed text-gray-300 space-y-3 whitespace-pre-wrap select-text border border-white/10 rounded-lg">
         {reportText}
       </div>

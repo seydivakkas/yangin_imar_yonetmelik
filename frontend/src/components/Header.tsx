@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
-import { Play, Upload, FileCode, Flame, CheckCircle2, AlertTriangle, Image as ImageIcon, Layers } from 'lucide-react';
+import { Play, Upload, FileCode, Flame, CheckCircle2, AlertTriangle, Image as ImageIcon, Layers, BookOpen } from 'lucide-react';
 import { ActiveTab, DiagramYonetmelikPipelineOutput } from '../types/pipeline';
+
 
 interface HeaderProps {
   data: DiagramYonetmelikPipelineOutput | null;
@@ -134,6 +135,19 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <ImageIcon className="w-3.5 h-3.5 text-indigo-400" />
           <span>Plan Görseli</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('regulatory_library')}
+          className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono transition-all flex items-center gap-1.5 ${
+            activeTab === 'regulatory_library'
+              ? 'border-cyan-400 bg-cyan-950/60 text-cyan-200 font-semibold shadow-sm'
+              : 'border-cyan-500/30 bg-cyan-950/20 text-cyan-300 hover:bg-cyan-900/40 hover:text-white'
+          }`}
+          title="4 Yönetmeliğin Tüm Maddelerini İncele ve İndekste Ara"
+        >
+          <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
+          <span>4 Yönetmelik</span>
         </button>
 
         {onRunHighRiseAudit && (

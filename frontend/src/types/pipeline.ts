@@ -195,6 +195,42 @@ export interface DiagramYonetmelikPipelineOutput {
   };
 }
 
+export interface RegulationMetadata {
+  code: string;
+  name: string;
+  short_desc: string;
+  enacted_date: string;
+  official_gazette_no: string;
+  decree_no: string;
+  official_url: string;
+  color: string;
+  total_articles?: number;
+  articles_list?: {
+    article_id: string;
+    article_number: string;
+    article_title: string;
+    chapter: string;
+  }[];
+}
+
+export interface RegulationArticleDetail {
+  article_id: string;
+  regulation_code: string;
+  regulation_name: string;
+  article_number: string;
+  article_title: string;
+  chapter: string;
+  official_gazette: string;
+  official_url: string;
+  full_text_tr: string;
+  mandatory_status: string;
+  numerical_parameters: Record<string, any>;
+  architectural_checklist: string[];
+  design_guidance_tr: string;
+  associated_violation_codes: string[];
+  tags: string[];
+}
+
 export type ActiveTab =
   | 'overview'
   | 'cad_polygon'
@@ -206,7 +242,9 @@ export type ActiveTab =
   | 'optimization'
   | 'dxf_preview'
   | 'regulatory_report'
+  | 'regulatory_library'
   | 'cv_image';
 
 export type CameraPreset = 'isometric' | 'top_down' | 'side_elevation' | 'first_person';
 export type WallHeightMode = 'full' | 'cut' | 'slab';
+

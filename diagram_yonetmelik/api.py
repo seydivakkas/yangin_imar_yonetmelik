@@ -20,6 +20,15 @@ from diagram_yonetmelik.sample_generator import (
     generate_sample_floorplan_image,
 )
 from diagram_yonetmelik.evacuation import Building3DEvacuationSimulator
+from diagram_yonetmelik.regulations_library import (
+    get_all_regulations_summary,
+    get_articles_by_regulation,
+    get_article_by_id,
+    search_articles,
+    find_article_for_violation_code,
+    REGULATIONS_METADATA,
+)
+
 
 app = FastAPI(
     title="DiagramYönetmelik API",
@@ -258,6 +267,62 @@ def download_annotated_dxf():
     output: DiagramYonetmelikPipelineOutput = CACHED_RESULT["last"]
     output.annotated_dxf_document.saveas(out_dxf_path)
     return FileResponse(out_dxf_path, filename="denetlenmis_diagram_yonetmelik.dxf", media_type="application/dxf")
+
+
+# --- MEVZUAT VE RESMİ GAZETE HUKUKİ İNDEKS ENDPOİNT'LERİ ---
+
+@app.get("/api/regulations")
+def list_regulations():
+    """Tüm 4 yönetmelik listesi, özetleri, resmi gazete bilgileri ve madde sayıları."""
+    return JSONResponse(content={
+        "regulations": get_all_regulations_summary(),
+        "total_regulations": len(REGULATIONS_METADATA),
+    })
+
+
+@app.get("/api/regulations/search")
+def search_regulations_articles(q: str = ""):
+    """Mevzuat maddeleri içerisinde serbest metin, madde no, başlık veya ihlal kodu araması."""
+    results = search_articles(q)
+    return JSONResponse(content={
+        "query": q,
+        "total_results": len(results),
+        "results": results
+    })
+
+
+@app.get("/api/regulations/article/{article_id}")
+def get_single_article(article_id: str):
+    """Tek bir mevzuat maddesinin resmi metni, formülleri, kontrol listesi ve detayları."""
+    article = get_article_by_id(article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail=f"Mevzuat maddesi bulunamadı: {article_id}")
+    return JSONResponse(content=article)
+
+
+@app.get("/api/regulations/by-violation/{violation_code}")
+def get_article_by_violation(violation_code: str):
+    """Denetim motorunda tespit edilen bir ihlal kodunu ilgili resmi maddeye dönüştürür."""
+    article = find_article_for_violation_code(violation_code)
+    if not article:
+        # Eğer tam eşleşme yoksa BYKHY genel veya boş dön
+        return JSONResponse(content={"matched": False, "article": None})
+    return JSONResponse(content={"matched": True, "article": article})
+
+
+@app.get("/api/regulations/{reg_code}")
+def get_regulation_detail(reg_code: str):
+    """Belirli bir yönetmeliğin (BYKHY, PAIY, SIGINAK, OTOPARK) tüm indekslenmiş maddeleri."""
+    code_upper = reg_code.upper()
+    if code_upper not in REGULATIONS_METADATA:
+        raise HTTPException(status_code=404, detail=f"Yönetmelik kodu geçersiz: {reg_code}")
+    meta = REGULATIONS_METADATA[code_upper]
+    articles = get_articles_by_regulation(code_upper)
+    return JSONResponse(content={
+        "metadata": meta,
+        "total_articles": len(articles),
+        "articles": articles
+    })
 
 
 # Frontend static files mounting

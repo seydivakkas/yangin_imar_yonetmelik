@@ -10,6 +10,7 @@ import {
   Sparkles,
   FileCode,
   FileText,
+  BookOpen,
   Image as ImageIcon,
   ChevronLeft,
   ChevronRight,
@@ -59,9 +60,17 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
       badgeColor: 'badge-green',
     },
     { id: 'dxf_preview', label: '9. DXF Pafta', icon: <FileCode className="w-4 h-4 text-cyan-400" /> },
-    { id: 'regulatory_report', label: '10. Mevzuat & Rapor', icon: <FileText className="w-4 h-4" /> },
-    { id: 'cv_image', label: '11. OpenCV Görü', icon: <ImageIcon className="w-4 h-4 text-indigo-400" /> },
+    {
+      id: 'regulatory_library',
+      label: '10. Mevzuat Kütüphanesi',
+      icon: <BookOpen className="w-4 h-4 text-cyan-400" />,
+      badge: '4 Kanun',
+      badgeColor: 'badge-cyan',
+    },
+    { id: 'regulatory_report', label: '11. Mevzuat & Rapor', icon: <FileText className="w-4 h-4" /> },
+    { id: 'cv_image', label: '12. OpenCV Görü', icon: <ImageIcon className="w-4 h-4 text-indigo-400" /> },
   ];
+
 
   return (
     <aside

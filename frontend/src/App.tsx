@@ -16,7 +16,9 @@ import { EvacuationPanel } from './components/Panels/EvacuationPanel';
 import { OptimizationPanel } from './components/Panels/OptimizationPanel';
 import { DxfExportPanel } from './components/Panels/DxfExportPanel';
 import { RegulatoryReportPanel } from './components/Panels/RegulatoryReportPanel';
+import { RegulatoryLibraryPanel } from './components/Panels/RegulatoryLibraryPanel';
 import { CvImagePanel } from './components/Panels/CvImagePanel';
+import { RegulatoryArticleModal } from './components/RegulatoryArticleModal';
 
 import {
   ActiveTab,
@@ -53,6 +55,9 @@ export const App: React.FC = () => {
     type: 'room' | 'door' | 'violation';
     details: any;
   } | null>(null);
+
+  // Mevzuat Madde İnceleme Modalı State'i
+  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
 
   // Simulation Clock Tick
   useEffect(() => {
@@ -245,14 +250,14 @@ export const App: React.FC = () => {
         {/* Right Workbench Detail Panel */}
         <div
           className={`h-full border-l border-white/10 bg-[#0A0E1A]/95 backdrop-blur-xl flex flex-col transition-all duration-200 z-10 ${
-            isPanelOpen ? 'w-96' : 'w-0'
+            isPanelOpen ? (activeTab === 'regulatory_library' ? 'w-[600px] lg:w-[720px]' : 'w-96') : 'w-0'
           }`}
         >
           {isPanelOpen && (
             <div className="flex-1 flex flex-col h-full overflow-hidden">
               <div className="h-12 border-b border-white/10 px-4 flex items-center justify-between bg-black/20">
                 <span className="font-bold text-xs uppercase tracking-wider text-cyan-400 font-mono">
-                  {activeTab.replace('_', ' ')}
+                  {activeTab === 'regulatory_library' ? 'Mevzuat Kütüphanesi (4 Temel Kanun)' : activeTab.replace('_', ' ')}
                 </span>
                 <button
                   onClick={() => setIsPanelOpen(false)}
@@ -262,7 +267,7 @@ export const App: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto p-3">
                 {activeTab === 'overview' && (
                   <OverviewPanel
                     data={pipelineData}
@@ -279,6 +284,7 @@ export const App: React.FC = () => {
                     onSelectViolation={(v) =>
                       setSelectedElement({ id: v.query_name, type: 'violation', details: v })
                     }
+                    onOpenArticle={(artId) => setSelectedArticleId(artId)}
                   />
                 )}
                 {activeTab === 'basement_audit' && (
@@ -303,8 +309,14 @@ export const App: React.FC = () => {
                 {activeTab === 'dxf_preview' && (
                   <DxfExportPanel data={pipelineData} onDownloadDXF={handleDownloadDXF} />
                 )}
+                {activeTab === 'regulatory_library' && (
+                  <RegulatoryLibraryPanel onOpenArticle={(artId) => setSelectedArticleId(artId)} />
+                )}
                 {activeTab === 'regulatory_report' && (
-                  <RegulatoryReportPanel data={pipelineData} />
+                  <RegulatoryReportPanel
+                    data={pipelineData}
+                    onOpenArticle={(artId) => setSelectedArticleId(artId)}
+                  />
                 )}
                 {activeTab === 'cv_image' && (
                   <CvImagePanel data={pipelineData} onUploadImage={handleUploadImage} />
@@ -314,8 +326,16 @@ export const App: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Global Interactive Regulatory Article Inspection Modal */}
+      <RegulatoryArticleModal
+        articleId={selectedArticleId}
+        onClose={() => setSelectedArticleId(null)}
+        onSelectArticle={(id) => setSelectedArticleId(id)}
+      />
     </div>
   );
 };
+
 
 export default App;
