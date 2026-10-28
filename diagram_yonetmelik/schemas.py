@@ -229,6 +229,15 @@ class RegulatoryClauseChunk:
     numerical_limits: Dict[str, float] = field(default_factory=dict)
     relevant_room_types: List[str] = field(default_factory=list)
     relevant_violation_codes: List[str] = field(default_factory=list)
+    # 404 Korumalı Kanonik URL ve Canlı Senkronizasyon Alanları
+    article_number: str = ""
+    official_text: str = ""
+    mandatory_threshold_summary: Dict[str, Any] = field(default_factory=dict)
+    official_source_url: str = ""
+    official_page_url: str = ""
+    fallback_search_url: str = ""
+    sha256_hash: str = ""
+    last_synced_at: Optional[str] = None
 
 
 @dataclass
@@ -238,6 +247,8 @@ class RetrievedLegalEvidence:
     semantic_cosine_score: float
     hybrid_score: float
     applied_to_violation_code: str
+    official_source_url: str = ""
+    fallback_search_url: str = ""
 
 
 # =====================================================================

@@ -18,7 +18,7 @@ class RegulationArticleDetail:
     article_title: str                # 'Çıkış ve Kaçış Merdiveni Sayısı'
     chapter: str                      # 'Üçüncü Kısım / Kaçış Yolları ve Kaçış Merdivenleri'
     official_gazette: str             # 'R.G. 19.12.2007 - Sayı: 26735 (B.K.K. 2007/12937)'
-    official_url: str                 # 'https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=12937&MevzuatTur=3&MevzuatTertip=5'
+    official_url: str                 # Tam metin veya resmi sayfa bağlantısı
     full_text_tr: str
     mandatory_status: str             # 'ZORUNLU', 'TAVSİYE'
     numerical_parameters: Dict[str, Any] = field(default_factory=dict)
@@ -26,6 +26,12 @@ class RegulationArticleDetail:
     design_guidance_tr: str = ""
     associated_violation_codes: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
+    # Doğrulanmış Sıfır-404 Kanonik URL ve Canlı Senkronizasyon Alanları
+    official_iframe_url: str = ""
+    official_page_url: str = ""
+    fallback_search_url: str = ""
+    sha256_hash: str = ""
+    last_synced_at: Optional[str] = None
 
 
 REGULATIONS_METADATA = {
@@ -35,8 +41,13 @@ REGULATIONS_METADATA = {
         "short_desc": "Yangın güvenliği, kaçış yolları, yangın merdivenleri, yangın güvenlik holleri ve duman kontrolü standartları.",
         "enacted_date": "19.12.2007",
         "official_gazette_no": "26735",
-        "decree_no": "2007/12937 (Son Değişiklik: 2021)",
-        "official_url": "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=12937&MevzuatTur=3&MevzuatTertip=5",
+        "decree_no": "2007/12937 (Bakanlar Kurulu Kararı)",
+        "mevzuat_no": "200712937",
+        "mevzuat_tur": "3",
+        "mevzuat_tertip": "5",
+        "official_iframe_url": "https://www.mevzuat.gov.tr/anasayfa/MevzuatFihristDetayIframe?MevzuatTur=3&MevzuatNo=200712937&MevzuatTertip=5",
+        "official_page_url": "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=200712937&MevzuatTur=3&MevzuatTertip=5",
+        "official_url": "https://www.mevzuat.gov.tr/anasayfa/MevzuatFihristDetayIframe?MevzuatTur=3&MevzuatNo=200712937&MevzuatTertip=5",
         "color": "red"
     },
     "PAIY": {
@@ -46,7 +57,12 @@ REGULATIONS_METADATA = {
         "enacted_date": "03.07.2017",
         "official_gazette_no": "30113",
         "decree_no": "Çevre, Şehircilik ve İklim Değişikliği Bakanlığı",
-        "official_url": "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=23773&MevzuatTur=7&MevzuatTertip=5",
+        "mevzuat_no": "23722",
+        "mevzuat_tur": "7",
+        "mevzuat_tertip": "5",
+        "official_iframe_url": "https://www.mevzuat.gov.tr/anasayfa/MevzuatFihristDetayIframe?MevzuatTur=7&MevzuatNo=23722&MevzuatTertip=5",
+        "official_page_url": "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=23722&MevzuatTur=7&MevzuatTertip=5",
+        "official_url": "https://www.mevzuat.gov.tr/anasayfa/MevzuatFihristDetayIframe?MevzuatTur=7&MevzuatNo=23722&MevzuatTertip=5",
         "color": "cyan"
     },
     "SIGINAK": {
@@ -56,7 +72,12 @@ REGULATIONS_METADATA = {
         "enacted_date": "25.08.1988",
         "official_gazette_no": "19910",
         "decree_no": "İçişleri ve Bayındırlık Bakanlığı",
-        "official_url": "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=4427&MevzuatTur=7&MevzuatTertip=5",
+        "mevzuat_no": "9930",
+        "mevzuat_tur": "7",
+        "mevzuat_tertip": "5",
+        "official_iframe_url": "https://www.mevzuat.gov.tr/anasayfa/MevzuatFihristDetayIframe?MevzuatTur=7&MevzuatNo=9930&MevzuatTertip=5",
+        "official_page_url": "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=9930&MevzuatTur=7&MevzuatTertip=5",
+        "official_url": "https://www.mevzuat.gov.tr/anasayfa/MevzuatFihristDetayIframe?MevzuatTur=7&MevzuatNo=9930&MevzuatTertip=5",
         "color": "amber"
     },
     "OTOPARK": {
@@ -66,10 +87,40 @@ REGULATIONS_METADATA = {
         "enacted_date": "22.02.2018",
         "official_gazette_no": "30340",
         "decree_no": "Çevre ve Şehircilik Bakanlığı",
-        "official_url": "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=24341&MevzuatTur=7&MevzuatTertip=5",
+        "mevzuat_no": "24363",
+        "mevzuat_tur": "7",
+        "mevzuat_tertip": "5",
+        "official_iframe_url": "https://www.mevzuat.gov.tr/anasayfa/MevzuatFihristDetayIframe?MevzuatTur=7&MevzuatNo=24363&MevzuatTertip=5",
+        "official_page_url": "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=24363&MevzuatTur=7&MevzuatTertip=5",
+        "official_url": "https://www.mevzuat.gov.tr/anasayfa/MevzuatFihristDetayIframe?MevzuatTur=7&MevzuatNo=24363&MevzuatTertip=5",
         "color": "purple"
     }
 }
+
+
+def build_canonical_mevzuat_urls(reg_code: str, article_number: str = "") -> Tuple[str, str, str]:
+    """
+    mevzuat.gov.tr üzerinde 404 hatasını önleyen resmi üçlü parametreli (MevzuatNo, MevzuatTur, MevzuatTertip)
+    kanonik bağlantıları ve akıllı Google Mevzuat yedek arama linkini üretir.
+    Returns: (official_iframe_url, official_page_url, fallback_search_url)
+    """
+    code_up = reg_code.upper()
+    meta = REGULATIONS_METADATA.get(code_up, REGULATIONS_METADATA["BYKHY"])
+    no = meta["mevzuat_no"]
+    tur = meta["mevzuat_tur"]
+    tertip = meta["mevzuat_tertip"]
+    
+    iframe_url = f"https://www.mevzuat.gov.tr/anasayfa/MevzuatFihristDetayIframe?MevzuatTur={tur}&MevzuatNo={no}&MevzuatTertip={tertip}"
+    page_url = f"https://www.mevzuat.gov.tr/mevzuat?MevzuatNo={no}&MevzuatTur={tur}&MevzuatTertip={tertip}"
+    
+    clean_art = article_number.strip() if article_number else ""
+    import urllib.parse
+    query_parts = ['site:mevzuat.gov.tr', f'"{meta["name"]}"']
+    if clean_art:
+        query_parts.append(f'"{clean_art}"')
+    fallback_search = f"https://www.google.com/search?q={urllib.parse.quote_plus(' '.join(query_parts))}"
+    
+    return iframe_url, page_url, fallback_search
 
 
 ALL_REGULATION_ARTICLES: List[RegulationArticleDetail] = [
@@ -832,3 +883,39 @@ def find_article_for_violation_code(violation_code: str) -> Optional[Dict[str, A
         if base_id in code_upper:
             return asdict(a)
     return None
+
+
+def get_article_by_domain_and_number(domain_code: str, article_no: str) -> Optional[Dict[str, Any]]:
+    """
+    domain_code (örn: BYKHY, PAIY, OTOPARK, SIGINAK) ve article_no (örn: 31, M31, Madde 31)
+    parametrelerine göre ilgili mevzuat maddesini döner.
+    """
+    d_clean = domain_code.strip().upper()
+    import re
+    match = re.search(r'\d+', str(article_no))
+    num = match.group(0) if match else str(article_no).strip()
+    target_id = f"{d_clean}-M{num}"
+    
+    art = get_article_by_id(target_id)
+    if art:
+        return art
+    
+    for a in ALL_REGULATION_ARTICLES:
+        if a.regulation_code == d_clean and (f"Madde {num}" in a.article_number or a.article_id.endswith(f"M{num}")):
+            return asdict(a)
+    return None
+
+
+def _initialize_canonical_links():
+    import hashlib
+    for a in ALL_REGULATION_ARTICLES:
+        iframe_u, page_u, fallback_u = build_canonical_mevzuat_urls(a.regulation_code, a.article_number)
+        a.official_iframe_url = iframe_u
+        a.official_page_url = page_u
+        a.official_url = iframe_u
+        a.fallback_search_url = fallback_u
+        if not a.sha256_hash:
+            a.sha256_hash = hashlib.sha256(a.full_text_tr.encode('utf-8')).hexdigest()
+
+_initialize_canonical_links()
+

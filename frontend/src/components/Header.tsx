@@ -1,7 +1,6 @@
 import React, { useRef } from 'react';
-import { Play, Upload, FileCode, Flame, CheckCircle2, AlertTriangle, Image as ImageIcon, Layers, BookOpen } from 'lucide-react';
+import { Play, Upload, Flame, CheckCircle2, AlertTriangle, Image as ImageIcon, Layers, FileText } from 'lucide-react';
 import { ActiveTab, DiagramYonetmelikPipelineOutput } from '../types/pipeline';
-
 
 interface HeaderProps {
   data: DiagramYonetmelikPipelineOutput | null;
@@ -27,79 +26,77 @@ export const Header: React.FC<HeaderProps> = ({
   const dxfInputRef = useRef<HTMLInputElement>(null);
   const imgInputRef = useRef<HTMLInputElement>(null);
 
-  const pipelineStages: { id: ActiveTab; step: string; label: string }[] = [
-    { id: 'cad_polygon', step: '①', label: 'CAD Poligon' },
-    { id: 'building_graph', step: '②', label: '3B RAG Grafı' },
-    { id: 'spminer', step: '③', label: 'SPMiner Modül' },
-    { id: 'fire_audit', step: '④', label: 'GNN+VF2 Yangın' },
-    { id: 'basement_audit', step: '⑤', label: 'Bodrum Denetim' },
-    { id: 'evacuation', step: '⑥', label: 'Tahliye Sim' },
-    { id: 'optimization', step: '⑦', label: 'Optimizasyon' },
-    { id: 'dxf_preview', step: '⑧', label: 'DXF Pafta' },
-    { id: 'regulatory_report', step: '⑨', label: 'Mevzuat Raporu' },
-  ];
+  // Tab adını Türkçe okunabilir formata dönüştür
+  const getTabLabel = (tab: ActiveTab): string => {
+    switch (tab) {
+      case 'overview': return 'Genel Bakış';
+      case 'cad_polygon': return 'CAD & Poligon Geometrisi';
+      case 'building_graph': return '3B RAG Grafı & Mekânsal Topoloji';
+      case 'spminer': return 'SPMiner Mekânsal Madencilik';
+      case 'fire_audit': return 'Yangın Mevzuatı Denetimi (BYKHY)';
+      case 'basement_audit': return 'Bodrum & Sığınak Denetimi (PAİY/Sığınak)';
+      case 'evacuation': return 'Tahliye & Güvenli Kaçış Simülasyonu';
+      case 'optimization': return 'Karşı-Olgusal Tasarım Optimizasyonu';
+      case 'dxf_preview': return 'Revize DXF Pafta Çıktısı';
+      case 'regulatory_library': return 'Mevzuat Kütüphanesi (4 Temel Yönetmelik)';
+      case 'regulatory_report': return 'Mevzuat Denetim Raporu';
+      case 'cv_image': return 'OpenCV Kat Planı Görü Analizi';
+      default: return 'Genel Bakış';
+    }
+  };
 
   return (
-    <header className="h-16 border-b border-white/10 bg-[#070A11]/90 backdrop-blur-md px-4 flex items-center justify-between z-30 select-none">
+    <header className="h-16 border-b border-[var(--ui-border)] bg-[var(--ui-surface)] px-5 flex items-center justify-between z-30 select-none shadow-sm">
       {/* Brand & Project Info */}
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-md bg-[var(--ui-primary)] text-white flex items-center justify-center font-bold shadow-sm">
             <Flame className="w-5 h-5 text-white" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-base font-bold tracking-tight text-white font-mono">DiagramYönetmelik</span>
-              <span className="badge badge-cyan text-[10px]">v1.0-RC</span>
+            <div className="flex items-center gap-2.5">
+              <span className="text-base font-semibold tracking-tight text-[var(--ui-text)]">
+                DiagramYönetmelik
+              </span>
+              <span className="badge badge-neutral text-xs">v1.0 Professional</span>
             </div>
-            <p className="text-[11px] text-gray-400">Nöro-Sembolik 3B Yangın & İmar Denetim Motoru</p>
+            <p className="text-xs text-[var(--ui-text-dim)]">
+              Nöro-Sembolik 3B Yangın & İmar Mevzuat Denetimi
+            </p>
           </div>
         </div>
 
-        <div className="h-8 w-px bg-white/10 mx-1" />
+        <div className="h-8 w-px bg-[var(--ui-border)] mx-1" />
 
-        {/* Project Selector Badge */}
-        <div className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-xs">
-          <span className="font-semibold text-gray-200">
+        {/* Project Context & Status */}
+        <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 rounded-md bg-[var(--ui-bg)] border border-[var(--ui-border)] text-sm">
+          <span className="text-[var(--ui-text-dim)] text-xs font-medium">Proje:</span>
+          <span className="font-medium text-[var(--ui-text)]">
             {typeof data?.metadata?.title === 'string'
               ? data.metadata.title
               : 'Çok Katlı Konut Yapısı (BYKHY/PAİY/Sığınak)'}
           </span>
+          <div className="w-px h-3.5 bg-[var(--ui-border)] mx-1" />
           {data ? (
-            <span className="flex items-center gap-1 text-emerald-400 text-[11px] ml-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Denetlendi
+            <span className="flex items-center gap-1.5 text-[var(--ui-success)] text-xs font-medium">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Denetim Başarılı
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-amber-400 text-[11px] ml-1">
-              <AlertTriangle className="w-3.5 h-3.5" /> Hazır
+            <span className="flex items-center gap-1.5 text-[var(--ui-warning)] text-xs font-medium">
+              <AlertTriangle className="w-3.5 h-3.5" /> Analiz Bekleniyor
             </span>
           )}
         </div>
       </div>
 
-      {/* 9-Stage Pipeline Status Bar */}
-      <nav className="hidden xl:flex items-center gap-1 bg-black/40 p-1 rounded-lg border border-white/5">
-        {pipelineStages.map((stage) => {
-          const isActive = activeTab === stage.id;
-          return (
-            <button
-              key={stage.id}
-              onClick={() => setActiveTab(stage.id)}
-              className={`px-2.5 py-1 rounded text-xs font-mono transition-all duration-150 flex items-center gap-1.5 ${
-                isActive
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm shadow-cyan-500/20 font-semibold'
-                  : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-              }`}
-            >
-              <span className="text-[11px] opacity-75">{stage.step}</span>
-              <span>{stage.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      {/* Center: Current Module Badge (No duplicate 9-tab spam) */}
+      <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-md bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] text-sm">
+        <span className="text-[var(--ui-text-dim)] text-xs">Aktif Modül:</span>
+        <span className="font-semibold text-[var(--ui-primary)]">{getTabLabel(activeTab)}</span>
+      </div>
 
       {/* Action Controls */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2.5">
         <input
           ref={dxfInputRef}
           type="file"
@@ -121,55 +118,42 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => dxfInputRef.current?.click()}
-          className="btn-secondary hidden sm:inline-flex"
-          title="DXF Dosyası Yükle"
+          className="btn btn-secondary btn-sm hidden sm:inline-flex"
+          title="CAD DXF Paftası Yükle ve Analiz Et"
         >
-          <Upload className="w-3.5 h-3.5 text-gray-300" />
+          <Upload className="w-4 h-4 text-[var(--ui-text-muted)]" />
           <span>DXF Yükle</span>
         </button>
 
         <button
           onClick={() => imgInputRef.current?.click()}
-          className="btn-secondary hidden md:inline-flex"
-          title="Kat Planı Görseli Yükle (OpenCV Analizi)"
+          className="btn btn-secondary btn-sm hidden md:inline-flex"
+          title="Kat Planı Görseli Yükle (OpenCV Görü Analizi)"
         >
-          <ImageIcon className="w-3.5 h-3.5 text-indigo-400" />
+          <ImageIcon className="w-4 h-4 text-[var(--ui-text-muted)]" />
           <span>Plan Görseli</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('regulatory_library')}
-          className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono transition-all flex items-center gap-1.5 ${
-            activeTab === 'regulatory_library'
-              ? 'border-cyan-400 bg-cyan-950/60 text-cyan-200 font-semibold shadow-sm'
-              : 'border-cyan-500/30 bg-cyan-950/20 text-cyan-300 hover:bg-cyan-900/40 hover:text-white'
-          }`}
-          title="4 Yönetmeliğin Tüm Maddelerini İncele ve İndekste Ara"
-        >
-          <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
-          <span>4 Yönetmelik</span>
         </button>
 
         {onRunHighRiseAudit && (
           <button
             onClick={onRunHighRiseAudit}
             disabled={isLoading}
-            className="px-2.5 py-1.5 rounded-lg border border-purple-500/40 bg-purple-950/30 text-purple-300 hover:bg-purple-900/40 hover:text-white text-xs font-mono transition-all flex items-center gap-1.5"
-            title="12 Katlı Yüksek Bina Paftasını Otomatik Üretip Tüm Yönetmelik Maddelerini Her Katta Denetle"
+            className="btn btn-secondary btn-sm hidden xl:inline-flex"
+            title="12 Katlı Yüksek Yapı Analiz Şablonunu Çalıştır"
           >
-            <Layers className="w-3.5 h-3.5 text-purple-400" />
-            <span>12 Katlı Bina</span>
+            <Layers className="w-4 h-4 text-[var(--ui-text-muted)]" />
+            <span>12 Katlı Yapı</span>
           </button>
         )}
 
         <button
           onClick={onRunAudit}
           disabled={isLoading}
-          className="btn-primary"
-          title="Örnek 3 Katlı Projeyi Denetle"
+          className="btn btn-primary btn-sm"
+          title="Örnek Proje Üzerinde Tam Mevzuat Denetimini Çalıştır"
         >
-          <Play className={`w-3.5 h-3.5 fill-current ${isLoading ? 'animate-spin' : ''}`} />
-          <span>{isLoading ? 'Denetleniyor...' : 'Canlı Denetle'}</span>
+          <Play className={`w-4 h-4 fill-current ${isLoading ? 'animate-spin' : ''}`} />
+          <span>{isLoading ? 'Analiz Sürüyor...' : 'Canlı Denetle'}</span>
         </button>
       </div>
     </header>

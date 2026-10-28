@@ -53,68 +53,78 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
   const totalCost = interventions.reduce((acc, cur) => acc + (cur.estimated_cost_try ?? 0), 0);
 
   return (
-    <div className="space-y-4 p-4 text-xs font-sans text-gray-200 overflow-y-auto max-h-full">
+    <div className="space-y-4 text-[14px] leading-relaxed text-[var(--ui-text)] w-full">
       {/* Header Banner */}
-      <div className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/40 via-teal-950/40 to-slate-900 border border-emerald-500/30">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Sparkles className="w-5 h-5 text-emerald-400" />
-            <div>
-              <h4 className="font-bold text-white text-xs">Karşı-Olgusal (Counterfactual) Tasarım Optimizasyonu</h4>
-              <p className="text-[10px] text-gray-400">Geriye Yayılımlı Darboğaz Budama · Minimum Maliyetli Mimari Müdahaleler</p>
-            </div>
+      <div className="p-4 rounded-lg bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-lg bg-[var(--ui-primary)]/15 border border-[var(--ui-primary)]/30 flex items-center justify-center text-[var(--ui-primary)] shrink-0">
+            <Sparkles className="w-5 h-5" />
           </div>
-          <span className="badge badge-green text-[10px] font-mono">Otomatik Rollout</span>
+          <div>
+            <h4 className="font-bold text-[var(--ui-text)] text-[16px]">Karşı-Olgusal Tasarım Optimizasyonu</h4>
+            <p className="text-[13px] text-[var(--ui-text-muted)] mt-0.5">
+              Geriye Yayılımlı Darboğaz Budama · Asgari Maliyetli Mimari Müdahaleler
+            </p>
+          </div>
         </div>
+        <span className="badge badge-success text-[12px] font-mono shrink-0">Otomatik Rollout</span>
       </div>
 
       {/* Comparison Scorecard */}
-      <div className="glass-panel p-3.5">
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="p-2 rounded bg-black/40">
-            <div className="text-[10px] text-gray-400">Mevcut Süre</div>
-            <div className="text-base font-bold font-mono text-red-400">{originalTime.toFixed(1)} sn</div>
-            <div className="text-[9px] text-red-400/80">ASET Aşılıyor</div>
+      <div className="card p-4">
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="p-3 rounded-md bg-[var(--ui-surface-raised)] border border-[var(--ui-border)]">
+            <div className="text-[12px] text-[var(--ui-text-muted)] font-medium">Mevcut Süre</div>
+            <div className="text-xl font-bold font-mono text-[var(--ui-danger)] mt-1">{originalTime.toFixed(1)} sn</div>
+            <div className="text-[12px] text-[var(--ui-danger)] mt-0.5 font-medium">ASET Aşılıyor</div>
           </div>
-          <div className="p-2 rounded bg-black/40">
-            <div className="text-[10px] text-gray-400">Revize Süre</div>
-            <div className="text-base font-bold font-mono text-emerald-400">{optimizedTime.toFixed(1)} sn</div>
-            <div className="text-[9px] text-emerald-400/80">Güvenli Tahliye</div>
+          <div className="p-3 rounded-md bg-[var(--ui-surface-raised)] border border-[var(--ui-border)]">
+            <div className="text-[12px] text-[var(--ui-text-muted)] font-medium">Revize Süre</div>
+            <div className="text-xl font-bold font-mono text-[var(--ui-success)] mt-1">{optimizedTime.toFixed(1)} sn</div>
+            <div className="text-[12px] text-[var(--ui-success)] mt-0.5 font-medium">Güvenli Tahliye</div>
           </div>
-          <div className="p-2 rounded bg-black/40">
-            <div className="text-[10px] text-gray-400">Tasarruf</div>
-            <div className="text-base font-bold font-mono text-cyan-400">-{timeSaved.toFixed(1)} sn</div>
-            <div className="text-[9px] text-cyan-400/80">%{((timeSaved / originalTime) * 100).toFixed(0)} Hızlanma</div>
+          <div className="p-3 rounded-md bg-[var(--ui-surface-raised)] border border-[var(--ui-border)]">
+            <div className="text-[12px] text-[var(--ui-text-muted)] font-medium">Tasarruf</div>
+            <div className="text-xl font-bold font-mono text-[var(--ui-primary)] mt-1">-{timeSaved.toFixed(1)} sn</div>
+            <div className="text-[12px] text-[var(--ui-primary)] mt-0.5 font-medium">
+              %{((timeSaved / originalTime) * 100).toFixed(0)} İyileşme
+            </div>
           </div>
         </div>
       </div>
 
       {/* CAD Diff Toggle Bar */}
-      <div className="glass-panel p-2.5 flex items-center justify-between">
-        <span className="text-[11px] text-gray-300 font-medium flex items-center gap-1.5">
-          <Split className="w-4 h-4 text-cyan-400" /> 3B Görünüm Modu:
+      <div className="card p-3 flex items-center justify-between gap-2">
+        <span className="text-[14px] text-[var(--ui-text)] font-semibold flex items-center gap-2">
+          <Split className="w-4 h-4 text-[var(--ui-primary)]" /> 3B Görünüm Modu:
         </span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={() => setCadDiffMode('before')}
-            className={`px-2.5 py-1 rounded text-[11px] font-mono ${
-              cadDiffMode === 'before' ? 'bg-red-500/25 text-red-300 border border-red-500/40 font-bold' : 'text-gray-400 bg-white/5'
+            className={`px-3 py-1.5 rounded text-[13px] font-medium transition-colors ${
+              cadDiffMode === 'before'
+                ? 'bg-[var(--ui-danger)] text-white font-semibold'
+                : 'text-[var(--ui-text-muted)] hover:text-white bg-[var(--ui-surface-raised)]'
             }`}
           >
             Önce (İhlal)
           </button>
           <button
             onClick={() => setCadDiffMode('after')}
-            className={`px-2.5 py-1 rounded text-[11px] font-mono ${
-              cadDiffMode === 'after' ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 font-bold' : 'text-gray-400 bg-white/5'
+            className={`px-3 py-1.5 rounded text-[13px] font-medium transition-colors ${
+              cadDiffMode === 'after'
+                ? 'bg-[var(--ui-success)] text-white font-semibold'
+                : 'text-[var(--ui-text-muted)] hover:text-white bg-[var(--ui-surface-raised)]'
             }`}
           >
             Sonra (Opt.)
           </button>
           <button
             onClick={() => setCadDiffMode('both')}
-            className={`px-2.5 py-1 rounded text-[11px] font-mono ${
-              cadDiffMode === 'both' ? 'bg-purple-500/25 text-purple-300 border border-purple-500/40 font-bold' : 'text-gray-400 bg-white/5'
+            className={`px-3 py-1.5 rounded text-[13px] font-medium transition-colors ${
+              cadDiffMode === 'both'
+                ? 'bg-[var(--ui-primary)] text-white font-semibold'
+                : 'text-[var(--ui-text-muted)] hover:text-white bg-[var(--ui-surface-raised)]'
             }`}
           >
             İkisi
@@ -123,34 +133,36 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
       </div>
 
       {/* Applied Interventions List */}
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between">
-          <h5 className="font-semibold text-gray-300 text-xs">Uygulanan Tasarım Müdahaleleri ({interventions.length})</h5>
-          <span className="text-[11px] font-mono text-emerald-400">
-            Toplam Maliyet: {totalCost.toLocaleString('tr-TR')} TL
+      <div className="space-y-3">
+        <div className="flex items-center justify-between border-b border-[var(--ui-border)] pb-2">
+          <h5 className="font-bold text-[var(--ui-text)] text-[15px]">
+            Uygulanan Tasarım Müdahaleleri ({interventions.length})
+          </h5>
+          <span className="text-[13px] font-mono text-[var(--ui-success)] font-semibold">
+            Toplam: {totalCost.toLocaleString('tr-TR')} TL
           </span>
         </div>
 
         {interventions.map((step, idx) => (
-          <div key={idx} className="p-3 rounded-lg bg-slate-900/50 border border-white/10 space-y-1.5">
+          <div key={idx} className="p-3.5 rounded-lg bg-[var(--ui-surface)] border border-[var(--ui-border)] space-y-2">
             <div className="flex items-center justify-between">
-              <span className="badge badge-cyan text-[9px] font-mono">{step.step_id}</span>
-              <span className="font-mono text-emerald-400 text-xs font-semibold">
+              <span className="badge badge-primary text-[12px] font-mono">{step.step_id}</span>
+              <span className="font-mono text-[var(--ui-success)] text-[14px] font-bold">
                 {(step.delta_evacuation_time_s ?? 0).toFixed(1)} sn
               </span>
             </div>
 
-            <div className="text-[11px] text-white font-medium">
+            <div className="text-[14px] text-[var(--ui-text)] font-semibold">
               {step.action_type === 'kapi_genislet' ? (
-                <span>Kapı Genişletme: <strong className="text-cyan-400">{step.target_element_id}</strong> (+{step.delta_value}m)</span>
+                <span>Kapı Genişletme: <strong className="text-[var(--ui-primary)]">{step.target_element_id}</strong> (+{step.delta_value}m)</span>
               ) : (
-                <span>Hava Kilidi Ekleme: <strong className="text-purple-400">{step.target_element_id}</strong> (+{step.delta_value}m²)</span>
+                <span>Hava Kilidi Ekleme: <strong className="text-[var(--ui-primary)]">{step.target_element_id}</strong> (+{step.delta_value}m²)</span>
               )}
             </div>
 
-            <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1 border-t border-white/5">
-              <span>Parametre: <code className="text-gray-300">{step.parameter_name}</code></span>
-              <span>Tahmini Maliyet: <strong className="text-gray-200">{(step.estimated_cost_try ?? 0).toLocaleString('tr-TR')} TL</strong></span>
+            <div className="flex items-center justify-between text-[13px] text-[var(--ui-text-muted)] pt-2 border-t border-[var(--ui-border)]">
+              <span>Parametre: <code className="text-[var(--ui-text)] font-mono">{step.parameter_name}</code></span>
+              <span>Tahmini Maliyet: <strong className="text-[var(--ui-text)]">{(step.estimated_cost_try ?? 0).toLocaleString('tr-TR')} TL</strong></span>
             </div>
           </div>
         ))}
@@ -160,7 +172,7 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
       <div className="pt-2">
         <button
           onClick={onDownloadDXF}
-          className="w-full btn-primary justify-center text-xs py-2.5"
+          className="w-full btn btn-primary justify-center text-[14px] py-3 flex items-center gap-2"
         >
           <Download className="w-4 h-4" />
           <span>Revize DXF Paftasını İndir (Yeşil Revcloud Katmanı)</span>
@@ -169,3 +181,4 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
     </div>
   );
 };
+

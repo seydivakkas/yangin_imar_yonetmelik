@@ -196,22 +196,42 @@ class DXFFloorplanParser:
             ins = text_entity.dxf.insert
             text_entries.append((Point(ins.x, ins.y), txt))
 
-        # 3. Odaları Çıkar (LWPOLYLINE)
+        # 3. Odaları Çıkar (LWPOLYLINE - Bulge/Yay Eğrilerini Koru)
         closed_polys: List[Polygon] = []
         for polyline in msp.query('LWPOLYLINE'):
             if polyline.is_closed and len(polyline) >= 3:
-                pts = [(p[0], p[1]) for p in polyline.get_points('xy')]
+                if getattr(polyline, 'has_arc', False):
+                    from ezdxf import path as dxf_path
+                    sagitta = max(0.02, 0.05 / max(1e-4, scale))
+                    p_path = dxf_path.make_path(polyline)
+                    pts = [(round(float(v.x), 6), round(float(v.y), 6)) for v in p_path.flattening(sagitta)]
+                else:
+                    pts = [(round(float(p[0]), 6), round(float(p[1]), 6)) for p in polyline.get_points('xy')]
                 poly = Polygon(pts)
                 if poly.is_valid and poly.area > (2.0 / (scale ** 2)):
                     closed_polys.append(poly)
 
-        # 4. Fallback Kontrolü: Yeterli kapalı poligon yoksa LINE Soup modunu devreye sok
+        # 4. Fallback Kontrolü: Yeterli kapalı poligon yoksa LINE Soup modunu devreye sok (LINE, ARC, CIRCLE)
         if len(closed_polys) < 2:
+            from ezdxf import path as dxf_path
             wall_lines: List[LineString] = []
             for line in msp.query('LINE'):
                 start = line.dxf.start
                 end = line.dxf.end
-                wall_lines.append(LineString([(start.x, start.y), (end.x, end.y)]))
+                wall_lines.append(LineString([(round(float(start.x), 6), round(float(start.y), 6)), (round(float(end.x), 6), round(float(end.y), 6))]))
+            for arc_ent in msp.query('ARC CIRCLE'):
+                sagitta = max(0.02, 0.05 / max(1e-4, scale))
+                arc_path = dxf_path.make_path(arc_ent)
+                arc_pts = [(round(float(v.x), 6), round(float(v.y), 6)) for v in arc_path.flattening(sagitta)]
+                if len(arc_pts) >= 2:
+                    wall_lines.append(LineString(arc_pts))
+            for pl in msp.query('LWPOLYLINE'):
+                if not pl.is_closed and len(pl) >= 2:
+                    sagitta = max(0.02, 0.05 / max(1e-4, scale))
+                    pl_path = dxf_path.make_path(pl)
+                    pl_pts = [(round(float(v.x), 6), round(float(v.y), 6)) for v in pl_path.flattening(sagitta)]
+                    if len(pl_pts) >= 2:
+                        wall_lines.append(LineString(pl_pts))
             recovered_polys = self.polygonizer.polygonize_rooms_from_lines(wall_lines, doors, scale)
             if len(recovered_polys) >= len(closed_polys):
                 closed_polys = recovered_polys

@@ -20,6 +20,7 @@ from diagram_yonetmelik.sample_generator import (
     generate_sample_floorplan_image,
 )
 from diagram_yonetmelik.evacuation import Building3DEvacuationSimulator
+from diagram_yonetmelik.regulatory_rag import get_mevzuat_sync_service
 from diagram_yonetmelik.regulations_library import (
     get_all_regulations_summary,
     get_articles_by_regulation,
@@ -80,6 +81,7 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
             "usable_in_fire": bool(d.get("usable_in_fire", True)),
             "is_vertical": bool(d.get("is_vertical", False)),
             "connection_type": d.get("connection_type", "door"),
+            "door_id": int(d.get("door_id", 1)),
             "portal_xy": [round(float(c), 2) for c in d.get("portal_xy", (0.0, 0.0))]
         })
 
@@ -291,9 +293,45 @@ def search_regulations_articles(q: str = ""):
     })
 
 
+@app.post("/api/regulations/sync")
+def sync_regulations():
+    """
+    İnternetten 4 temel yönetmeliğin tamamını (BYKHY, PAİY, Sığınak, Otopark) canlı çeker,
+    SHA-256 diff analizi yaparak yerel önbelleği ve RAG bilgi bankasını günceller.
+    """
+    sync_engine = get_mevzuat_sync_service()
+    result = sync_engine.sync_all_regulations()
+    return JSONResponse(content=result)
+
+
+@app.get("/api/regulations/article/{domain_code}/{article_no}")
+def get_article_by_domain_and_number_route(domain_code: str, article_no: str):
+    """
+    İlgili domain (BYKHY, PAIY, SIGINAK, OTOPARK) ve madde numarasına göre
+    doğrulanmış resmi metni, son senkronizasyon tarihini ve sıfır-404 mevzuat.gov.tr linkini döner.
+    """
+    sync_engine = get_mevzuat_sync_service()
+    article = sync_engine.get_article(domain_code, article_no)
+    if not article:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Mevzuat maddesi bulunamadı: {domain_code} - Madde {article_no}"
+        )
+    return JSONResponse(content=article)
+
+
 @app.get("/api/regulations/article/{article_id}")
 def get_single_article(article_id: str):
     """Tek bir mevzuat maddesinin resmi metni, formülleri, kontrol listesi ve detayları."""
+    # Önce sync engine cache'ini kontrol et
+    clean_id = article_id.strip()
+    sync_engine = get_mevzuat_sync_service()
+    if "-" in clean_id:
+        parts = clean_id.split("-", 1)
+        art = sync_engine.get_article(parts[0], parts[1])
+        if art:
+            return JSONResponse(content=art)
+            
     article = get_article_by_id(article_id)
     if not article:
         raise HTTPException(status_code=404, detail=f"Mevzuat maddesi bulunamadı: {article_id}")

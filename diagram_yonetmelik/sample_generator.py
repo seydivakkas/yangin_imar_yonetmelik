@@ -28,9 +28,12 @@ def generate_sample_building_dxf(output_path: str = "sample_building.dxf") -> Dr
 
     def add_door_insert(x: float, y: float, name: str = "K_90", is_fire: bool = False):
         layer = "A-DOOR"
-        blk = msp.doc.blocks.new(name=name) if name not in msp.doc.blocks else msp.doc.blocks.get(name)
-        blk.add_line((-45, 0), (45, 0))
-        blk.add_arc((0, 0), radius=90.0, start_angle=0, end_angle=90)
+        if name not in msp.doc.blocks:
+            blk = msp.doc.blocks.new(name=name)
+            blk.add_line((-45, 0), (45, 0))
+            blk.add_arc((0, 0), radius=90.0, start_angle=0, end_angle=90)
+        else:
+            blk = msp.doc.blocks.get(name)
         insert = msp.add_blockref(name, (x, y), dxfattribs={'layer': layer})
         if is_fire:
             insert.add_attrib("TAG", "EI60 YANGIN KAPISI")
@@ -60,6 +63,11 @@ def generate_sample_building_dxf(output_path: str = "sample_building.dxf") -> Dr
     add_door_insert(700, 250, name="K_100", is_fire=False)      # Koridor <-> Dış Çıkış
     add_door_insert(1350, 100, name="K_90", is_fire=False)      # Koridor <-> Daire 1
     add_door_insert(1350, 800, name="K_90", is_fire=False)      # Koridor <-> Daire 2
+    add_door_insert(1450, 250, name="K_90", is_fire=False)      # Daire 1: Salon <-> Antre
+    add_door_insert(1650, 100, name="K_90", is_fire=False)      # Daire 1: Yatak Odası <-> Antre
+    add_door_insert(1450, 0, name="K_90", is_fire=False)        # Daire 1: Mutfak <-> Antre
+    add_door_insert(1450, 950, name="K_90", is_fire=False)      # Daire 2: Salon <-> Antre
+    add_door_insert(1650, 800, name="K_90", is_fire=False)      # Daire 2: Yatak Odası <-> Antre
 
     # =========================================================================
     # 2. BODRUM KAT ADASI (X: 0..3000 cm, Y: 3500..6000 cm)
@@ -146,13 +154,17 @@ def generate_high_rise_12_story_building_dxf(output_path: str = "sample_high_ris
     add_room_box(850, zy + 250, 350, 300, "Z-05 ITFAIYE ASANSORU")
     add_room_box(1050, zy - 300, 300, 300, "Z-00 DIS CIKIS")
 
-    # Daire Z1 & Z2
-    add_room_box(1200, zy + 250, 500, 400, "Z-21 SALON")
-    add_room_box(1200, zy + 650, 400, 350, "Z-22 YATAK ODASI")
+    # Daire Z1 (Zemin Kat)
+    add_room_box(1350, zy + 250, 300, 250, "Z-20 DAIRE GİRİŞ ANTRE")
+    add_room_box(1350, zy + 500, 450, 400, "Z-21 SALON")
+    add_room_box(1650, zy + 250, 350, 350, "Z-22 YATAK ODASI")
 
     add_door(300, zy + 200, "K_120_EI60", is_fire=True)
     add_door(550, zy + 125, "K_120_EI60", is_fire=True)
-    add_door(1050, zy, "K_140_DIS_CIKIS", is_fire=False)
+    add_door(1200, zy, "K_140_DIS_CIKIS", is_fire=False)
+    add_door(1450, zy + 250, "K_90_Z20_ANTRE", is_fire=False)
+    add_door(1450, zy + 500, "K_90_Z21_SALON", is_fire=False)
+    add_door(1650, zy + 350, "K_90_Z22_ODA", is_fire=False)
     add_door(1850, zy + 125, "K_120_EI60", is_fire=True)
     add_door(2100, zy + 200, "K_120_EI60", is_fire=True)
 
@@ -178,28 +190,44 @@ def generate_high_rise_12_story_building_dxf(output_path: str = "sample_high_ris
         add_room_box(550, fy + 250, 300, 300, f"{prefix}-04 ASANSOR")
         add_room_box(850, fy + 250, 350, 300, f"{prefix}-05 ITFAIYE ASANSORU")
 
-        # Sol Daire (Daire A: 3+1)
-        add_room_box(550, fy - 350, 300, 250, f"{prefix}-21 DAIRE GİRİŞ ANTRE A")
-        add_room_box(550, fy - 750, 500, 400, f"{prefix}-22 SALON A")
-        add_room_box(1050, fy - 750, 400, 350, f"{prefix}-23 YATAK ODASI A")
-        add_room_box(1050, fy - 400, 300, 250, f"{prefix}-24 MUTFAK A")
+        # Sol Daire (Daire A: 3+1 - Merkezi Antre Hiyerarşisi)
+        # Antre A: X=850..1250, Y=fy-350..fy
+        add_room_box(850, fy - 350, 400, 350, f"{prefix}-21 DAIRE GİRİŞ ANTRE A")
+        # Salon A: X=550..850, Y=fy-750..fy
+        add_room_box(550, fy - 750, 300, 750, f"{prefix}-22 SALON A")
+        # Yatak Odası A: X=850..1250, Y=fy-750..fy-350
+        add_room_box(850, fy - 750, 400, 400, f"{prefix}-23 YATAK ODASI A")
+        # Mutfak A: X=1250..1550, Y=fy-350..fy
+        add_room_box(1250, fy - 350, 300, 350, f"{prefix}-24 MUTFAK A")
 
-        # Sağ Daire (Daire B: 3+1)
-        add_room_box(1350, fy + 250, 300, 250, f"{prefix}-31 DAIRE GİRİŞ ANTRE B")
-        add_room_box(1350, fy + 500, 500, 400, f"{prefix}-32 SALON B")
-        add_room_box(1850, fy + 500, 400, 350, f"{prefix}-33 YATAK ODASI B")
+        # Sağ Daire (Daire B: 3+1 - Merkezi Antre Hiyerarşisi)
+        # Antre B: X=1350..1750, Y=fy+250..fy+550
+        add_room_box(1350, fy + 250, 400, 300, f"{prefix}-31 DAIRE GİRİŞ ANTRE B")
+        # Salon B: X=1350..1750, Y=fy+550..fy+950
+        add_room_box(1350, fy + 550, 400, 400, f"{prefix}-32 SALON B")
+        # Yatak Odası B: X=1750..2100, Y=fy+250..fy+650
+        add_room_box(1750, fy + 250, 350, 400, f"{prefix}-33 YATAK ODASI B")
 
         # Çatı Katı (Kat 12) için Teras Alanı
         if fl == 12:
             add_room_box(1350, fy - 500, 600, 400, f"{prefix}-40 CATI TERASI")
 
-        # Kapı geçişleri
+        # Kaçış ve Yangın Kapıları (Koridor & Yangın Holü & Merdiven)
         add_door(300, fy + 200, f"K_120_EI60_{fl}", is_fire=True)
         add_door(550, fy + 125, f"K_120_EI60_{fl}", is_fire=True)
         add_door(1850, fy + 125, f"K_120_EI60_{fl}", is_fire=True)
         add_door(2100, fy + 200, f"K_120_EI60_{fl}", is_fire=True)
-        add_door(550, fy - 100, f"K_90_DAIRE_A_{fl}", is_fire=False)
-        add_door(1350, fy + 200, f"K_90_DAIRE_B_{fl}", is_fire=False)
+
+        # Daire Giriş Kapıları (Kat Koridoru <-> Antre)
+        add_door(950, fy, f"K_90_DAIRE_A_{fl}", is_fire=False)
+        add_door(1450, fy + 250, f"K_90_DAIRE_B_{fl}", is_fire=False)
+
+        # Daire İç Oda Kapıları (Tüm Odalar Doğrudan Kendi Antresine Açılır)
+        add_door(850, fy - 200, f"K_90_DAIRE_A_SALON_{fl}", is_fire=False)
+        add_door(1050, fy - 350, f"K_90_DAIRE_A_ODA_{fl}", is_fire=False)
+        add_door(1250, fy - 200, f"K_90_DAIRE_A_MUTFAK_{fl}", is_fire=False)
+        add_door(1450, fy + 550, f"K_90_DAIRE_B_SALON_{fl}", is_fire=False)
+        add_door(1750, fy + 400, f"K_90_DAIRE_B_ODA_{fl}", is_fire=False)
 
     doc.saveas(output_path)
     return doc

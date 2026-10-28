@@ -32,37 +32,46 @@ export const SpminerPanel: React.FC<SpminerPanelProps> = ({ data }) => {
   ];
 
   return (
-    <div className="space-y-4 p-4 text-xs font-sans text-gray-200 overflow-y-auto max-h-full">
+    <div className="space-y-4 text-[14px] leading-relaxed text-[var(--ui-text)] w-full">
       {/* Banner */}
-      <div className="p-3.5 rounded-xl bg-gradient-to-r from-indigo-950/40 via-purple-950/40 to-slate-900 border border-indigo-500/30">
-        <div className="flex items-center gap-2.5">
-          <Boxes className="w-5 h-5 text-indigo-400" />
-          <div>
-            <h4 className="font-bold text-white text-xs">Aşama 3: SPMiner Modül Keşfi & Graf İriliştirme</h4>
-            <p className="text-[10px] text-gray-400">Açgözlü Büyüme · WL-Hash Tekilleştirme · İç Kaçış Derinliği Korunumu</p>
-          </div>
+      <div className="p-4 rounded-lg bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] flex items-center gap-3.5">
+        <div className="w-10 h-10 rounded-lg bg-[var(--ui-primary)]/15 border border-[var(--ui-primary)]/30 flex items-center justify-center text-[var(--ui-primary)] shrink-0">
+          <Boxes className="w-5 h-5" />
+        </div>
+        <div>
+          <h4 className="font-bold text-[var(--ui-text)] text-[16px]">SPMiner Modül Keşfi & Graf İriliştirme</h4>
+          <p className="text-[13px] text-[var(--ui-text-muted)] mt-0.5">
+            Açgözlü Büyüme · WL-Hash Tekilleştirme · İç Kaçış Derinliği Korunumu
+          </p>
         </div>
       </div>
 
       {/* Discovered Architectural Macro-Nodes */}
-      <div className="glass-panel p-3.5 space-y-2.5">
-        <h5 className="font-semibold text-gray-300 text-xs flex items-center gap-1.5">
-          <Box className="w-3.5 h-3.5 text-indigo-400" /> Keşfedilen Mimari Makro-Düğümler (Bileşen Kümeleri)
+      <div className="card p-4 space-y-3">
+        <h5 className="font-bold text-[var(--ui-text)] text-[15px] flex items-center gap-2 border-b border-[var(--ui-border)] pb-2">
+          <Box className="w-4 h-4 text-[var(--ui-primary)]" /> Keşfedilen Mimari Makro-Düğümler (Bileşen Kümeleri)
         </h5>
 
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {macroNodes.map((m) => (
-            <div key={m.macro_id} className="p-2.5 rounded bg-slate-900/50 border border-white/5 space-y-1">
+            <div key={m.macro_id} className="p-3.5 rounded-lg bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="font-mono text-cyan-300 font-bold text-[11px]">{m.macro_id}</span>
-                <span className="badge badge-purple text-[9px]">Kat {m.floor_level}</span>
+                <span className="font-mono text-[var(--ui-primary)] font-bold text-[14px]">{m.macro_id}</span>
+                <span className="badge badge-neutral text-[12px] font-mono">Kat {m.floor_level}</span>
               </div>
-              <div className="text-[10px] text-gray-400">
-                Oda Üyeleri: <span className="text-gray-200 font-mono">{m.member_rooms.join(', ')}</span>
+              <div className="text-[13px] text-[var(--ui-text-muted)]">
+                Oda Üyeleri: <span className="text-[var(--ui-text)] font-mono">{m.member_rooms.join(', ')}</span>
               </div>
-              <div className="flex items-center justify-between text-[10px] pt-1 border-t border-white/5">
-                <span>İç Kaçış Derinliği: <strong className={m.internal_exit_depth_m > 15 ? 'text-red-400' : 'text-emerald-400'}>{m.internal_exit_depth_m}m</strong></span>
-                <span>Sınır Kapısı: <code className="text-gray-300">{m.boundary_portals.join(', ')}</code></span>
+              <div className="flex items-center justify-between text-[13px] pt-1.5 border-t border-[var(--ui-border)]">
+                <span>
+                  İç Kaçış Derinliği:{' '}
+                  <strong className={m.internal_exit_depth_m > 15 ? 'text-[var(--ui-danger)]' : 'text-[var(--ui-success)]'}>
+                    {m.internal_exit_depth_m}m
+                  </strong>
+                </span>
+                <span>
+                  Sınır Kapısı: <code className="text-[var(--ui-text)] font-mono">{m.boundary_portals.join(', ')}</code>
+                </span>
               </div>
             </div>
           ))}
@@ -71,3 +80,4 @@ export const SpminerPanel: React.FC<SpminerPanelProps> = ({ data }) => {
     </div>
   );
 };
+

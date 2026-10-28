@@ -19,50 +19,52 @@ export const CadPolygonPanel: React.FC<CadPolygonPanelProps> = ({ data }) => {
   ];
 
   return (
-    <div className="space-y-4 p-4 text-xs font-sans text-gray-200 overflow-y-auto max-h-full">
+    <div className="space-y-4 text-[14px] leading-relaxed text-[var(--ui-text)] w-full">
       {/* Banner */}
-      <div className="p-3.5 rounded-xl bg-gradient-to-r from-blue-950/40 via-cyan-950/40 to-slate-900 border border-blue-500/30">
-        <div className="flex items-center gap-2.5">
-          <Layers className="w-5 h-5 text-blue-400" />
-          <div>
-            <h4 className="font-bold text-white text-xs">Aşama 1: DXF Çizgi Çorbası & Poligonlaşma</h4>
-            <p className="text-[10px] text-gray-400">Kapı Köprüleme · Morfolojik Aşındırma · Türkçe Etiket Sınıflandırma</p>
-          </div>
+      <div className="p-4 rounded-lg bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] flex items-center gap-3.5">
+        <div className="w-10 h-10 rounded-lg bg-[var(--ui-primary)]/15 border border-[var(--ui-primary)]/30 flex items-center justify-center text-[var(--ui-primary)] shrink-0">
+          <Layers className="w-5 h-5" />
+        </div>
+        <div>
+          <h4 className="font-bold text-[var(--ui-text)] text-[16px]">CAD Çizim & Mekan Poligonlaşması</h4>
+          <p className="text-[13px] text-[var(--ui-text-muted)] mt-0.5">
+            Kapı Köprüleme · Morfolojik Aşındırma · Türkçe Etiket Sınıflandırma
+          </p>
         </div>
       </div>
 
       {/* Summary Chips */}
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="glass-panel p-2">
-          <div className="text-[10px] text-gray-400">Toplam Mekan</div>
-          <div className="text-sm font-bold font-mono text-cyan-400">{data?.rooms_analyzed || 28}</div>
+      <div className="grid grid-cols-3 gap-3 text-center">
+        <div className="card p-3">
+          <div className="text-[12px] text-[var(--ui-text-muted)] font-medium">Toplam Mekan</div>
+          <div className="text-xl font-bold font-mono text-[var(--ui-text)] mt-1">{data?.rooms_analyzed || 28}</div>
         </div>
-        <div className="glass-panel p-2">
-          <div className="text-[10px] text-gray-400">Kapı / Geçit</div>
-          <div className="text-sm font-bold font-mono text-cyan-400">{data?.doors_analyzed || 26}</div>
+        <div className="card p-3">
+          <div className="text-[12px] text-[var(--ui-text-muted)] font-medium">Kapı / Geçit</div>
+          <div className="text-xl font-bold font-mono text-[var(--ui-text)] mt-1">{data?.doors_analyzed || 26}</div>
         </div>
-        <div className="glass-panel p-2">
-          <div className="text-[10px] text-gray-400">Kat Sayısı</div>
-          <div className="text-sm font-bold font-mono text-cyan-400">{data?.floors_analyzed?.length || 3}</div>
+        <div className="card p-3">
+          <div className="text-[12px] text-[var(--ui-text-muted)] font-medium">Kat Sayısı</div>
+          <div className="text-xl font-bold font-mono text-[var(--ui-text)] mt-1">{data?.floors_analyzed?.length || 3}</div>
         </div>
       </div>
 
       {/* Rooms Table */}
-      <div className="glass-panel p-3 space-y-2">
-        <h5 className="font-semibold text-gray-300 text-xs flex items-center gap-1.5">
-          <Square className="w-3.5 h-3.5 text-cyan-400" /> Çıkarılan Mekan Poligonları
+      <div className="card p-4 space-y-3">
+        <h5 className="font-bold text-[var(--ui-text)] text-[15px] flex items-center gap-2 border-b border-[var(--ui-border)] pb-2">
+          <Square className="w-4 h-4 text-[var(--ui-primary)]" /> Çıkarılan Mekan Poligonları
         </h5>
 
-        <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
           {rooms.map((r) => (
-            <div key={r.id} className="p-2 rounded bg-slate-900/40 border border-white/5 flex items-center justify-between">
+            <div key={r.id} className="p-3 rounded-md bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] flex items-center justify-between gap-2">
               <div>
-                <span className="font-mono text-white text-[11px] font-semibold">{r.id}</span>
-                <span className="text-[10px] text-gray-400 ml-2">({r.name})</span>
+                <span className="font-mono text-[var(--ui-text)] text-[14px] font-bold">{r.id}</span>
+                <span className="text-[13px] text-[var(--ui-text-muted)] ml-2">({r.name})</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="badge badge-cyan text-[9px]">Kat {r.floor}</span>
-                <span className="font-mono text-gray-300 text-[11px]">{r.area} m²</span>
+              <div className="flex items-center gap-2.5">
+                <span className="badge badge-neutral text-[12px] font-mono">Kat {r.floor}</span>
+                <span className="font-mono text-[var(--ui-text)] text-[13px] font-semibold">{r.area} m²</span>
               </div>
             </div>
           ))}
@@ -71,3 +73,4 @@ export const CadPolygonPanel: React.FC<CadPolygonPanelProps> = ({ data }) => {
     </div>
   );
 };
+

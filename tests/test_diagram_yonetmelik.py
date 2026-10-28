@@ -325,3 +325,113 @@ class TestMultiFloorComprehensiveAuditor:
                 except Exception:
                     pass
 
+
+class TestCanonicalRegulationsAndLiveSync:
+    """
+    Doğrulanmış Resmi Mevzuat Kayıt Defteri ve LiveMevzuatSyncService Birim Testleri.
+    """
+    def test_canonical_urls_contain_exact_three_parameters(self):
+        from diagram_yonetmelik.regulations_library import (
+            REGULATIONS_METADATA,
+            build_canonical_mevzuat_urls,
+        )
+
+        expected_params = {
+            "BYKHY": ("200712937", "3", "5"),
+            "PAIY": ("23722", "7", "5"),
+            "OTOPARK": ("24363", "7", "5"),
+            "SIGINAK": ("9930", "7", "5"),
+        }
+
+        for reg_code, (exp_no, exp_tur, exp_tertip) in expected_params.items():
+            meta = REGULATIONS_METADATA[reg_code]
+            assert meta["mevzuat_no"] == exp_no
+            assert meta["mevzuat_tur"] == exp_tur
+            assert meta["mevzuat_tertip"] == exp_tertip
+
+            iframe_url, page_url, fallback_url = build_canonical_mevzuat_urls(reg_code, "Madde 30")
+
+            # MevzuatNo, MevzuatTur ve MevzuatTertip parametrelerinin eksiksiz varlığı
+            for p in [f"MevzuatNo={exp_no}", f"MevzuatTur={exp_tur}", f"MevzuatTertip={exp_tertip}"]:
+                assert p in iframe_url, f"{reg_code} iframe url eksik parametre: {p}"
+                assert p in page_url, f"{reg_code} page url eksik parametre: {p}"
+
+            # Google yedek arama linki garantisi
+            assert "site%3Amevzuat.gov.tr" in fallback_url or "site:mevzuat.gov.tr" in fallback_url
+            assert "Madde+30" in fallback_url or "Madde" in fallback_url
+
+    def test_regulatory_corpus_chunks_have_canonical_fields(self):
+        from diagram_yonetmelik.regulatory_rag import build_turkish_building_regulations_corpus
+
+        corpus = build_turkish_building_regulations_corpus()
+        assert len(corpus) >= 10
+
+        for chunk in corpus:
+            assert chunk.article_number.startswith("Madde ")
+            assert chunk.official_source_url.startswith("https://www.mevzuat.gov.tr/anasayfa/MevzuatFihristDetayIframe?")
+            assert "MevzuatNo=" in chunk.official_source_url
+            assert "MevzuatTur=" in chunk.official_source_url
+            assert "MevzuatTertip=5" in chunk.official_source_url
+            assert "site:mevzuat.gov.tr" in chunk.fallback_search_url or "site%3Amevzuat.gov.tr" in chunk.fallback_search_url
+            assert len(chunk.sha256_hash) == 64
+            assert isinstance(chunk.mandatory_threshold_summary, dict)
+
+    def test_live_sync_service_threshold_extractor_and_parser(self):
+        from diagram_yonetmelik.regulatory_rag import LiveMevzuatSyncService
+
+        svc = LiveMevzuatSyncService()
+        
+        # 1. Sayısal Eşik Çıkarımı
+        sample_text = (
+            "Kaçış koridoru temiz genişliği en az 1.20 m, rıht yüksekliği 17.5 cm, "
+            "yangın kapısı en az 60 dakika dayanıklı olmalı, pozitif basınçlandırma 50 Pa sağlanmalıdır. "
+            "Kullanıcı yükü 500 kişi üzerinde olan yapılarda hol alanı en az 3.0 m² olmalıdır."
+        )
+        thresholds = svc.extract_numerical_thresholds(sample_text)
+        assert thresholds["count"] >= 5
+        found = thresholds["thresholds_found"]
+        assert any("1.20 m" in t for t in found)
+        assert any("17.5 cm" in t for t in found)
+        assert any("60 dakika" in t for t in found)
+        assert any("50 Pa" in t for t in found)
+        assert any("3.0 m²" in t or "3.0 m2" in t for t in found)
+
+        # 2. Madde Ayrıştırıcı (Article Parser)
+        mock_html = """
+        <html><body>
+        <h1>BİNALARIN YANGINDAN KORUNMASI HAKKINDA YÖNETMELİK</h1>
+        <p>MADDE 30 - Kaçış yolları engellenmemiş ve kesintisiz olmalıdır.</p>
+        <p>MADDE 31 - Yüksek binalarda en az 2 adet kaçış merdiveni yapılması zorunludur.</p>
+        <p>MADDE 34 - Yangın güvenlik holü taban alanı en az 3.0 m² olmalıdır.</p>
+        </body></html>
+        """
+        parsed = svc.parse_regulation_articles(mock_html, "BYKHY")
+        assert len(parsed) == 3
+        assert "30" in parsed
+        assert "31" in parsed
+        assert "34" in parsed
+        assert parsed["30"]["article_number"] == "Madde 30"
+        assert len(parsed["30"]["sha256_hash"]) == 64
+        assert "MevzuatNo=200712937" in parsed["30"]["official_source_url"]
+
+    def test_live_sync_offline_fallback_and_cache_integrity(self):
+        from diagram_yonetmelik.regulatory_rag import get_mevzuat_sync_service
+        import os
+
+        svc = get_mevzuat_sync_service()
+        assert os.path.exists(svc.cache_path)
+        assert "regulations" in svc.cache_data
+        
+        # 4 Yönetmeliğin de önbellekte doğrulanmış maddeleri bulunmalıdır
+        for code in ["BYKHY", "PAIY", "SIGINAK", "OTOPARK"]:
+            assert code in svc.cache_data["regulations"]
+            articles = svc.cache_data["regulations"][code]["articles"]
+            assert len(articles) > 0
+
+        # get_article sorgusu
+        art = svc.get_article("BYKHY", "31")
+        assert art is not None
+        assert "MevzuatNo=200712937" in art["official_source_url"]
+        assert len(art["sha256_hash"]) == 64
+
+

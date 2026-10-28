@@ -1,0 +1,435 @@
+**Özet**
+
+Mimari kat planları/CAD modelleri **RAG (Region Adjacency Graph)** olarak modellenir: odalar, koridorlar, yangın güvenlik holleri ve çıkışlar düğüm; kapılar, geçiş açıklıkları, ortak duvarlar ve yürüyüş mesafeleri kenardır. Amaç iki ana hat: **SPMiner** ile tekrar eden daire/çekirdek modüllerini keşfetmek; **NeuroMatch + hibrit budama** ile yangın/imar yönetmeliği şablonlarını doğrulamak.
+
+**Order Embedding ve altgraf ilişkisi:** Altgraf olma asimetrik ve geçişli bir kısmi sıradır. Hedef graftaki her düğüm çapa alınır, etrafındaki k-hop altgraf çıkarılır; sorgu şablonunda da merkez çapa seçilir. GNN her altgrafı pozitif reel vektör uzayına gömer. Kodda **violation energy**, sorgu vektörünün hedef vektörden büyük olduğu koordinatların pozitif kısmını cezalandırır: altgraf ise enerji sıfır, değilse pozitif olur. **Max-margin loss**, pozitif çiftlerde enerjiyi sıfıra, negatif çiftlerde belirli marjın üstüne iter; negatifler kapı silme, yangın holü etiketini bozma, döngü kırma gibi mutasyonlarla üretilir.
+
+**NeuroMatch vs SPMiner:** NeuroMatch bilinen şablon için tüm düğümlerde enerjiyi eşik altında arayarak adayları matris çarpımı hızında bulur. SPMiner şablonsuz çalışır; tek düğümden başlayıp order embedding uzayında enerjisi çoğu düğümde sıfıra yakın kalan komşuları greedy büyüterek sık tekrar eden modülleri keşfeder.
+
+**1-WL sınırı:** Standart MPNN/GIN/GCN komşuları anonim multiset olarak topladığı için döngüleri ayırt edemez; örneğin ayrık üçgen odalar ile tekil ring koridor aynı gömmeyi üretebilir. Bu yüzden:
+- **ID-GNN:** k-hop altgrafta merkez düğüme binary kimlik kanalı ve merkezden gelen mesaja ayrı ağırlık matrisi ekler; çapa düğümden geçen döngüleri sayar.
+- **RWPE:** her düğüme random-walk geçiş matrisinin köşegenlerinden elde edilen dönüş olasılıklarını özellik olarak ekler; ℓ adıma kadar döngüleri doğrudan kodlar, işaret belirsizliği yoktur, seyrek matris çarpımıyla hızlıdır.
+- **LapPE:** Laplacian özvektörleriyle küresel konum verir; yerel döngüde zayıf, büyük grafta maliyetli ve işaret belirsizliği vardır.
+- **Standart MPNN:** düşük maliyetli ama simetrik odalar/ring koridorları karıştırır.
+
+**Hibrit GNN-PE hattı:** Aşama 1’de GNN order embedding ile tüm düğümler için enerji hesaplanır, eşik altı adaylar tutulur; arama uzayı >%95 daralır. Aşama 2’de yalnızca adayların k-hop altgraflarında **VF2/VF3** çalıştırılarak %100 kesinlik ve tam düğüm eşleşme sözlüğü elde edilir.
+
+**PyG prototipi:** RWPE + ID-GNN ile 1-WL sınırı aşılır; GINEConv kapı/mesafe kenar özelliklerini kullanır; order embedding max-margin loss ile eğitim yapılır; sonuç VF2 doğrulamasıyla kesinleştirilir.  
+
+Kritik Mühendislik İpuçlarının Özeti
+
+Düğüm/kenar özelliklerinin normalleştirilmesi: Oda tipleri (Salon, Koridor, Yangın Holü, Merdiven, Çıkış) one-hot vektör; oda alanı (m²) ve kapı genişliği (cm) ise standartlaştırılmış sürekli değişken olarak x ve edge_attr içine konur. Böylece GNN heterojen mimari özellikleri ölçek uyumlu işler.
+
+Sorgu çapası seçimi: query_pattern içinde çapa olarak her zaman derecesi en yüksek veya en ayırt edici düğüm seçilir (sıradan oda yerine Yangın Güvenlik Holü/Daire Antresi gibi). Bu, gerekli k-hop yarıçapını küçültür (k=2–3 yeterli olur) ve yanlış pozitifleri belirgin biçimde azaltır.
+
+Sert negatif madenciliği: Negatif çiftler rastgele iki altgraf yerine, geçerli yangın kaçış altgrafından tek kapı kenarını silmek veya koridor döngüsünü kırmak gibi kontrollü bozulmalarla üretilir. Bu “sert negatifler” sayesinde Order Embedding uzayı yönetmelik sınırlarını hassas öğrenir.
+
+Order Embedding’de kritik nokta, sert negatiflerin doğru yönde üretilmesidir. Aranan ilişki 
+G
+q
+⊆
+G
+u
+G 
+q
+​
+ ⊆G 
+u
+​
+  olduğundan, geçerli bir sorgu altgrafından kenar veya düğüm silmek onu negatif yapmaz; grafta küçülme olduğu için çoğu zaman hâlâ 
+G
+u
+G 
+u
+​
+ ’nun altgrafı kalır. Gerçek sert negatif için iki yol vardır:
+
+Hedef grafı bozma: Sorgu yönetmeliğe uygun tam şablonken hedef altgraftan kritik bir kapı kenarı silinir veya Yangın Holü düğümünün etiketi Depo/Oda gibi sıradan bir tipe düşürülür.
+
+Sorguya topolojik kısıt ekleme: Hedef altgrafta çıkmaz koridor varken sorguya ekstra döngü kenarı ya da hedefte bulunmayan bir oda tipi eklenir.
+
+Mutasyon sonrası oluşan çiftin graf simetrisi nedeniyle başka bir dal üzerinden yanlışlıkla hâlâ izomorfik kalıp kalmadığı NetworkX VF2 ile kontrol edilir; bu bir yanlış-negatif filtresidir.
+
+Veri yükleme ve eğitim hattı: PyG’de her örnek iki farklı boyutta graftan oluştuğu için standart tek-graf veri sınıfı yerine __inc__ metodu özelleştirilmiş SubgraphPairData ve follow_batch=['x_q','x_u'] kullanılır. Hat; NetworkX mimari kat planı üretimi, pozitif/sert negatif örnekleyici, RWPE + ID-GNN öznitelik zenginleştirmesi ve mini-batch eğitim döngüsünü kapsar.
+
+Kritik mühendislik ipuçları:
+
+Oda tipleri one-hot; oda alanı ve kapı genişliği standartlaştırılmış sürekli değişken olarak düğüm/kenar özniteliklerine konur.
+
+Sorgu çapası olarak her zaman en yüksek dereceli veya en ayırt edici düğüm seçilir (Yangın Güvenlik Holü, Daire Antresi gibi). Bu, gerekli k-hop yarıçapını küçültür ve yanlış pozitifleri azaltır.
+
+Negatifler rastgele çiftlerden değil, geçerli kaçış altgrafından tek kapı silme veya koridor döngüsünü kırma gibi sert negatif madenciliği ile üretilir; böylece Order Embedding uzayı yönetmelik sınırlarını hassas öğrenir.
+GNN Order Embedding filtresinden sonra NetworkX VF2 (GraphMatcher) ile kesin doğrulama yapılırken üç kritik mühendislik detayı vardır:
+
+Monomorfizm vs indüklenmiş izomorfizm: Varsayılan subgraph_isomorphisms_iter indüklenmiş altgraf arar; hedef binada sorguda olmayan ekstra bir kapı varsa eşleşmeyi reddeder. Oysa Order Embedding’in 
+G
+q
+⊆
+G
+u
+G 
+q
+​
+ ⊆G 
+u
+​
+  mantığı ve yönetmelik denetimi monomorfizm ister: sorgudaki tüm odalar/kapılar hedefte bulunmalı, fakat hedefte fazladan kapı/geçiş olabilir. Bu nedenle monomorfizm arayan iterator kullanılmalıdır.
+
+Çapa kilitleme ile 
+O
+(
+1
+)
+O(1) kök budaması: GraphMatcher varsayılan olarak düğüm ID’lerini değil, düğüm öznitelik sözlüklerini karşılaştırır. GNN aşamasında aday düğüm zaten sorgu çapası için seçildiğinden, düğüm sözlüklerine geçici bir çapa bayrağı eklenerek VF2 arama ağacının kökü doğrudan bu iki düğüme kilitlenir. Bu, VF2 doğrulamasını yaklaşık 10–50 kat hızlandırır.
+
+Kümülatif rota kısıtları: VF2’nin kenar eşleştirme fonksiyonu her kapıyı/geçişi tek tek denetler (ör. kapı genişliği ≥ 90 cm). “Toplam kaçış mesafesi en fazla 30 m olmalı” gibi altgrafın bütününe ait kurallar ise VF2 eşleşme sözlüğü üretildikten hemen sonra ikinci bir filtre olarak uygulanır.
+
+Modülün mimari denetimdeki davranışı: GNN’den gelen aday düğüm listesini alır; oda tipi, minimum alan, çapa kilidi, kapı genişliği, yangın dayanımı ve toplam kaçış mesafesi kısıtlarını denetleyerek birebir sorgu düğümü → bina düğümü eşleşmeleri döndürür.
+
+Yanlış pozitif eleme: GNN, topolojik benzerlik nedeniyle iki yangın holünü de aday döndürebilir; VF2’nin kenar kısıtı, kapı genişliği 75 cm olan adayı 90 cm sınırına takılarak eler.
+
+Esnek sorgu kısıtları: Sorgu grafında kesin değerler yerine minimum alan, minimum kapı genişliği ve maksimum mesafe anahtarları tanımlanabilir; fonksiyon bu eşitsizlikleri tek yönlü denetler.
+
+Simetri tekilleştirme: 3+1 daire gibi özdeş oda düğümleri VF2’de yer değiştiren permütasyonlar üretir; aynı bina düğüm kümelerinden oluşan permütasyonlar tekilleştirilerek her modül bir kez raporlanır. 
+
+SPMiner, önceden bir sorgu şablonu vermeden, eğitilmiş Order Embedding uzayının geometrisini kullanarak büyük bina grafındaki sık tekrar eden topolojik modülleri—standart daire tipleri, ıslak hacim çekirdekleri, tekrarlayan kat holleri—otomatik keşfeder.
+
+Matematiksel mekanizma: Klasik sık altgraf madenciliği her büyüme adımında NP-Tam izomorfizm testi çalıştırır. SPMiner ise Order Embedding’in kısmi sıralama özelliği sayesinde bunu 
+O
+(
+1
+)
+O(1) vektör karşılaştırmasına indirger. Geometrik Apriori / anti-monotonluk ilkesine göre bir çapa düğümden başlayıp mevcut altgrafa yeni komşu oda eklendiğinde yeni altgrafın koordinatları her boyutta büyür; dolayısıyla onu kapsayabilecek hedef düğüm sayısı monoton olarak azalır.
+
+İki aşamalı açgözlü seçim: Sınır komşularından biri eklendiğinde aday motifin gömmesi elde edilir. Binadaki aynı çapa oda tipine sahip hedef düğümler üzerinde tahmini destek, ihlal enerjisi eşik altında kalan düğümlerin sayısıdır. Destek tam sayı olduğu için birden fazla komşu aynı desteği verebilir; eşitliği bozmak için en düşük ortalama ihlal enerjisini veren aday seçilir. Yani skor, sert destek + yumuşak ihlal enerjisi tie-breaker bileşimidir.
+
+Kanonik tekilleştirme: Aynı modül farklı dairelerin antresinden büyütülerek keşfedilebilir. Bulunan motifler WL graf hash ile topolojik olarak tekilleştirilir; ardından VF2 ile kesin örnekler listelenir.
+
+Uygulama davranışı: Önceki SpatialOrderGNN ve PyG dönüşüm yapıları kullanılır; bina içindeki tüm aday tohumlardan açgözlü büyüme yapılır ve keşfedilen standart mimari modüller raporlanır.
+
+Üç kritik optimizasyon:
+
+Tohum filtreleme: SPMiner’ı her odadan veya ıslak hacimden başlatmak yerine yalnızca sirkülasyon dağıtıcı düğümlerden (daire antresi, kat koridoru, yangın holü) başlatmak arama uzayını yaklaşık %80 küçültür; çünkü her bağımsız bölüm kendi antresinin k=1 veya k=2 komşuluğunda toplanır.
+
+Hub leakage önleme: Daire antresinden büyürken sınır adaylarına kat koridoru dahil edilirse koridor üzerinden yan dairelere sızılır. Çapa daire antresi ise genel sirkülasyon düğümleri sınır adaylarından hariç tutulur; büyüme dairenin iç sınırlarında kalır.
+
+Hiyerarşik graf sıkıştırma: Bulunan tekrarlı modüller ana bina grafında tek bir makro-düğüme sıkıştırılır; örneğin 500 düğümlü çok katlı bina grafı saniyeler içinde yaklaşık 30 düğümlü çekirdek grafa indirgenir.
+
+Standart NetworkX VF2 ikili çalışır: 15 kısıttan 14’ü sağlansa bile tek bir kapı genişliği ihlali (85 cm < 90 cm) varsa açıklama üretmeden False döner. GNN Order Embedding’ten düşük ihlal enerjisiyle geçip VF2’de elenen adaylar, şablona topolojik olarak çok yakın “kusurlu/eksik imalat” bölgeleridir. Kök nedeni izole etmek için 3 aşamalı kademeli kısıt gevşetme hunisi uygulanır:
+
+Aşama 1 – Parametrik gevşetme: Kapı genişliği, yangın dayanımı, oda alanı ve yürüyüş mesafeleri gevşetilir; çapa kilidi, oda tipleri ve topolojik bağlantılar sabit tutulur. Yakalananlar: dar kapı, yangın kapısı eksikliği, yetersiz alan, uzun koridor segmenti, toplam kaçış rotası aşımı.
+
+Aşama 2 – Fonksiyon/rol gevşetme: Çapa dışındaki düğümlerin room_type etiketleri ve Aşama 1 kısıtları gevşetilir; çapa kilidi ile salt topolojik iskelet sabit kalır. Yakalanan: oda tipi uyuşmazlığı; örneğin koridorun yangın holü yerine normal oda/depo üzerinden merdivene bağlanması.
+
+Aşama 3 – Kısmi hizalama (BFS): Tam altgraf monomorfizmi şartı gevşetilir; yalnızca çapa düğüm eşleşmesi korunur. Yakalanan: iki mekan var ama aralarında kapı yok; şablondaki zorunlu mekan katta hiç yok.
+
+En az ihlalli eşleşme: Simetrik odalar/koridor dalları nedeniyle birden fazla olası eşleşme çıkarsa tüm adaylar puanlanır ve en az kural ihlali içeren en yakın eşleşme raporlanır.
+
+Açıklanabilir VF2 çıktısı: Elenen her GNN adayı için hangi bina düğümünde veya hangi iki mekan arasındaki kapıda ihlal olduğu; beklenen yönetmelik değeri, projedeki mevcut değer ve düzeltme önerisi yapılandırılmış teşhis raporu olarak üretilir. Bu, mimari denetim ile CAD/BIM entegrasyonunda açıklanabilir hata raporu sağlar.
+
+Örnek davranış:
+
+Aday #10 – Aşama 1: Topolojik bağlantı tam; ancak dört parametrik kusur birlikte listelenir: alan 4.2 m² < 5.0 m², yangın kapısı eksik, kapı genişliği 75 cm < 90 cm, toplam kaçış rotası 33 m > 30 m.
+
+Aday #20 – Aşama 2: Kapı geçişleri ve mesafeler uygun; fakat sorgudaki yangın merdiveni düğümü binada normal oda düğümüne bağlanmış → oda tipi uyuşmazlığı.
+
+Aday #30 – Aşama 3: Düğümler kısmi hizalanır; yangın merdivenine bağlı olması gereken dış çıkış düğümünün kat planında hiç bulunmadığı raporlanır.
+
+SPMiner’ın keşfettiği tekrar eden daire/çekirdek altgrafları ana bina grafında tek makro-düğüme indirgenirken standart nx.contracted_nodes doğrudan kullanılmamalıdır; çünkü daire alanı, iç kaçış mesafesi ve dış koridora açılan portal/sınır bilgisi kaybolur. Graf sıkıştırmada dört mühendislik kuralı vardır:
+
+Örtüşen modüllerin çözümü: SPMiner hem 6 odalı 2+1 daire motifini hem de onun alt kümesi olan 3 odalı antre-salon-mutfak motifini bulabilir. Bir oda aynı anda iki makro-düğüme ait olamaz. Motifler önce topolojik hacim skoruna (düğüm sayısı × tekrar sayısı) göre büyükten küçüğe sıralanır; düğümleri kesişmeyen disjoint modüller seçilir.
+
+İç kaçış derinliğinin korunması: Yangın yönetmeliğinde kaçış mesafesi daire kapısından değil, en uzak odadan başlar. Sıkıştırma sırasında daire altgrafı içinde portal düğümüne (antre) olan en uzun iç en-kısa-yol Dijkstra mesafesi hesaplanır ve makro-düğümün internal_max_escape_m özniteliğine yazılır. Böylece küçültülmüş grafta bile toplam kaçış mesafesi hatasız hesaplanır.
+
+Sınır kapılarının (portal edge) aktarımı: Modül içindeki bir düğümden modül dışındaki düğüme (ör. kat koridoru) bağlanan tüm kapılar, yeni makro-düğüm ile dış düğüm arasındaki kenara taşınır; orijinal kapı referansları kenar üzerinde saklanır.
+
+Çift yönlü hiyerarşik geri açma: Her makro-düğüm kendi orijinal NetworkX altgrafını snapshot olarak tutar. Küresel analiz bittikten sonra istenen makro-düğüm tek fonksiyonla orijinal odalarına geri açılabilir.
+
+Sıkıştırılmış graf üzerinde kullanım:
+
+Çok katlı binalarda hızlı yangın kaçış denetimi: 20 kat × 33 oda = 660 düğümlü bina, her katta 1 kat koridoru + 2 yangın çekirdeği + 6 makro-daire olacak şekilde yaklaşık 9 düğüme düşer. effective_worst_case_distance_m kenar özniteliği sayesinde daire içi odalar açılmadan en arka yatak odasından yangın merdivenine toplam mesafe tek adımda kontrol edilir (ör. 7.5 m daire içi + 5.0 m koridor + 4.0 m yangın holü + 2.0 m merdiven = 18.5 m).
+
+Seçici odaklanma (selective zoom-in): Küresel denetimde yalnızca belirli bir makro-dairede kaçış mesafesi aşımı tespit edilirse diğer daireler kapalı tutulur; sadece ilgili makro-düğüm geri açılarak iç odalar incelenir.
+
+Ham Shapely geometrilerinden (DXF, IFC veya vektörel CAD) GNN + VF2 + SPMiner hattıyla uyumlu Bölge Komşuluk Grafı (RAG) üretilirken, idealize graflarda bulunmayan dört fiziksel CAD/geometri problemi çözülür:
+
+Duvar kalınlığı boşluğu: Oda poligonları net alan sınırından çizildiği için komşu odalar doğrudan temas etmez; aralarında 10–30 cm duvar boşluğu olabilir. Kapı çizgisine duvar kalınlığı toleransı kadar tampon uygulanır ve hangi iki odayı bağladığı STRtree mekânsal indeksiyle 
+O
+(
+log
+⁡
+N
+)
+O(logN) sürede bulunur.
+
+İçbükey (L/U tipi) koridorlarda merkez noktası hatası: Standart ağırlık merkezi L veya U koridorda poligon dışına düşebilir. Düğüm referans noktası olarak poligon içinde kalması garanti edilen representative_point veya iç iskelet noktası kullanılır.
+
+Kapı üzerinden kırıklı yürüyüş mesafesi: İki oda arası mesafe kuş uçuşu Öklid değildir; rota kapı orta noktasından geçmelidir. Mesafe, oda içi kapıya uzaklık + kapıdan diğer oda içine uzaklık olarak hesaplanır. L koridorda düz çizgi duvarı kesiyorsa mesafe poligonun iç köşe dönüş noktaları üzerinden, yani iç görünürlük yoluyla hesaplanır.
+
+Açık geçişlerin tespiti: Fiziksel kapı bloğu olmadan birbirine açılan mekânlar (salon–açık mutfak, sahanlık vb.) poligonların ortak sınır uzunluğu kontrol edilerek connection_type="open_passage" olarak grafa eklenir.
+
+Modülün işlevi: Koordinat birimini (mm/cm/m) otomatik ölçekler; STRtree ile kapı–oda eşleşmelerini bulur; L koridorlarda duvar kesmeyen iç yürüyüş mesafelerini hesaplar; önceki modüllerin beklediği düğüm ve kenar özniteliklerini üretir.
+
+Üç kritik geometri detayı:
+
+L koridorda güvenli çapa ve görünürlük rotası: L şeklindeki kat koridorunda standart centroid koridor dışındaki boşluğa düşerken güvenli çapa noktası poligonun iç kesişim bölgesinde seçilir. Antreden yangın holüne yürürken rota duvarın içinden geçmez; L koridorun iç köşesi dönülerek gerçek yürüyüş mesafesi hesaplanır.
+
+Köşeye yakın kapılarda üçüncü oda sızıntısının önlenmesi: Kapı L/T duvar birleşim köşesine çok yakın çizilirse 30 cm’lik kapı tamponu yanlışlıkla üç oda poligonuna değebilir. Kapı eşik merkezine en yakın ilk iki oda seçilerek üçüncü odaya sahte kenar atılması engellenir.
+
+Amerikan mutfak/açık geçiş yakalama: Salon ile açık mutfak arasında kapı nesnesi tanımlı olmasa bile iki poligon ortak sınır paylaşıyorsa geçiş otomatik yakalanır; kapı genişliği ortak sınır uzunluğundan alınır ve open_passage olarak grafa eklenir.
+
+
+Gerçek AutoCAD (.dxf) mimari projelerini ayrıştırıp `FloorplanToRAGExtractor`’a beslerken standart geometri okumanın ötesinde dört temel CAD mühendisliği problemi çözülür:
+
+1. **Birim belirsizliği:** Türkiye’de çizimler çoğunlukla cm veya mm’dir; ancak DXF başlığındaki `INSUNITS` bazen 0 (birimsiz) bırakılır. Ayrıştırıcı hem `INSUNITS` değerini okur hem de poligon alan medyanından otomatik birim doğrulaması yapar.
+
+2. **Eğrisel duvarlar (bulge) ve ucu açık poligonlar:** `LWPOLYLINE` nesnelerinde kemer, cumba veya döner merdiven kovaları `bulge` yay eğriliği içerir. Yalnızca köşe noktalarını almak yerine `ezdxf.path.make_path()` ile yaylar hassas doğru parçalarına düzleştirilir; çizim hatası nedeniyle ucu birkaç cm açık kalmış oda poligonları otomatik kapatılır.
+
+3. **MTEXT biçimlendirme kirliliği ve Türkçe semantik eşleme:** AutoCAD’deki ham metinler (font/kalınlık/paragraf kodları, alan bilgisi karışık) `plain_text()` ile temizlenir, Türkçe karakter normalizasyonundan geçirilir ve STRtree mekânsal birleştirmesiyle içinde bulunduğu oda poligonuna atanır.
+
+4. **INSERT kapı bloklarında açılma yayı (ARC) ve eşik vektörü:** Kapı blokları açılma yayıyla çizildiği için sınırlayıcı kutuları kare olabilir. Kapı genişliği blok içindeki ARC yarıçapından, ATTRIB etiketlerinden veya blok isminden (ör. `YK_100_EI60`) okunur; blok dönüş açısı kullanılarak duvar içindeki tam kapı eşik çizgisi (`LineString`) üretilir.
+
+**Entegrasyon:** `parse_dxf_file(...)` çıktısı—oda girdileri, kapı girdileri ve metreye ölçek—ara dönüşüm olmadan doğrudan `FloorplanToRAGExtractor`’a verilir; `build_rag(..., detect_open_passages=True)` ile bina RAG’ı üretilir.
+
+**Gerçek DXF dosyalarında üç pratik detay:**
+- **“LINE soup” / poligon çizilmemiş dosyalar:** Eski projelerde odalar kapalı `LWPOLYLINE` değil, yalnızca duvar `LINE` çizgileri olabilir. Duvar ve kapalı kapı çizgilerinin birleşimine `shapely.ops.polygonize` uygulanarak kapalı oda poligonları otomatik üretilir.
+- **İç içe bloklar / XREF:** Tüm kat planı tek büyük `INSERT` içinde olabilir. `LWPOLYLINE` sorgusu boş dönerse ana blok referansları `explode()` veya `virtual_entities()` ile açılarak ayrıştırıcı çalıştırılır.
+- **Merdiven ve asansör şaftlarının katlar arası eşleştirilmesi:** Çok katlı projelerde katlar aynı DXF içinde yan yana koordinat ofsetleriyle çizilir. Kat bazlı RAG’lar dikey birleştirilirken ortak referans noktası (ör. yangın merdiveni veya aks kesişimi) hizalanır ve katlar arası `vertical_transition` kenarları eklenir.
+Eski veya standart dışı AutoCAD (.dxf) projelerinde odalar kapalı LWPOLYLINE olarak çizilmez; pafta binlerce ayrık LINE nesnesinden, yani “LINE Soup / Çizgi Çorbası”ndan oluşur. Bu çizgilerde doğrudan shapely.ops.polygonize çalıştırılırsa sıfır oda poligonu elde edilir; çünkü:
+
+Kapı boşlukları sızıntı yapar: Odalar kapı açıklıklarından koridora, koridor da diğer odalara açıldığı için kapalı topolojik halka oluşmaz.
+
+Çift çizgili duvar kalınlığı: Duvarların iç ve dış yüzeyleri iki paralel çizgi olduğundan polygonize, odaları değil duvarın kendi et kalınlığını (ör. 20 cm × 400 cm ince uzun şeritleri) poligon sanır.
+
+Mikro çizim kusurları: Duvar köşeleri birbirine 1.5 cm kala durabilir veya T-birleşimlerinde çizgiler kesişim noktasından bölünmemiş (non-noded) olabilir.
+
+5 aşamalı topolojik poligonlaştırma hattı:
+
+Kapı köprüleme ve kasa genişletme: INSERT bloklarından çıkarılan kapı eşik çizgileri, iki uçtan duvar kalınlığı toleransı kadar (±25 cm) kendi doğrultusunda uzatılır. Kapı çizgisi, yanındaki iç/dış duvar yüzeylerini kesen sızdırmaz bir “sanal baraj” görevi görür.
+
+Uç yakalama ve köşe kapatma: Açıkta kalan duvar uçları STRtree ile taranır; birbirine veya komşu duvar gövdesine snap_tolerance_cm (ör. 5 cm) mesafede olan uçlar otomatik birleştirilir.
+
+Topolojik düğümleme: Tüm duvar çizgileri ve uzatılmış kapı köprüleri tek unary_union işlemine sokulur. GEOS motoru kesişen T-birleşimlerini ve kapı-duvar kesişimlerini otomatik olarak kesişim noktalarından böler (planar noding).
+
+Düzlemsel yüzey çıkarımı: Düğümlenmiş çizgi ağı polygonize ile tüm kapalı düzlemsel yüzeylere—hem odalar hem duvar içi boşluklar—ayrılır.
+
+Duvar içi şeritlerin elenmesi: Gerçek oda/koridor poligonuna içeriden −18 cm negatif tampon uygulandığında poligon ayakta kalır; 20 cm kalınlığındaki duvar içi boşluk poligonu tamamen boşalır. Bu morfolojik filtre duvar et kalınlıklarını ve kolon kesitlerini yüksek kesinlikle temizler.
+
+Modül işlevi: LineSoupRoomPolygonizer yalnızca ayrık LINE nesnelerinden oluşan DXF dokümanını alır; kapı boşluklarını köprüler, mikro boşlukları kapatır, duvar şeritlerini filtreler ve doğrudan FloorplanToRAGExtractor.build_rag() fonksiyonuna girecek List[RoomPolygonInput] çıktısını üretir.
+ ham duvar çizgilerinden (Adım 1) başlayarak mikro-boşlukların kapatılmasını (Adım 2), kapı köprülerinin eklenmesini (Adım 3), polygonize ile tüm kapalı yüzeylerin bulunmasını (Adım 4) ve morfolojik erozyonla $20\text{ cm}$'lik duvar içi şeritlerin elenip yalnızca gerçek odaların bırakılmasını (Adım 5) adım adım ilerlenecek.
+LineSoupRoomPolygonizer, DXFFloorplanParser.parse_dxf_document() içine otomatik yedek mekanizma olarak bağlanır: DXF’te hiç geçerli kapalı LWPOLYLINE bulunamazsa (valid_polys boşsa) ayrıştırıcı otomatik olarak LINE Soup moduna geçer. Bu modda önce ham duvar çizgileri çıkarılır; ardından kapılar, metin anotasyonları ve Türkçe mimari etiket sınıflandırıcısı kullanılarak polygonize_rooms_from_lines ile oda poligonları üretilir.
+
+Kritik performans ipucu: Büyük mimari paftalarda tarama çizgileri (HATCH), mobilya tefriş blokları ve aks/izdüşüm çizgileri (DASHED, DOT, CENTER) unary_union süresini gereksiz uzatır. Ham duvar çizgisi çıkarımı yalnızca duvar/mimari katmanları (A-WALL, DUVAR, KOLON) süzmeli; kesikli çizgi tipli aks ve izdüşüm çizgilerini dışarıda bırakmalıdır. Böylece yedek poligonlaştırma hattı hem doğru hem de performanslı çalışır.
+
+
+`ExplainableVF2Analyzer`’ın ürettiği `CandidateDiagnosticReport` ve `RuleViolationItem` nesneleri orijinal AutoCAD (.dxf) paftası üzerine işlenirken dört temel CAD mühendisliği detayına dikkat edilir:
+
+1. **Birim ters-ölçekleme:** RAG grafı ve Shapely poligonları metre uzayında çalışırken orijinal DXF çoğunlukla cm veya mm uzayındadır. DXF’e geri yazılan poligon köşeleri, yazı yükseklikleri, HATCH ölçekleri ve ok boyutları, birim ölçeğinin tersiyle orijinal çizim birimine dönüştürülür.
+
+2. **İhlal seviyesine göre görsel kodlama:** Kritik ihlaller (yangın kapısı eksikliği, oda tipi uyuşmazlığı, eksik oda düğümü, toplam kaçış rotası aşımı) kırmızı ACI 1 çapraz tarama ve kalın konturla; orta/parametrik ihlaller (kapı genişliği, oda alanı, segment mesafesi) turuncu/sarı ACI 30 uyarı halkası ve kapı revizyon bulutuyla gösterilir.
+
+3. **Arka plan maskeli açıklama balonu ve kılavuz ok:** Mevcut duvar ve ölçü çizgileri üzerinde denetim metninin okunabilmesi için MTEXT’te arka plan maskesi etkinleştirilir; ihlal noktasından yazı balonuna kılavuz çizgi ve hedef halkası çekilir.
+
+4. **Aynı oda/kapıdaki çoklu ihlallerin birleştirilmesi:** Tek kapıda hem dar kapı hem yangın kapısı eksikliği varsa üst üste iki ayrı metin yazılmaz; ihlaller konum bazlı gruplanarak tek maddeli denetim balonunda gösterilir.
+
+**Modül işlevi:** `DXFViolationAnnotator`, önceki adımlardaki `CandidateDiagnosticReport`, `RoomPolygonInput` ve `DoorGeometryInput` yapılarını doğrudan alır; orijinal `ezdxf.Drawing` üzerinde `DENETIM_IHLALLERI` katman grubunu oluşturur ve denetlenmiş paftayı yeni bir .dxf olarak kaydeder.
+
+**Üretilen katman yapısı:**
+- **DENETIM_IHLALLERI:** Kusurlu oda sınır çerçeveleri, kapı uyarı çemberleri/elmas kutuları, eksik kapı veya mesafe aşımı kesikli rota çizgileri. 0.50 mm çizgi kalınlığı; kritikte kırmızı, ölçü ihlallerinde turuncu.
+- **DENETIM_IHLALLERI_HATCH:** Kusurlu odaların içini dolduran ANSI31 çapraz tarama; %65 saydamlık, oda içindeki kolon deliklerini otomatik hariç tutar.
+- **DENETIM_IHLALLERI_METIN:** Kırıklı kılavuz oklar ve arka plan maskeli açıklama balonları; alttaki çizgileri maskeler, aynı kapıdaki çoklu ihlalleri tek balonda maddeler halinde listeler.
+
+
+Aynı DXF model uzayında yan yana/ızgara düzeninde çizilmiş birden fazla kat planını tek bir **3B Bina RAG**’ına dönüştürürken dört temel mekânsal mühendislik problemi çözülür:
+
+1. **Kat adalarının otomatik ayrıştırılması:** Aynı kattaki odalar arasında 10–35 cm duvar boşluğu varken yan yana kat planları arasında genellikle 10–50 m pafta boşluğu bulunur. Tüm oda poligonlarına yaklaşık 2.5 m morfolojik genişletme uygulanıp birleştirildiğinde her kat planı tek bir bağlantılı ada poligonuna dönüşür. STRtree ile her oda, kapı ve pafta başlığı kendi kat adasına atanır.
+
+2. **Zemin kat çıkmalarına dayanıklı düşey çekirdek hizalama:** Zemin katta giriş, dükkân veya teras çıkmaları nedeniyle dış sınır kutusu normal katla çakışmayabilir. Ancak taşıyıcı çekirdek—yangın merdiveni ve asansör kovası—tüm katlarda aynı aks üzerinde yükselir. Bu nedenle katların yerel koordinat dönüşümü dış cepheye göre değil, düşey sirkülasyon şaftlarının ağırlık merkezine göre hizalanır.
+
+3. **Kat seviyesi ve kot çıkarımı:** Her kat adasının çevresindeki başlık metinleri (“BODRUM KAT”, “ZEMİN KAT PLANI”, “1. NORMAL KAT”, “+6.00 KOTU” gibi) ayrıştırılarak kat numarası ve kot yüksekliği belirlenir. Başlık yoksa katlar CAD okuma sırasına göre—soldan sağa \(X_{\min}\), yukarıdan aşağıya \(Y_{\max}\)—sıralanır.
+
+4. **Merdiven eğimi ve sahanlık yürüyüş çarpanı:** İki kat arası kot farkı 3.0 m olsa bile yangın merdivenindeki gerçek kaçış yürüyüşü 3.0 m değildir. Standart rıht/basamak eğimi ve kat arası sahanlık dönüşü nedeniyle efektif dikey yürüyüş, yaklaşık 2.2 çarpanıyla hesaplanır; 3.0 m kat için yaklaşık 6.6 m olur ve dikey kenarlara `vertical_shaft` olarak atanır.
+
+**MultiFloor3DRAGBuilder işlevi:** Yan yana çizilmiş tüm katların oda poligonlarını, kapılarını ve kat başlığı yazılarını alır; katları otomatik kümeler; her katın 2B RAG’ını çıkarır; yangın merdiveni ve asansör şaftlarını 3B uzayda hizalayarak dikey kenarlarla birleştirir; en üst kattan zemin kattaki dış çıkışa 3B yangın kaçış rotasını hesaplanabilir hale getirir.
+
+**Çözülen üç kritik 3B topoloji problemi:**
+- **Çekirdek hizalama:** Zemin kata ek dış çıkış poligonu eklendiğinde kat genişlikleri farklı olsa bile dış sınır kutusu yerine yangın merdiveni ağırlık merkezi yerel çapa seçildiğinden yangın merdiveni ve asansör şaftları tüm katlarda sıfır yatay sapmayla üst üste kilitlenir.
+- **Yangın anında asansörün kapatılması:** 3B grafta hem asansör hem yangın merdiveni dikey kenarlarla bağlıdır. Normal erişilebilirlik analizlerinde asansör kenarları aktiftir; yangın kaçış rotası hesaplanırken `usable_in_fire=False` olan asansör şaftları filtrelenir ve rota zorunlu olarak yangın merdiveni üzerinden dış çıkışa yönlendirilir.
+- **Önceki modüllerle uyum:** Üretilen 3B graftaki düğüm ve kenar öznitelikleri (`room_type`, `area_m2`, `door_width_cm`, `distance_m`, `is_fire_resistant`) SpatialOrderGNN, ArchitecturalSPMiner ve ExplainableVF2Analyzer ile aynı şemadadır. Böylece “Her katın yangın merdiveni zemin katta doğrudan dış çıkışa bağlanıyor mu?” gibi katlar arası 3B şablonlar da GNN ve VF2 ile sorgulanabilir.
+
+Çok katlı 3B Bina RAG’ı üzerinde eşzamanlı tahliye darboğazlarını bulmak için yalnızca Dijkstra/en kısa yol yetmez; farklı katlardan inen akımlar yangın holü ve merdiven kovalarında çarpışarak kuyruk ve geriye tıkanma (spillback/backpressure) oluşturur. Bu nedenle BYKHY ve SFPE hidrolik kalabalık akışı ilkelerine dayalı **iki katmanlı** çözüm kullanılır:
+
+1. **Statik minimum kesit (min-cut):** 3B graf üzerinde Edmonds-Karp ile binanın topolojik darboğaz kesiti bulunur.
+2. **Dinamik zaman-adımlı kuyruk/geri-basınç simülasyonu:** \(\Delta t = 0.5\) sn adımlarla kapı ve merdiven şaftlarındaki akış simüle edilir.
+
+**Matematiksel model:**
+- **Efektif genişlik ve maksimum debi:** Geçiş genişliğinden SFPE sınır katmanı kaybı düşülür; yatay kapılarda kayıp 15 cm, spesifik akış 1.30 kişi/(sn·m); düşey merdivenlerde kayıp 20 cm, iniş akışı 1.00 kişi/(sn·m). Efektif genişlik alt sınırı 0.30 m’dir. Maksimum geçiş kapasitesi, spesifik akış × efektif genişliktir.
+- **Mekân yığılma sınırı:** Bir mekânın anlık barındırma kapasitesi, alan × kritik sıkışma yoğunluğu (3.5 kişi/m²) ile sınırlıdır.
+- **Anlık akış:** Bir adımda \(u \to v\) gerçekleşen akış, üç kısıtın minimumudur: kuyruk talebi, kapı/şaft debi sınırı ve ileri mekândaki boş yer. Boş yer sıfırsa spillback oluşur.
+- **Merdiven birleşme çatışması:** \(k\). kattaki merdiven düğümüne hem üst kattan inenler hem \(k\). kat yangın holünden gelenler yüklenir; sahanlık dolduğunda akımlar yaklaşık %50/%50 öncelikle paylaştırılır ve yangın holü kapısında kuyruk birikir.
+
+**Algoritma çıktıları:** Her kapı ve merdiven şaftı için maksimum kuyruk uzunluğu, toplam bekleme süresi (kişi·saniye), spillback süresi ve BYKHY tahliye süresi uygunluğu raporlanır.
+
+**Yakalanan üç kritik fenomen:**
+- **Alt katlarda merdiven birleşme darboğazı/spillback:** 1. normal kat ve zemin kat merdiven düğümleri kendi kapı genişlikleri uygun olsa bile kritik darboğaz olabilir; üst katlardan inen akım merdiven kovasını doldurunca alt kattaki yangın holünden merdivene giriş geri basınçla kilitlenir.
+- **Yerel dar kapı darboğazı:** Örneğin 2. katta 70 cm’lik yangın holü kapısı maksimum debiyi düşürür, kapı önünde yüksek kuyruk oluşturur; kök neden motoru bunu “yetersiz kapı genişliği (70 cm < 90 cm)” olarak ayırır.
+- **DXF entegrasyonu:** Kritik darboğaz kayıtları `RuleViolationItem`’a dönüştürülerek `EVACUATION_BOTTLENECK` koduyla orijinal DXF paftasına kırmızı darboğaz halkası ve kuyruk süresi etiketi olarak basılabilir.
+
+
+Tahliye simülasyonunda (`Building3DEvacuationSimulator`) tespit edilen **KRİTİK DARBOĞAZ** noktalarını giderirken yapılan yaygın hata, darboğaz görünen her kapıyı doğrudan genişletmektir. Çok katlı binada akış dinamikleri birbirine bağlı olduğundan üst kattaki dar kapıyı genişletmek insanları merdiven kovasına daha hızlı yönlendirip alt kat yangın hollerinde geri-tıkanmayı artırabilir; toplam tahliye süresi hiç düşmeyebilir. Bu nedenle **karşı-olgfusal (counterfactual) optimizasyon** kullanılır.
+
+**Maliyet ve kısıtlar:** Müdahale vektörü kapı genişliği, merdiven şaftı genişliği ve yangın holü alanı değişimlerinden oluşur. Amaç toplam revizyon maliyetini minimize etmektir. Kısıtlar: toplam tahliye süresi hedefin altında kalmalı; hiçbir kenar “KRİTİK DARBOĞAZ” olarak kalmamalı; kapı ve şaft genişletmeleri standart modüler adımlarla ve maksimum sınırlarla yapılmalı. Maliyet ağırlıkları mimari/statik gerçekliği yansıtır: yatay kapı genişletme en ucuz, merdiven kolu genişletme orta, yangın holü büyütme en pahalıdır.
+
+**Geri-basınç kök neden izleme:** Bir kenarda `spillback_blocked_sec > 0` ise tıkanıklık o kenarın dar olmasından değil, ileri mekânın dolması ve oradan çıkan kapı/şaftın yetersiz kalmasından kaynaklanır. Algoritma her iterasyonda aday müdahaleler için karşı-olgfusal simülasyon çalıştırır; **birim maliyet başına marjinal iyileşme** skoru en yüksek müdahaleyi seçer. Skor; tahliye süresi kazancı, kritik darboğaz sayısı azalması ve bekleme süresi iyileşmesini maliyete oranlar. Hedefe ulaşılınca **geriye dönük budama** devreye girer: önceki yerel genişletme, sonraki ana çıkış genişletmesiyle gereksiz hale gelmişse geri alınır ve minimum maliyetli Pareto-optimal revizyon reçetesi döndürülür.
+
+**Çözülen üç mimari karar:**
+- **Alt akış önceliklendirmesi (downstream uncorking):** 1. ve 2. kat yangın hollerinde yığılma görülse bile doğrudan o katların daire kapıları genişletilmez. Geri-basınç izleyici tıkanıklığın zemin kat merdiven çıkış kapısı ve alt kat sahanlıklarından kaynaklandığını tespit eder; zemin çıkış kapısını 100 cm’den 140 cm’ye çıkarmak tüm bina tahliyesini tek başına yaklaşık 15 saniye kısaltabilir.
+- **Yönetmelik alt sınırı + akış optimizasyonu:** 2. kattaki 70 cm’lik kusurlu yangın holü kapısı tüm bina süresini tek başına belirlemese bile kendi katında kuyruk oluşturur ve BYKHY’ye aykırıdır. Algoritma bu kapıyı doğrudan 90 cm yönetmelik sınırına çekerek hem statik VF2 kuralını hem dinamik akış kriterini sağlar.
+- **Sahanlık alanı vs kapı genişliği ödünleşimi:** Yangın holünde yığılmada hol alanını büyütmek pahalı, holden merdivene açılan kapıyı genişletmek çok daha ucuzdur. Kapı genişletme insanları merdivene daha hızlı boşalttığı için çoğu senaryoda duvar yıkmadan, çok daha düşük maliyetle aynı spillback problemini çözer.
+
+
+`CounterfactualOptimizationResult` içindeki tasarım iyileştirme adımları (`DesignInterventionStep`) orijinal AutoCAD (.dxf) paftasına işlenirken, önceki kırmızı `DENETIM_IHLALLERI` katmanıyla görsel olarak çakışmayan ve doğrudan tadilat projesi olarak kullanılabilir dört CAD tekniği uygulanır:
+
+1. **Gerçek AutoCAD revizyon bulutu (REVCLOUD):** Revizyon bulutu kopuk yaylar yerine, köşe noktaları (x, y, bulge) formatında tek kapalı `LWPOLYLINE` olarak üretilir. Hedef sınır kutusu/poligon çevresi sabit kiriş adımlarıyla (yaklaşık 35–45 cm) bölünür; her segmente yaklaşık 0.55 bulge değeri verilerek AutoCAD’in yerel REVCLOUD komutuyla birebir aynı ardışık yay halkası elde edilir.
+
+2. **Duvar ekseninde otomatik kapı genişletme ve ölçülendirme:** Kapının orijinal eşik doğrusundan birim yön ve normal vektörler hesaplanır. Kapı merkezinden iki yana yeni genişliğin yarısı kadar açılarak yeni kapı kasası, yeni açılma yayı ve paralel ölçü çizgisi yeşil katmanda çizilir; öneri değeri (ör. 90 cm, +20 cm) etiketlenir.
+
+3. **Hedef alana göre poligon ofsetleme:** Yangın holü veya sahanlık alanı büyütme önerisinde, mevcut oda poligonunun tam hedef alana ulaşması için gereken dış tampon yarıçapı ikili arama ile milimetrik hesaplanır. Yalnızca eklenen genişleme halkası—yeni poligon eksi eski poligon—yeşil tarama ile vurgulanır.
+
+4. **Pafta üzeri karşı-olgfusal özet anteti:** Paftanın sağ üst köşesine; tahliye süresindeki düşüş, kritik darboğazların sıfırlanması ve toplam tadilat maliyetini gösteren optimizasyon reçete tablosu otomatik yerleştirilir.
+
+**DXF optimizasyon işleyici:** `DXFOptimizationAnnotator`, `CounterfactualOptimizationResult` nesnesini alır; orijinal DXF üzerinde `OPTIMIZASYON_ONERILERI` katman ailesini (yeşil ACI 3 ve camgöbeği ölçü ACI 4) oluşturur; revizyon bulutlarını, yeni kapı geometrilerini ve özet tabloyu paftaya yazar.
+
+**İki katmanlı pafta denetim standardı:** `DXFViolationAnnotator` ve `DXFOptimizationAnnotator` aynı `ezdxf.Drawing` üzerinde ardışık çalıştırıldığında tek .dxf içinde çift katmanlı mühendislik paftası oluşur:
+- **DENETIM_IHLALLERI:** Kırmızı ACI 1 ve turuncu ACI 30; mevcut yönetmelik ihlallerini (ör. 70 cm dar kapı, yetersiz yangın holü) kırmızı tarama ve elmas çerçeveyle işaretler; kılavuz balonları hedefin sağ-üst/sağ-alt eksenine yerleşir.
+- **OPTIMIZASYON_ONERILERI:** Yeşil ACI 3 ve camgöbeği ACI 4; aynı noktada sorunu çözen yeni kapı kasasını, büyütülmüş hol sınırını ve yeşil revizyon bulutunu gösterir; balonlar hedefin sol-üst eksenine yerleşerek kırmızı balonlarla asla üst üste binmez.
+
+
+Mimari uygunluk denetimi (`ExplainableVF2Analyzer`) ve karşı-olgfusal tahliye optimizasyonu (`CounterfactualEvacuationOptimizer`) bulgularını doğrudan saf yoğun vektör benzerliğine dayalı RAG’e göndermek iki mühendislik hatası doğurur:
+
+- **Mekân–mevzuat bağlam kayması:** Örneğin 75 cm kapı ihlalinde saf kosinüs araması, BYKHY’nin kaçış merdiveni kapıları maddesi yerine İmar Yönetmeliği’nin “banyo/WC kapısı 70 cm olabilir” maddesini getirebilir.
+- **Sayısal ve hukuki halüsinasyon:** LLM madde numaralarını karıştırabilir veya VF2/simülatörün kesin farklarını (ör. −15 cm, −18.5 sn) yuvarlayıp değiştirebilir.
+
+Bunun için **hibrit nöro-sembolik yerel RAG** hattı kurulur. Toplam skor üç bileşenin ağırlıklı birleşimidir: **sembolik kural eşleşmesi** (ihlal kodu, müdahale türü, mekân tipi), **sözcüksel BM25** (terim/ölçü eşleşmesi) ve **yoğun vektör kosinüs benzerliği** (semantik gömme).
+
+**Üç katman:**
+1. **Sembolik filtre:** `violation_code`, `action_type`, `room_type` ile yanlış yönetmeliğe (tr_imar/tr_yangin) veya yanlış mekân tipine ait maddelerin havuza girmesini engeller.
+2. **Hibrit indeks:** SentenceTransformer (ör. BAAI/bge-m3) + karakter/kelime N-gram TF-IDF; EI60, EI90, duman sızdırmaz, kaçış mesafesi gibi teknik terimleri ve semantik bağlamı eşleştirir.
+3. **Kanıt-kilitli yerel LLM (Ollama/vLLM):** Doğrulanmış (ihlal, madde, optimizasyon) üçlülerini salt-okunur kabul eder; sayıları ve madde numaralarını değiştirmeden resmi teknik rapor diline dönüştürür.
+
+**Motor bileşenleri:** BYKHY (tr_yangin) ve Planlı Alanlar İmar Yönetmeliği (tr_imar) maddelerini içeren yapılandırılmış yerel mevzuat indeksi; `sentence-transformers` varsa yoğun vektör modeli, yoksa sıfır bağımlılıklı L2-normalize TF-IDF/N-gram vektör motoru; yerel Ollama/vLLM istemcisi; sunucu kapalıyken devreye giren deterministik resmi rapor sentezleyicisi.
+
+**Ayrıştırma hassasiyeti:** Aynı `ROOM_AREA_DEFICIT` kodu mekân tipine göre farklı maddeye bağlanır. `yangin_holu` için tr_yangin — BYKHY Madde 34 (1) (yangın güvenlik holü taban alanı 3 m²’den az, 6 m²’den fazla olamaz) getirilir. `salon` için tr_imar — Planlı Alanlar İmar Yönetmeliği Madde 29 (1) (oturma odası en az 12.00 m², dar kenarı 3.00 m) getirilir; yangın yönetmeliği elenir.
+
+
+Bodrum katlarda **Sığınak Yönetmeliği (tr_siginak)** ve **Otopark Yönetmeliği (tr_otopark)** denetimi, normal kat daire/koridor denetiminden iki temel noktada ayrılır:
+
+1. **Üst katlara bağımlı dinamik kapasite:** Sığınağın minimum net alanı ve kapalı otoparkın minimum araç kapasitesi sabit değildir; üst katlarda SPMiner / 3B RAG ile tespit edilen bağımsız bölüm (daire) sayısına ve brüt/net alan dağılımına göre dinamik hesaplanır.
+
+2. **Pozitif şablon + negatif yasaklı kenar denetimi:**
+   - **Pozitif altgraf (VF2):** Sığınağa koridordan doğrudan girilemez; `kat_koridoru → siginak_holu (gaz sızdırmazlık/dekontaminasyon holü) → siginak → siginak_wc` topolojisi ve ikinci bir acil çıkış bağlantısı zorunludur.
+   - **Negatif yasaklı kenar:** Kapalı otoparktan yangın merdivenine veya asansöre doğrudan kapı açılması yasaktır; arada mutlaka EI60 kapılı bir `yangin_holu` düğümü bulunmalıdır.
+
+**Topolojik ve sayısal kurallar:**
+- **Sığınak alanı:** Sığınak düğümü bodrum katta (`floor_level < 0`) yer alır. Bağımsız bölüm sayısı ≥ 12 veya toplam alan ≥ 1500 m² ise sığınak zorunludur. Net alan, WC ve hol hariç, en az `max(12.0, kişi sayısı × 1.0 m²)` olmalıdır.
+- **Sığınak giriş/hol topolojisi:** Giriş mutlaka sızdırmazlık holünden yapılmalı; kapı genişliği ≥ 90 cm, yangın/gaz dayanımı EI60/EI90 olmalıdır.
+- **Otopark araç adedi:** Daire alanına göre kademeli hesaplanır: <80 m² → 1/3 araç; 80–120 m² → 1/2; 120–180 m² → 1; ≥180 m² → 2. Engelli yeri en az `max(1, ceil(0.05 × toplam araç))` olmalıdır.
+- **Rampa ve manevra:** Dış çıkış ↔ otopark rampası ↔ kapalı otopark bağlantısı; rampa net genişliği ≥ 275 cm, rampa eğimi konutta ≤ %20 (umumi ≤ %15), 90° manevra koridoru ≥ 600 cm.
+- **Duman/gaz izolasyonu:** Kapalı otopark ile yangın merdiveni/asansör arasında doğrudan geçiş yasaktır; yalnızca EI60 kapılı `yangin_holu` üzerinden geçilebilir.
+
+**Entegrasyon:** `HybridRegulatoryRetriever` korpusuna sığınak ve otopark maddeleri eklenir. Bilinen oda tipleri kümesine `siginak`, `siginak_holu`, `siginak_wc`, `kapali_otopark`, `otopark_rampasi`, `engelli_otopark` eklenince hibrit skorlayıcı bodrum kat ihlallerini doğrudan tr_siginak ve tr_otopark maddelerine yönlendirir. `TurkishArchitecturalLabelClassifier.RULES` içine bodrum kat etiketleri eklenir; daha spesifik olan `siginak_holu` ve `siginak_wc` kuralları `siginak` kuralından önce yer almalıdır.
+
+
+`MimarLLMCompliancePipeline`, önceki 10 bağımsız modülü tek bir deterministik veri akışında birleştiren ana orkestratördür. Tek çağrı—`run_full_pipeline(dxf_doc, output_annotated_dxf_path=...)`—ile dokuz aşamalı uçtan uca denetim, optimizasyon ve raporlama üretir.
+
+**Kritik mühendislik problemi – koordinat ve ID senkronizasyonu:** `MultiFloor3DRAGBuilder` katları 3B uzaya taşırken düğüm koordinatlarını yerel çekirdek orijinine göre sıfırlar. Ancak `DXFViolationAnnotator` ve `DXFOptimizationAnnotator` bulguları orijinal AutoCAD paftasına geri çizerken global DXF dünya koordinatlarına ihtiyaç duyar. Orkestratör yerel (`p_local`) ve global (`global_dxf_pos`, `global_portal_xy`) uzay arasındaki dönüşüm köprüsünü otomatik yönetir.
+
+**9 aşamalı akış:**
+1. **DXF ayrıştırma:** Ham .dxf’ten (LWPOLYLINE veya LINE çorbası) oda/kapı girdileri ve birim ölçeği; otomatik yedekli poligon kurtarma.
+2. **3B Bina RAG inşası:** 2B poligonlar, kapılar ve kat başlıklarından `G_3d`, kat adaları ve dikey şaft kenarları.
+3. **SPMiner + GNN:** Tekrar eden standart daire modülleri ve bina programı özeti.
+4. **GNN + VF2 yangın denetimi:** Doğrulanan yangın çekirdekleri; elenen adaylar için teşhis raporları.
+5. **Bodrum mevzuat denetimi:** `tr_siginak` ve `tr_otopark` ihlalleri (sığınak alanı yetersizliği, otoparktan doğrudan merdiven kapısı vb.).
+6. **3B tahliye simülasyonu:** Tüm katlar eşzamanlı; tahliye süresi, spillback ve darboğaz sıralaması.
+7. **Karşı-olgfusal optimizasyon:** Minimum maliyetli kapı/hol/şaft genişletme reçetesi.
+8. **Çift katmanlı DXF yazımı:** `DENETIM_IHLALLERI` kırmızı ihlaller + `OPTIMIZASYON_ONERILERI` yeşil revizyonlar.
+9. **Yerel mevzuat RAG:** Tüm ihlal ve optimizasyon adımları BYKHY, PAİY, Sığınak ve Otopark maddelerine bağlanır; resmi Türkçe Markdown raporu ve denetim izi üretilir.
+
+**Örnek uçtan uca çıktı:** 28 oda poligonu, 26 kapı bloğu; 3 kat adası ve 4 dikey şaft; 1 standart daire tipi → 16 bağımsız bölüm; 3 parametrik/topolojik yangın ihlali; 4 bodrum ihlali; başlangıç tahliye süresi 76.5 sn ve 3 kritik darboğaz; optimizasyonla 58.0 sn (−18.5 sn) ve 0 kritik darboğaz; DXF’te 7 kırmızı hata ve 3 yeşil revizyon; 7 ihlal ve 3 optimizasyon adımı ilgili mevzuat maddelerine bağlanır.
+
+**Üretim ortamı notları:**
+- **Modüler paket yapısı:** Tüm veri yapıları `schemas.py`; CAD girişi `cad_ingest.py`; GNN/VF2/SPMiner/bodrum denetimi `gnn_vf2_engine.py`; tahliye ve optimizasyon `evac_optimizer.py`; DXF raporlama, RAG ve orkestratör `reporting_dxf_rag.py` altında toplanarak döngüsel içe aktarmalar engellenir.
+- **Büyük binalar:** 25 kat/600 oda gibi projelerde Aşama 3’ten sonra `ArchitecturalGraphCoarsener.coarsen_building_graph()` ile daire içleri makro-düğümlere sıkıştırılır; tahliye simülasyonu ve karşı-olgfusal optimizasyon bu sıkıştırılmış graf üzerinde yaklaşık 10 kat daha hızlı çalışır.
+- **JSON denetim izi:** `grounded_evidence_json`, FastAPI/Streamlit/React arayüzüne veya yerel VLM/LLM değerlendirme hattına doğrudan servis edilebilir.
+
+
+`MimarLLMCompliancePipeline` içindeki 10 modülün geometrik, topolojik, diferansiyellenebilir (GNN) ve hukuki (RAG) değişmezlerini doğrulamak için test süiti **8 katmanlı deterministik regresyon matrisi** üzerine kurulur. Her katman hem izole birim testleriyle hem de uçtan uca entegrasyon testiyle doğrulanır.
+
+**Regresyon matrisi ve doğrulanan değişmezler:**
+
+1. **1-WL ve Order Embedding:** `compute_rwpe`, `SpatialOrderGNN`, `OrderEmbeddingLoss`. \(C_6\) tekil halka koridor ile \(C_3 \cup C_3\) iki ayrık üçgen odanın 3. adım rastgele yürüyüş köşegeninde kesin ayrışması; asimetrik kısmi sıralamada \(z_q \preceq z_u \iff E(z_q,z_u)=0\) eşdeğerliği.
+
+2. **CAD ve LINE-Soup kurtarma:** `DXFFloorplanParser`, `WallLinePolygonizer`. 2 cm açık kalan köşelerin kenetlenmesi; kapı boşluklarının sanal köprülerle kapatılması; 20 cm çift çizgili duvar içi şeritlerin negatif tampon erozyonuyla tamamen elenmesi.
+
+3. **3B Bina RAG ve çekirdek kilit:** `FloorplanToRAGExtractor`, `MultiFloor3DRAGBuilder`. L tipi içbükey koridorda referans noktasının poligon içinde kalması; zemin katta cephe çıkması olsa bile yangın merdiveni ve asansör şaftlarının sıfır yatay sapmayla dikey kenetlenmesi; yangın rotasının `usable_in_fire=False` asansörleri dışlaması.
+
+4. **SPMiner ve hiyerarşik sıkıştırma:** `ArchitecturalSPMiner`, `ArchitecturalGraphCoarsener`. Tekrar eden daire modüllerinin WL-Hash ile tekilleştirilmesi; makro-düğüm toplam alanının ve daire içi en uzak kaçış mesafesinin korunması; `expand_macro_node` sonrasında orijinal düğüm ve kenar sayısının kayıpsız geri dönmesi.
+
+5. **3 aşamalı VF2 teşhis hunisi:** `ExplainableVF2Analyzer`. Aşama 1’de parametrik kusurlar (kapı genişliği açığı, yangın kapısı eksikliği), Aşama 2’de yanlış mekân rolü (oda tipi uyuşmazlığı), Aşama 3’te kopuk kapı ve eksik oda yakalanması.
+
+6. **Bodrum kat (tr_siginak ve tr_otopark):** `BasementComplianceAuditor`, `BuildingProgramSummary`. Üst kat daire sayısına göre sığınak alanının ve otopark adedinin dinamik ölçeklenmesi; kapalı otoparktan merdivene/asansöre doğrudan açılan yasaklı kapıların yakalanması.
+
+7. **3B tahliye ve karşı-olgfusal optimizasyon:** `Building3DEvacuationSimulator`, `CounterfactualEvacuationOptimizer`. Alt kat merdiven birleşmelerinde geri-basınç tespiti; optimizasyon sonrasında tahliye süresinin hedefin altında ve kritik darboğaz sayısının sıfır olması; geriye dönük budamanın gereksiz maliyetleri silmesi.
+
+8. **Mevzuat RAG ve çift katmanlı DXF:** `HybridRegulatoryRetriever`, `DXFViolationAnnotator`, `DXFOptimizationAnnotator`. Aynı `ROOM_AREA_DEFICIT` kodunun yangın holü için tr_yangin, salon için tr_imar, sığınak için tr_siginak maddesini getirmesi; DXF’te hem kırmızı `DENETIM_IHLALLERI` hem yeşil `OPTIMIZASYON_ONERILERI` katmanlarının, revizyon bulutunda sıfırdan farklı bulge ile oluşması.
+
+**Test süiti:** `tests/test_mimarllm_v2_regression.py`, önceki adımlardaki tüm sınıfları içe aktarır; her modülü hem izole birim testleriyle hem de uçtan uca entegrasyon testiyle doğrular. Böylece pipeline’ın deterministik davranışı, koordinat/ID senkronizasyonu, GNN–VF2–SPMiner uyumu ve RAG–DXF çıktıları regresyon altına alınır.
+
+
+
+Dosya, **sistem** sisteminin tamamını dört teknik bakışla tanımlar: 5 katmanlı uçtan uca mimari, nöro-sembolik GNN + açıklanabilir VF2 karar hunisi, 3B tahliye ve karşı-olgfusal optimizasyon döngüsü, modüller arası veri/tensör sözleşmesi.
+
+### 1. Uçtan uca 5 katmanlı sistem mimarisi
+
+**Katman 1 – CAD ayrıştırma ve topolojik poligon kurtarma (`cad_ingest.py`):**
+Ham AutoCAD .dxf paftası işlenir. `DXFFloorplanParser` birim/ölçek, LWPOLYLINE bulge yayları ve INSERT kapı ARC’larını okur. Kapalı poligon yoksa otomatik `WallLinePolygonizer` devreye girer: LINE Soup üzerinde snap, H-tipi sanal kapı köprüleme, `unary_union` düğümleme, `polygonize` ve negatif tampon erozyonuyla duvar eti eleme yapılır. STRtree ile MTEXT/TEXT etiketleri poligonlara eşlenir; Türkçe mimari etiket sınıflandırıcısı kullanılır. Çıktı: oda poligonları, kapı geometrileri ve birim ölçeği.
+
+**Katman 2 – 3B Bina RAG ve hiyerarşik sıkıştırma (`spatial_graph.py`):**
+`MultiFloor3DRAGBuilder` kat adalarını buffer+union ile kümeler; L koridorlarda iç görünürlük mesafesi hesaplar; yangın merdiveni çekirdeğine göre katları hizalar; dikey şaft kenarlarını merdiven eğim çarpanıyla kurar. `ArchitecturalSPMiner` Order Embedding uzayında açgözlü büyümeyle tekrar eden modülleri keşfeder, WL-Hash ile tekilleştirir ve bina programı özetini üretir. `ArchitecturalGraphCoarsener` daireleri makro-düğümlere sıkıştırır; iç kaçış derinliğini korur.
+
+**Katman 3A – GNN + VF2 yangın denetimi:**
+`SpatialOrderGNN` RWPE ve ID-GNN çapa bitiyle 1-WL sınırını aşar; GINEConv ve order energy ile adayları milisaniyelerde budar. `ExplainableVF2Analyzer` çapa kilitli monomorfizm doğrulaması yapar; reddedilen adaylar için 3 aşamalı gevşetme hunisiyle açıklanabilir teşhis üretir.
+
+**Katman 3B – Bodrum kat denetimi:**
+`BasementComplianceAuditor` üst kat daire sayısı/alanına göre dinamik sığınak alanı ve otopark araç sayısını denetler; sığınak airlock hol/WC/çıkış topolojisini ve otopark–merdiven/asansör yasaklı doğrudan bağlantılarını yakalar.
+
+**Katman 4 – 3B tahliye ve karşı-olgfusal optimizasyon:**
+`Building3DEvacuationSimulator` asansörsüz çok-kaynaklı DAG, SFPE kapı/şaft debisi, hol doluluk ve spillback testiyle tahliye süresi ve darboğazları üretir. `CounterfactualEvacuationOptimizer` alt akış kök neden izleme, marjinal fayda/maliyet rollout’u ve geriye dönük fazlalık budamasıyla minimum maliyetli tadilat reçetesi çıkarır.
+
+**Katman 5 – Çift katmanlı CAD geri-yazım ve hibrit nöro-sembolik mevzuat RAG (`reporting_dxf_rag.py`):**
+`DXFViolationAnnotator` kırmızı `DENETIM_IHLALLERI` katmanını; `DXFOptimizationAnnotator` yeşil `OPTIMIZASYON_ONERILERI` katmanını (REVCLOUD bulge, yeni kapı/ölçü) üretir. `HybridRegulatoryRetriever` sembolik filtre + BM25 + n-gram/vektör ile BYKHY, PAİY, Sığınak ve Otopark korpusundan madde bağlar; kanıt-kilitli yerel LLM veya deterministik sentezleyici resmi Markdown raporu ve `audit_trail.json` üretir.
+
+### 2. Nöro-sembolik denetim hunisi
+
+Öznitelik zenginleştirmede düğüm vektörü oda tipi one-hot, alan, RWPE köşegenleri ve çapa kimlik bitinden; kenar vektörü kapı genişliği, mesafe ve yangın dayanımından oluşur. GNN order embedding ile aday çapalar ihlal enerjisi eşiği altında filtrelenir. Ardından VF2 monomorfizm doğrulaması çapa kilidi, oda tipi, minimum alan, kapı genişliği, EI60 ve toplam rota kısıtlarıyla yapılır. Eşleşme yoksa açıklanabilir huni: Aşama 1 parametrik gevşetme (kapı genişliği, yangın kapısı, alan, rota); Aşama 2 oda rolü gevşetme (oda tipi uyuşmazlığı); Aşama 3 çapadan BFS kısmi hizalama (kopuk kapı, eksik oda).
+
+### 3. 3B tahliye ve karşı-olgfusal optimizasyon döngüsü
+
+Önce yönlü tahliye DAG’ı kurulur; asansör kenarları kapatılır, çok-kaynaklı Dijkstra ve Edmonds-Karp min-cut ile teorik darboğaz bulunur. Sonra 0.5 sn zaman adımlı hücre-iletim simülasyonu çalışır: gerçekleşen akış kuyruk talebi, kapı/şaft debisi ve hedef mekândaki boş yerin minimumuyla sınırlanır; istenen akış boş yeri aşarsa spillback oluşur. Hedef sağlanmıyorsa geri-basınç kök neden izleme ile alt akış kenarları ve sahanlık alanı aday havuzuna alınır; kapı genişletme, şaft genişletme ve hol alanı büyütme maliyetleriyle karşı-olgfusal rollout yapılır; marjinal fayda/maliyet oranı en yüksek müdahale seçilir. Son olarak gereksiz erken müdahaleler geriye dönük budanır ve Pareto-optimal minimum maliyetli reçete üretilir.
+
+### 4. Modüller arası veri/tensör sözleşmesi
+
+Sözleşme, her sınıfın girdi/çıktı tiplerini ve kritik anahtarlarını tanımlar:
+- DXF ayrıştırıcı: `ezdxf.Drawing` → oda/kapı girdileri + birim ölçeği.
+- 3B RAG: poligon/kapı → `G_3d`; düğümde `pos_3d`, `global_dxf_pos`; kenarda `connection_type`, `usable_in_fire`.
+- GNN: `x:[N,17]`, `edge_attr:[E,3]` → `z:[Batch,64]` pozitif uzay; son sütun ID-GNN çapa biti.
+- SPMiner: `G_3d` → motif listesi; `wl_hash`, `matched_instances`, VF2 desteği.
+- Coarsener: makro kayıt, iç kaçış mesafesi, efektif en kötü durum mesafesi.
+- VF2 analizörü: `diagnostic_stage_reached` ve ihlal listesi.
+- Bodrum denetçisi: sığınak alanı açığı, airlock hol eksikliği, otopark doğrudan merdiven bağlantısı.
+- Tahliye simülatörü: toplam tahliye süresi, spillback süresi, darboğaz şiddet skoru.
+- Optimizasyon: müdahale listesi ve toplam tadilat maliyeti.
+- DXF annotator’lar: çift katmanlı .dxf.
+- RAG rapor üreticisi: resmi Markdown + JSON denetim izi; dört mevzuat indeksi.
+
+

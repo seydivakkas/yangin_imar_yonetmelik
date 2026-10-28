@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Search, ExternalLink, Filter, BookOpen, ChevronRight, SlidersHorizontal, List, LayoutGrid } from 'lucide-react';
 import { RegulationMetadata, RegulationArticleDetail } from '../../types/pipeline';
 
 interface RegulatoryLibraryPanelProps {
@@ -11,15 +12,14 @@ export const RegulatoryLibraryPanel: React.FC<RegulatoryLibraryPanelProps> = ({ 
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedRegFilter, setSelectedRegFilter] = useState<string>('ALL');
+  const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
 
   useEffect(() => {
-    // Tüm yönetmelikleri ve maddeleri getir
     setLoading(true);
     fetch('/api/regulations')
       .then((r) => r.json())
       .then(async (data) => {
         setRegulations(data.regulations || []);
-        // Tüm yönetmeliklerin maddelerini yükle
         const allArts: RegulationArticleDetail[] = [];
         for (const reg of data.regulations) {
           try {
@@ -44,323 +44,323 @@ export const RegulatoryLibraryPanel: React.FC<RegulatoryLibraryPanelProps> = ({ 
 
   const filteredArticles = useMemo(() => {
     return articles.filter((art) => {
-      // Yönetmelik filtreleme
       if (selectedRegFilter !== 'ALL' && art.regulation_code !== selectedRegFilter) {
         return false;
       }
-      // Arama filtresi
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase().trim();
       const matchId = art.article_id.toLowerCase().includes(q);
       const matchNum = art.article_number.toLowerCase().includes(q);
       const matchTitle = art.article_title.toLowerCase().includes(q);
       const matchText = art.full_text_tr.toLowerCase().includes(q);
-      const matchTags = art.tags.some((t) => t.toLowerCase().includes(q));
-      const matchViolations = art.associated_violation_codes.some((v) => v.toLowerCase().includes(q));
+      const matchTags = art.tags?.some((t) => t.toLowerCase().includes(q));
+      const matchViolations = art.associated_violation_codes?.some((v) => v.toLowerCase().includes(q));
       return matchId || matchNum || matchTitle || matchText || matchTags || matchViolations;
     });
   }, [articles, selectedRegFilter, searchQuery]);
 
-  const getRegTheme = (code: string) => {
+  const getRegCodeLabel = (code: string) => {
     switch (code) {
-      case 'BYKHY':
-        return {
-          border: 'border-red-500/40 hover:border-red-500',
-          bg: 'bg-red-950/20',
-          badge: 'bg-red-900/60 text-red-300 border-red-500/40',
-          accent: 'text-red-400',
-        };
-      case 'PAIY':
-        return {
-          border: 'border-cyan-500/40 hover:border-cyan-500',
-          bg: 'bg-cyan-950/20',
-          badge: 'bg-cyan-900/60 text-cyan-300 border-cyan-500/40',
-          accent: 'text-cyan-400',
-        };
-      case 'SIGINAK':
-        return {
-          border: 'border-amber-500/40 hover:border-amber-500',
-          bg: 'bg-amber-950/20',
-          badge: 'bg-amber-900/60 text-amber-300 border-amber-500/40',
-          accent: 'text-amber-400',
-        };
-      case 'OTOPARK':
-        return {
-          border: 'border-emerald-500/40 hover:border-emerald-500',
-          bg: 'bg-emerald-950/20',
-          badge: 'bg-emerald-900/60 text-emerald-300 border-emerald-500/40',
-          accent: 'text-emerald-400',
-        };
-      default:
-        return {
-          border: 'border-slate-700',
-          bg: 'bg-slate-900',
-          badge: 'bg-slate-800 text-slate-300',
-          accent: 'text-slate-400',
-        };
+      case 'BYKHY': return { name: 'Binaların Yangından Korunması Hakkında Yönetmelik', tag: 'Yangın Güvenliği' };
+      case 'PAIY': return { name: 'Planlı Alanlar İmar Yönetmeliği', tag: 'İmar & Boyut' };
+      case 'SIGINAK': return { name: '3194 Sayılı İmar Kanunu Sığınak Yönetmeliği', tag: 'Sığınak Hukuku' };
+      case 'OTOPARK': return { name: 'Otopark Yönetmeliği', tag: 'Otopark Eşikleri' };
+      default: return { name: code, tag: 'Mevzuat' };
     }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Hero Banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 border border-slate-750 p-6 shadow-xl">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-5 text-[var(--ui-text)]">
+      {/* Overview & Regulations Bar */}
+      <div className="p-4 rounded-lg bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-cyan-950 text-cyan-400 border border-cyan-500/40">
-                Resmi Mevzuat Bilgi Sistemi
-              </span>
-              <span className="text-xs text-slate-400">
-                Türkiye Cumhuriyeti Hukuki Standartları
-              </span>
-            </div>
-            <h2 className="text-2xl font-black text-white tracking-tight">
-              4 Temel İmar ve Yangın Mevzuatı Dijital İndeksi
+            <h2 className="text-base font-semibold text-[var(--ui-text)] flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-[var(--ui-primary)]" />
+              Mevzuat Bilgi Sistemi ve İndeks Kütüphanesi
             </h2>
-            <p className="text-sm text-slate-300 mt-1 max-w-3xl leading-relaxed">
-              Her bir madde resmi kanun metni, kesin sayısal eşikler, mimari kontrol listesi, çözüm rehberi ve Mevzuat.gov.tr resmi bağlantısıyla indekslenmiştir. İlgili madde kartına tıklayarak tüm hukuki ve teknik detayları inceleyebilirsiniz.
+            <p className="text-xs text-[var(--ui-text-muted)] mt-0.5">
+              Resmi Gazete yayımlı 4 temel mevzuatın mimari sayısal parametreleri ve denetim kuralları
             </p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="px-4 py-2.5 rounded-xl bg-slate-800/80 border border-slate-700 text-center">
-              <div className="text-xs text-slate-400">Toplam İndeksli Madde</div>
-              <div className="text-xl font-bold text-cyan-400 font-mono">{articles.length} Madde</div>
-            </div>
-            <div className="px-4 py-2.5 rounded-xl bg-slate-800/80 border border-slate-700 text-center">
-              <div className="text-xs text-slate-400">Yönetmelik Sayısı</div>
-              <div className="text-xl font-bold text-emerald-400 font-mono">4 Yönetmelik</div>
-            </div>
+          <div className="flex items-center gap-2">
+            <span className="badge badge-neutral text-xs">
+              Toplam {articles.length} Madde
+            </span>
+            <span className="badge badge-primary text-xs">
+              4 Temel Yönetmelik
+            </span>
           </div>
         </div>
 
-        {/* 4 Yönetmelik Hızlı Seçim Kartları */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
+        {/* 4 Regulation Quick Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 pt-1">
           {regulations.map((reg) => {
-            const theme = getRegTheme(reg.code);
             const isSelected = selectedRegFilter === reg.code;
+            const meta = getRegCodeLabel(reg.code);
             return (
-              <div
+              <button
                 key={reg.code}
                 onClick={() => setSelectedRegFilter(isSelected ? 'ALL' : reg.code)}
-                className={`p-3.5 rounded-xl border transition cursor-pointer flex flex-col justify-between ${
+                className={`p-2.5 rounded-md border text-left transition-all cursor-pointer ${
                   isSelected
-                    ? `${theme.bg} ${theme.border} ring-2 ring-cyan-500/40 shadow-lg`
-                    : 'bg-slate-850/80 border-slate-750 hover:border-slate-600'
+                    ? 'bg-[var(--ui-primary-subtle)] border-[var(--ui-primary)] text-[var(--ui-primary)] shadow-sm'
+                    : 'bg-[var(--ui-bg)] border-[var(--ui-border)] hover:border-[var(--ui-border-light)] text-[var(--ui-text)]'
                 }`}
               >
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className={`px-2 py-0.5 text-xs font-bold rounded border ${theme.badge}`}>
-                      {reg.code}
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-400">
-                      {reg.total_articles} Madde
-                    </span>
-                  </div>
-                  <h3 className="text-xs font-bold text-white line-clamp-1">{reg.name}</h3>
-                  <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
-                    {reg.short_desc}
-                  </p>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-bold text-xs">{reg.code}</span>
+                  <span className="text-xs text-[var(--ui-text-dim)] font-mono">{reg.total_articles} Madde</span>
                 </div>
-
-                <div className="mt-3 pt-2 border-t border-slate-750/60 flex items-center justify-between text-[11px]">
-                  <span className="text-slate-400">R.G. {reg.official_gazette_no}</span>
+                <div className="text-xs text-[var(--ui-text-muted)] truncate font-medium">
+                  {reg.name}
+                </div>
+                <div className="text-[11px] text-[var(--ui-text-dim)] mt-1 flex items-center justify-between">
+                  <span>R.G. {reg.official_gazette_no}</span>
                   <a
                     href={reg.official_url}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-0.5"
+                    className="text-[var(--ui-primary)] hover:underline inline-flex items-center gap-0.5"
+                    title="Mevzuat.gov.tr'de Orijinal Metni İncele"
                   >
-                    Resmi Portal ↗
+                    Resmi Portal <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
       </div>
 
-      {/* Arama ve Filtreleme Kontrolleri */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900 p-4 rounded-xl border border-slate-800">
-        {/* Arama Input */}
+      {/* Filter and Search Bar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 rounded-lg bg-[var(--ui-surface-raised)] border border-[var(--ui-border)]">
+        {/* Search Input */}
         <div className="relative flex-1">
-          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[var(--ui-text-dim)]">
+            <Search className="w-4 h-4" />
           </div>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Mevzuat maddesi ara (örn: Madde 31, yangın merdiveni, sahanlık, sığınak, asansör, BYKHY-M40)..."
-            className="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-850 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition"
+            placeholder="Mevzuat maddesi veya teknik kural ara (örn: Madde 31, merdiven, sığınak, asansör)..."
+            className="input-text pl-9 text-sm"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-[var(--ui-text-dim)] hover:text-[var(--ui-text)]"
             >
               ✕
             </button>
           )}
         </div>
 
-        {/* Yönetmelik Filtre Butonları */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 text-xs font-medium">
-          <button
-            onClick={() => setSelectedRegFilter('ALL')}
-            className={`px-3 py-2 rounded-lg border transition whitespace-nowrap ${
-              selectedRegFilter === 'ALL'
-                ? 'bg-slate-700 border-slate-600 text-white font-semibold'
-                : 'bg-slate-850 border-slate-750 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Tümü ({articles.length})
-          </button>
-          <button
-            onClick={() => setSelectedRegFilter('BYKHY')}
-            className={`px-3 py-2 rounded-lg border transition whitespace-nowrap ${
-              selectedRegFilter === 'BYKHY'
-                ? 'bg-red-950 border-red-500/60 text-red-300 font-semibold'
-                : 'bg-slate-850 border-slate-750 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            BYKHY (Yangın)
-          </button>
-          <button
-            onClick={() => setSelectedRegFilter('PAIY')}
-            className={`px-3 py-2 rounded-lg border transition whitespace-nowrap ${
-              selectedRegFilter === 'PAIY'
-                ? 'bg-cyan-950 border-cyan-500/60 text-cyan-300 font-semibold'
-                : 'bg-slate-850 border-slate-750 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            PAİY (İmar)
-          </button>
-          <button
-            onClick={() => setSelectedRegFilter('SIGINAK')}
-            className={`px-3 py-2 rounded-lg border transition whitespace-nowrap ${
-              selectedRegFilter === 'SIGINAK'
-                ? 'bg-amber-950 border-amber-500/60 text-amber-300 font-semibold'
-                : 'bg-slate-850 border-slate-750 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Sığınak Yön.
-          </button>
-          <button
-            onClick={() => setSelectedRegFilter('OTOPARK')}
-            className={`px-3 py-2 rounded-lg border transition whitespace-nowrap ${
-              selectedRegFilter === 'OTOPARK'
-                ? 'bg-emerald-950 border-emerald-500/60 text-emerald-300 font-semibold'
-                : 'bg-slate-850 border-slate-750 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Otopark Yön.
-          </button>
+        {/* View Mode & Filter Reset */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center bg-[var(--ui-bg)] p-0.5 rounded-md border border-[var(--ui-border)]">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded transition ${
+                viewMode === 'list' ? 'bg-[var(--ui-surface-raised)] text-[var(--ui-primary)] shadow-sm' : 'text-[var(--ui-text-dim)] hover:text-[var(--ui-text)]'
+              }`}
+              title="Liste Görünümü (Okunabilir Mühendislik Tablosu)"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('card')}
+              className={`p-1.5 rounded transition ${
+                viewMode === 'card' ? 'bg-[var(--ui-surface-raised)] text-[var(--ui-primary)] shadow-sm' : 'text-[var(--ui-text-dim)] hover:text-[var(--ui-text)]'
+              }`}
+              title="Kart Görünümü"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </div>
+
+          {selectedRegFilter !== 'ALL' && (
+            <button
+              onClick={() => setSelectedRegFilter('ALL')}
+              className="btn btn-secondary btn-sm text-xs"
+            >
+              Filtreyi Temizle ({selectedRegFilter})
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Maddeler Grid Listesi */}
+      {/* Content Rendering: Loading / Empty / Data */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
-          <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-sm">4 Mevzuat Kütüphanesi İndeksleniyor...</p>
+        <div className="flex flex-col items-center justify-center py-16 text-[var(--ui-text-muted)] space-y-3">
+          <div className="w-7 h-7 border-2 border-[var(--ui-primary)] border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm">Mevzuat kütüphanesi yükleniyor...</p>
         </div>
       ) : filteredArticles.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl bg-slate-900 border border-slate-800 text-slate-400">
-          <div className="text-3xl mb-2">🔍</div>
-          <h3 className="text-base font-semibold text-slate-200">Aramanıza Uygun Madde Bulunamadı</h3>
-          <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-            "{searchQuery}" araması için herhangi bir mevzuat maddesi eşleşmedi. Farklı bir terim deneyebilir veya filtreleri sıfırlayabilirsiniz.
+        <div className="p-10 text-center rounded-lg bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] space-y-3">
+          <div className="w-10 h-10 rounded-full bg-[var(--ui-bg)] flex items-center justify-center mx-auto text-[var(--ui-text-dim)]">
+            <Search className="w-5 h-5" />
+          </div>
+          <h3 className="text-base font-semibold text-[var(--ui-text)]">
+            Eşleşen Mevzuat Maddesi Bulunamadı
+          </h3>
+          <p className="text-sm text-[var(--ui-text-muted)] max-w-md mx-auto">
+            "{searchQuery}" aramanız için sonuç bulunamadı. Arama terimini değiştirebilir veya filtreleri sıfırlayabilirsiniz.
           </p>
           <button
             onClick={() => {
               setSearchQuery('');
               setSelectedRegFilter('ALL');
             }}
-            className="mt-4 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs font-semibold transition"
+            className="btn btn-secondary btn-sm mt-2"
           >
-            Filtreleri Temizle
+            Tüm Maddeleri Göster
           </button>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredArticles.map((art) => {
-            const theme = getRegTheme(art.regulation_code);
-            return (
+      ) : viewMode === 'list' ? (
+        /* Profesyonel Liste / Tablo Görünümü */
+        <div className="space-y-2">
+          <div className="text-xs text-[var(--ui-text-dim)] px-1 font-medium">
+            Gösterilen: {filteredArticles.length} / {articles.length} Madde
+          </div>
+
+          <div className="divide-y divide-[var(--ui-border)] rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] overflow-hidden">
+            {filteredArticles.map((art) => (
               <div
                 key={art.article_id}
                 onClick={() => onOpenArticle(art.article_id)}
-                className={`group p-4 rounded-xl border bg-slate-900/90 hover:bg-slate-850 transition duration-200 cursor-pointer flex flex-col justify-between shadow-sm hover:shadow-lg ${theme.border}`}
+                className="p-3.5 hover:bg-[var(--ui-surface-hover)] transition-colors cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 group"
               >
-                <div>
-                  {/* Başlık ve Kod */}
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className={`px-2 py-0.5 text-xs font-bold rounded border ${theme.badge}`}>
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="badge badge-primary font-mono text-xs font-semibold">
                       {art.article_id}
                     </span>
-                    <span className="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                      {art.mandatory_status}
+                    <span className="badge badge-neutral text-xs">
+                      {art.mandatory_status || 'Zorunlu Hüküm'}
+                    </span>
+                    <span className="text-xs text-[var(--ui-text-dim)]">
+                      {art.chapter}
                     </span>
                   </div>
 
-                  <h3 className="text-sm font-bold text-white group-hover:text-cyan-300 transition line-clamp-1">
+                  <div className="text-sm font-semibold text-[var(--ui-text)] group-hover:text-[var(--ui-primary)] transition-colors">
                     {art.article_number}: {art.article_title}
-                  </h3>
+                  </div>
 
-                  <p className="text-[11px] text-slate-400 mt-1 line-clamp-1">
-                    📂 {art.chapter}
-                  </p>
-
-                  {/* Kanun Özeti */}
-                  <p className="text-xs text-slate-300/80 mt-2.5 line-clamp-3 leading-relaxed font-sans">
+                  <p className="text-xs text-[var(--ui-text-muted)] line-clamp-2 leading-relaxed">
                     {art.full_text_tr.replace(/\n+/g, ' ')}
                   </p>
 
-                  {/* Sayısal Kriter Rozetleri */}
-                  {Object.keys(art.numerical_parameters).length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-3 pt-2.5 border-t border-slate-800">
-                      {Object.entries(art.numerical_parameters).slice(0, 3).map(([k, v], idx) => (
+                  {/* Sayısal Parametreler */}
+                  {Object.keys(art.numerical_parameters || {}).length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap pt-1">
+                      {Object.entries(art.numerical_parameters).slice(0, 4).map(([k, v], idx) => (
                         <span
                           key={idx}
-                          className="px-2 py-0.5 text-[10px] font-mono rounded bg-slate-800/90 text-cyan-400 border border-slate-700/80"
+                          className="px-2 py-0.5 text-xs font-mono rounded bg-[var(--ui-bg)] text-[var(--ui-text-muted)] border border-[var(--ui-border)]"
                         >
-                          {k.replace(/_/g, ' ')}: {String(v)}
+                          <span className="text-[var(--ui-text-dim)]">{k.replace(/_/g, ' ')}:</span>{' '}
+                          <span className="text-[var(--ui-text)] font-semibold">{String(v)}</span>
                         </span>
                       ))}
-                      {Object.keys(art.numerical_parameters).length > 3 && (
-                        <span className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-slate-800 text-slate-400">
-                          +{Object.keys(art.numerical_parameters).length - 3}
+                      {Object.keys(art.numerical_parameters).length > 4 && (
+                        <span className="text-xs text-[var(--ui-text-dim)]">
+                          +{Object.keys(art.numerical_parameters).length - 4} parametre
                         </span>
                       )}
                     </div>
                   )}
                 </div>
 
-                {/* Alt Aksiyon Butonları */}
-                <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                  <span className="text-cyan-400 font-semibold group-hover:underline flex items-center gap-1">
-                    <span>Maddeyi İncele</span>
-                    <span className="group-hover:translate-x-0.5 transition-transform">↗</span>
-                  </span>
+                <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
                   <a
                     href={art.official_url}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="text-[11px] text-slate-400 hover:text-white transition"
-                    title="Mevzuat.gov.tr'de Aç"
+                    className="btn btn-secondary btn-sm text-xs"
+                    title="Mevzuat.gov.tr Resmi Gazete Metnini Aç"
                   >
-                    Resmi Gazete ↗
+                    <span>Resmi Metin</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
                   </a>
+                  <button
+                    onClick={() => onOpenArticle(art.article_id)}
+                    className="btn btn-primary btn-sm text-xs"
+                    title="Madde Analizini ve Sayısal Denetim Detaylarını Aç"
+                  >
+                    <span>İncele</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
-            );
-          })}
+            ))}
+          </div>
+        </div>
+      ) : (
+        /* Düzenli Kart Görünümü (Okunabilir 2-Sütunlu Izgara) */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {filteredArticles.map((art) => (
+            <div
+              key={art.article_id}
+              onClick={() => onOpenArticle(art.article_id)}
+              className="p-4 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] hover:bg-[var(--ui-surface-hover)] hover:border-[var(--ui-border-light)] transition cursor-pointer flex flex-col justify-between space-y-3 group"
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="badge badge-primary font-mono text-xs font-semibold">
+                    {art.article_id}
+                  </span>
+                  <span className="badge badge-neutral text-xs">
+                    {art.mandatory_status || 'Zorunlu'}
+                  </span>
+                </div>
+
+                <div className="text-sm font-semibold text-[var(--ui-text)] group-hover:text-[var(--ui-primary)] transition-colors">
+                  {art.article_number}: {art.article_title}
+                </div>
+
+                <div className="text-xs text-[var(--ui-text-dim)]">
+                  {art.chapter}
+                </div>
+
+                <p className="text-xs text-[var(--ui-text-muted)] line-clamp-3 leading-relaxed">
+                  {art.full_text_tr.replace(/\n+/g, ' ')}
+                </p>
+
+                {Object.keys(art.numerical_parameters || {}).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {Object.entries(art.numerical_parameters).slice(0, 3).map(([k, v], idx) => (
+                      <span
+                        key={idx}
+                        className="px-2 py-0.5 text-xs font-mono rounded bg-[var(--ui-bg)] text-[var(--ui-text-muted)] border border-[var(--ui-border)]"
+                      >
+                        {k.replace(/_/g, ' ')}: <strong className="text-[var(--ui-text)]">{String(v)}</strong>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2.5 border-t border-[var(--ui-border)] flex items-center justify-between text-xs">
+                <span className="text-[var(--ui-primary)] font-medium inline-flex items-center gap-1 group-hover:underline">
+                  Madde Detayı <ChevronRight className="w-3.5 h-3.5" />
+                </span>
+                <a
+                  href={art.official_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-[var(--ui-text-dim)] hover:text-[var(--ui-text)] inline-flex items-center gap-0.5"
+                >
+                  Resmi Portal <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -166,6 +166,7 @@ class FloorplanToRAGExtractor:
                         passage_w = float(inter.length / 2.0) if not inter.is_empty else 0.0
                         if passage_w >= self.min_passage_w_m:
                             dist = float(room_anchors[u].distance(room_anchors[v]))
+                            inter_cent = inter.centroid if not inter.is_empty else Point((room_anchors[u].x + room_anchors[v].x) / 2.0, (room_anchors[u].y + room_anchors[v].y) / 2.0)
                             G.add_edge(
                                 u, v,
                                 door_id=-1,
@@ -173,6 +174,7 @@ class FloorplanToRAGExtractor:
                                 is_fire_resistant=False,
                                 distance_m=dist,
                                 connection_type="open_passage",
+                                portal_xy=(float(inter_cent.x), float(inter_cent.y)),
                                 usable_in_fire=True
                             )
         return G
@@ -221,58 +223,115 @@ class MultiFloor3DRAGBuilder:
         for r, spoly in zip(rooms, polys_scaled):
             assigned = False
             for f_idx, (_, _, isl) in enumerate(island_boxes):
-                if isl.contains(spoly.centroid):
-                    r_copy = RoomPolygonInput(
-                        room_id=r.room_id,
-                        room_type=r.room_type,
-                        polygon=r.polygon,
-                        name_label=r.name_label,
-                        floor_level=f_idx - 1 if len(island_boxes) > 2 else f_idx,  # Bodrum desteği
-                        global_dxf_pos=r.global_dxf_pos
-                    )
-                    floor_rooms[f_idx].append(r_copy)
+                if isl.contains(spoly.centroid) or isl.intersects(spoly.centroid):
+                    floor_rooms[f_idx].append(r)
                     assigned = True
                     break
             if not assigned:
-                floor_rooms[0].append(r)
+                dists = [isl.distance(spoly.centroid) for (_, _, isl) in island_boxes]
+                min_idx = dists.index(min(dists)) if dists else 0
+                floor_rooms[min_idx].append(r)
+
+        # Kat Seviyelerini Semantik ve Geometrik Olarak Belirle
+        def infer_level(r_list: List[RoomPolygonInput], idx: int) -> int:
+            explicit = [r.floor_level for r in r_list if r.floor_level != 0]
+            if explicit and len(set(explicit)) == 1:
+                return explicit[0]
+
+            labels = " ".join([f"{r.name_label or ''} {r.room_type or ''}".lower() for r in r_list])
+            has_basement = any(kw in labels for kw in ["bodrum", "siginak", "sığınak", "otopark", "b-0", "b-1", "b-2", "b1", "b2"])
+            has_ground = any(kw in labels for kw in ["zemin", "dis_cikis", "dış çıkış", "z-", "giriş", "giris"])
+
+            import re
+            m = re.search(r'\b(?:kat\s*|k)(\d{1,2})\b', labels)
+            if not m:
+                m = re.search(r'\b(\d{1,2})\.\s*kat\b', labels)
+            if not m:
+                m = re.search(r'\b(\d{1,2})[-_]', labels)
+
+            if m:
+                val = int(m.group(1))
+                return -val if has_basement and val > 0 else val
+
+            if has_basement and not has_ground:
+                return -1
+            if has_ground:
+                return 0
+
+            return idx
 
         # 3. Her Katın 2B RAG'ını Kur ve 3B Grafa Ekle
         G_3d = nx.Graph()
         floor_clusters: List[FloorClusterInfo] = []
         floor_core_anchors: Dict[int, Tuple[float, float]] = {}
+        from shapely.affinity import translate as shp_translate
 
         for f_idx, r_list in floor_rooms.items():
             if not r_list:
                 continue
-            actual_level = r_list[0].floor_level
+            actual_level = infer_level(r_list, f_idx)
+
+            aligned_r_list = [
+                RoomPolygonInput(
+                    room_id=r.room_id,
+                    room_type=r.room_type,
+                    polygon=r.polygon,
+                    name_label=r.name_label,
+                    floor_level=actual_level,
+                    global_dxf_pos=r.global_dxf_pos
+                ) for r in r_list
+            ]
+
             d_list = [d for d in doors if d.floor_level == actual_level or d.floor_level == 0]
-            G_2d = self.extractor.build_rag(r_list, d_list, detect_open_passages=True)
+            G_2d = self.extractor.build_rag(aligned_r_list, d_list, detect_open_passages=True)
 
             # Çekirdek Hizalama Referansı (Yangın merdiveni veya merkez)
-            core_pt = (0.0, 0.0)
+            core_pt = None
             for n, d in G_2d.nodes(data=True):
                 if d.get("room_type") in ("yangin_merdiveni", "yangin_holu"):
-                    core_pt = d.get("anchor_point", (0.0, 0.0))
+                    core_pt = d.get("anchor_point")
                     break
-            floor_core_anchors[actual_level] = core_pt
+            if core_pt is None:
+                all_pts = [d.get("anchor_point", (0.0, 0.0)) for _, d in G_2d.nodes(data=True)]
+                if all_pts:
+                    core_pt = (sum(p[0] for p in all_pts) / len(all_pts), sum(p[1] for p in all_pts) / len(all_pts))
+                else:
+                    core_pt = (0.0, 0.0)
 
+            floor_core_anchors[actual_level] = core_pt
             elevation_z = float(actual_level * h_floor)
+
             for n, d in G_2d.nodes(data=True):
                 ax, ay = d.get("anchor_point", (0.0, 0.0))
                 # Çekirdeğe göre yerel koordinat
                 lx = ax - core_pt[0]
                 ly = ay - core_pt[1]
+
+                raw_poly = d.get("polygon")
+                if raw_poly and hasattr(raw_poly, "exterior"):
+                    aligned_poly = shp_translate(raw_poly, xoff=-core_pt[0], yoff=-core_pt[1])
+                else:
+                    aligned_poly = raw_poly
+
                 node_attrs = dict(d)
                 node_attrs.update({
                     "pos_3d": (lx, ly, elevation_z),
-                    "pos_2d": (ax, ay),
+                    "pos_2d": (lx, ly),
+                    "raw_pos_2d": (ax, ay),
+                    "polygon": aligned_poly,
+                    "anchor_point": (lx, ly),
                     "floor_level": actual_level,
                     "elevation_z": elevation_z
                 })
                 G_3d.add_node(n, **node_attrs)
 
             for u, v, ed in G_2d.edges(data=True):
-                G_3d.add_edge(u, v, **ed, is_vertical=False)
+                edge_attrs = dict(ed)
+                if "portal_xy" in edge_attrs:
+                    px, py = edge_attrs["portal_xy"]
+                    edge_attrs["portal_xy"] = (px - core_pt[0], py - core_pt[1])
+                    edge_attrs["raw_portal_xy"] = (px, py)
+                G_3d.add_edge(u, v, **edge_attrs, is_vertical=False)
 
             floor_clusters.append(FloorClusterInfo(
                 floor_index=f_idx,
@@ -298,7 +357,14 @@ class MultiFloor3DRAGBuilder:
                 up_nodes = [n for n, d in G_3d.nodes(data=True) if d.get("floor_level") == upper_f and d.get("room_type") == shaft_type]
 
                 for ln in low_nodes:
+                    pos_l = G_3d.nodes[ln].get("pos_3d", (0.0, 0.0, 0.0))
                     for un in up_nodes:
+                        pos_u = G_3d.nodes[un].get("pos_3d", (0.0, 0.0, 0.0))
+                        horiz_dist = math.hypot(pos_u[0] - pos_l[0], pos_u[1] - pos_l[1])
+                        # Yalnızca aynı dikey şaft/kovan içindeki düğümleri bağla (çapraz bina atlamalarını engelle)
+                        if horiz_dist > 3.5:
+                            continue
+
                         usable_fire = (shaft_type == "yangin_merdiveni")
                         dz = abs(G_3d.nodes[un]["elevation_z"] - G_3d.nodes[ln]["elevation_z"])
                         eff_dist = dz * (self.stair_factor if usable_fire else 1.0)

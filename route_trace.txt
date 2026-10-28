@@ -1,0 +1,12 @@
+=== Z-12 SALON TAHLIYE GUZERGAHI VE KOORDINAT IZLEME KAYDI ===
+Basari: True | Mesafe: 18.56m | Sure: 4.89s
+Oda Dizilimi: 6 -> 5 -> 3 -> 4
+
+WP 00: ROOM_CENTROID  at (14.50, 2.50, 0.00) - Z-12 SALON içinde hazırlandı
+WP 01: DOOR_PORTAL    at (13.45, 2.50, 0.50) - Z-12 SALON ➔ Z-11 DAIRE GİRİŞ ANTRE Kapı Açıklığından Geçiş
+WP 02: ROOM_CENTROID  at (13.50, -0.75, 0.00) - Z-11 DAIRE GİRİŞ ANTRE Alanına Ulaşıldı
+WP 03: DOOR_PORTAL    at (12.45, -0.75, -1.00) - Z-11 DAIRE GİRİŞ ANTRE ➔ Z-03 KAT KORIDORU Kapı Açıklığından Geçiş
+WP 04: ROOM_CENTROID  at (8.00, -0.75, 0.00) - Z-03 KAT KORIDORU Alanına Ulaşıldı
+WP 05: DOOR_PORTAL    at (6.00, -0.75, 0.50) - Z-03 KAT KORIDORU ➔ Z-00 DIS CIKIS Kapı Açıklığından Geçiş
+WP 06: ROOM_CENTROID  at (5.50, 2.00, 0.00) - Z-00 DIS CIKIS Alanına Ulaşıldı
+WP 07: MUSTER_POINT   at (3.24, 2.00, -2.26) - Bina Dışı Güvenli Toplanma Alanına Ulaşıldı

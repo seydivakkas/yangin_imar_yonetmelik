@@ -229,6 +229,17 @@ export interface RegulationArticleDetail {
   design_guidance_tr: string;
   associated_violation_codes: string[];
   tags: string[];
+  official_iframe_url?: string;
+  official_page_url?: string;
+  fallback_search_url?: string;
+  sha256_hash?: string;
+  last_synced_at?: string;
+  official_text?: string;
+  mandatory_threshold_summary?: {
+    thresholds_found?: string[];
+    count?: number;
+    summary?: string;
+  };
 }
 
 export type ActiveTab =
