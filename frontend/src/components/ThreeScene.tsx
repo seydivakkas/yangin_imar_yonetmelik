@@ -509,6 +509,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   const buildingGroupRef = useRef<THREE.Group | null>(null);
   const ragGroupRef = useRef<THREE.Group | null>(null);
   const smokeGroupRef = useRef<THREE.Group | null>(null);
+  const bottleneckGroupRef = useRef<THREE.Group | null>(null);
   const mouseRef = useRef(new THREE.Vector2());
   const raycasterRef = useRef(new THREE.Raycaster());
 
@@ -757,6 +758,12 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     scene.add(smokeGroup);
     smokeGroupRef.current = smokeGroup;
 
+    // Dedicated 3D SFPE Thermal Flow & Bottleneck Heatmap Group
+    const bottleneckGroup = new THREE.Group();
+    scene.add(bottleneckGroup);
+    bottleneckGroupRef.current = bottleneckGroup;
+    bottleneckGroup.visible = showBottlenecks;
+
     // Dedicated Fire Origin 3D Group
     const fireGroup = new THREE.Group();
     scene.add(fireGroup);
@@ -834,7 +841,12 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       }
 
       // 1c. SFPE Dynamic Thermal Flow & Bottleneck Wave Animation
-      if (bottleneckVisualsRef.current.length > 0 && showBottlenecks) {
+      if (
+        bottleneckVisualsRef.current.length > 0 &&
+        showBottlenecks &&
+        bottleneckGroupRef.current &&
+        bottleneckGroupRef.current.visible
+      ) {
         const simRatio = Math.min(1.0, Math.max(0.0, curSimTime / 60.0));
         const simPulseIntensity = 0.5 + 0.5 * Math.sin(simRatio * Math.PI);
 
@@ -1376,6 +1388,11 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     while (sGroup.children.length > 0) sGroup.remove(sGroup.children[0]);
     if (fireGroupRef.current) {
       while (fireGroupRef.current.children.length > 0) fireGroupRef.current.remove(fireGroupRef.current.children[0]);
+    }
+    const bnGroup = bottleneckGroupRef.current;
+    if (bnGroup) {
+      while (bnGroup.children.length > 0) bnGroup.remove(bnGroup.children[0]);
+      bnGroup.visible = showBottlenecks;
     }
     bottleneckVisualsRef.current = [];
 
@@ -2683,7 +2700,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             bottleneckMap.get(doorKey2) ||
             bottleneckMap.get(doorKeyId);
 
-          if (showBottlenecks && isFloorActive) {
+          if (isFloorActive) {
             // SFPE Kuyruk ve Bekleme Hesaplaması
             const queueCount =
               matchedBottleneck?.peak_queue_length ??
@@ -2708,6 +2725,11 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
               : isDense
               ? 1.5
               : 1.1;
+
+            // Kapıya özel 3B termal akış grubu (Doğrudan bağımsız bottleneckGroup'a eklenir)
+            const doorThermalGroup = new THREE.Group();
+            doorThermalGroup.position.set(doorPosX, floorY, doorPosZ);
+            doorThermalGroup.rotation.y = -wallAngle;
 
             // 1. Zemin Termal Jet Isı Yayılım Diski (Radial Gradient)
             const discCanvas = document.createElement('canvas');
@@ -2746,7 +2768,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             const discMesh = new THREE.Mesh(discGeo, discMat);
             discMesh.rotation.x = -Math.PI / 2;
             discMesh.position.y = 0.022;
-            doorGroup.add(discMesh);
+            doorThermalGroup.add(discMesh);
 
             // 2. Dinamik Genişleyen Şok Dalgası Halkası (Expanding Shockwave Wave)
             const haloGeo = new THREE.RingGeometry(thermalRadius * 0.82, thermalRadius * 1.15, 32);
@@ -2761,28 +2783,39 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             const haloMesh = new THREE.Mesh(haloGeo, haloMat);
             haloMesh.rotation.x = -Math.PI / 2;
             haloMesh.position.y = 0.026;
-            doorGroup.add(haloMesh);
+            doorThermalGroup.add(haloMesh);
 
-            // 3. 3B Havada Asılı HUD Billboard Bilgi Kartı (Y = 2.45m Kapı Lentosu Üstü)
-            const titleText = isSpill
-              ? `⚠️ KRİTİK DARBOĞAZ: ${queueCount} KİŞİ`
-              : isDense
-              ? `⚡ YOĞUN AKIŞ: ${queueCount} KİŞİ`
-              : `💧 AKICI AKIŞ: ${flowRate} p/s`;
-            const subText = isSpill
-              ? `Bekleme: ${waitTime.toFixed(1)} sn · Geri-Tıkanma (Spillback)`
-              : isDense
-              ? `Bekleme: ${waitTime.toFixed(1)} sn · Kapasite: ${flowRate} p/s`
-              : `Kapasite: ${flowRate} p/s · Hız: 1.19 m/s`;
+            // 3. 3B Havada Asılı HUD Billboard Bilgi Kartı (SADECE Gerçek Darboğazlarda)
+            // Ekranı onlarca kutucukla tıkamamak için akıcı/boş kapılarda kutucuk üretilmez
+            const shouldShowHudCard =
+              isSpill || // Geri-Tıkanma riski
+              isViolated || // Kapı genişlik kusuru (< 90cm)
+              queueCount >= 6 || // Belirgin kuyruk birikmesi (≥ 6 kişi)
+              (activeFloor !== 'all' && isFloorActive && queueCount >= 3); // Tek kat görünümünde kuyruk ≥ 3
 
-            const hudSprite = createBottleneckHudSprite(titleText, subText, severityTier);
-            hudSprite.position.set(0, 2.45, 0);
-            doorGroup.add(hudSprite);
+            let hudSprite: THREE.Sprite | undefined = undefined;
+            if (shouldShowHudCard) {
+              const titleText = isSpill
+                ? `⚠️ KRİTİK DARBOĞAZ: ${queueCount} KİŞİ`
+                : `⚡ YOĞUN AKIŞ: ${queueCount} KİŞİ`;
+              const subText = isSpill
+                ? `Bekleme: ${waitTime.toFixed(1)} sn · Geri-Tıkanma`
+                : `Bekleme: ${waitTime.toFixed(1)} sn · Kapasite: ${flowRate} p/s`;
+
+              hudSprite = createBottleneckHudSprite(titleText, subText, severityTier);
+              hudSprite.position.set(0, 2.45, 0);
+              doorThermalGroup.add(hudSprite);
+            }
+
+            // Bağımsız bottleneckGroup'a ekle (Aç/Kapa tuşu ile 0ms gecikmeyle anında gizlenir/açılır)
+            if (bnGroup) {
+              bnGroup.add(doorThermalGroup);
+            }
 
             // Animasyon döngüsü için referansa kaydet
             bottleneckVisualsRef.current.push({
               id: `bn_${door.source}_${door.target}`,
-              group: doorGroup,
+              group: doorThermalGroup,
               halo: haloMesh,
               thermalDisc: discMesh,
               sprite: hudSprite,
@@ -3618,6 +3651,13 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       renderDebugRoute(route, debugRouteGroupRef.current, showDebugRoute);
     }
   }, [showDebugRoute]);
+
+  // Instant Toggle for 3D Thermal Flow Discs & Bottleneck HUD Boxes (Zero Rebuild Latency)
+  useEffect(() => {
+    if (bottleneckGroupRef.current) {
+      bottleneckGroupRef.current.visible = showBottlenecks;
+    }
+  }, [showBottlenecks]);
 
   // Handler functions for UI actions
   const handleResetToIsometric = () => {

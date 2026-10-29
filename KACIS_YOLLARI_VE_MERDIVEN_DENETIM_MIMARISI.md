@@ -3357,3 +3357,25 @@ AutoCAD'in siyah arka planında beyaz görünen ACI 7 rengi, LibreOffice Draw ve
 - Pafta dış çerçevesini ve antet kutularını **ACI 4 (Camgöbeği)** ve **ACI 8** katmanlarına,
 - Mahal isimlerini **ACI 4** ve **ACI 3 (Zümrüt Yeşil)** katmanlarına sabitlemiştir.
 Böylece pafta hem AutoCAD'in karanlık çalışma alanında hem de LibreOffice Draw ve PDF çıktılarında sıfır kayıp ve yüksek kontrastla görüntülenir.
+
+### 27.6 Kutucuk (HUD Billboard) ve Termal Akis Acma/Kapama (Aktiflestirme/Pasiflestirme) Mimarisi
+
+Kullanicinin 3B sahneyi incelerken veya tahliye simulasyonunu izlerken hem 3B termal isi haritasi akisini (zemin diskleri ve sok dalgalari) hem de 3B havada asili bilgi kutucuklarini (HUD billboard kartuslari) tek bir tusla aninda acip kapatabilmesi icin cift yonlu senkronize kontrol mimarisi kurulmustur:
+
+1. **Bagimsiz Sahne Grubu (ottleneckGroupRef):**
+   * Tum termal akis diskleri, rezonans sok halkalari ve HUD bilgi kartuslari ana bina mimarisinden bagimsiz bir THREE.Group() icerisine yerlestirilmistir.
+   * showBottlenecks durumu alse (PASIF) oldugunda ottleneckGroup.visible = false; komutu **0 milisaniye gecikmeyle (re-render veya bina yeniden insasi gerektirmeden)** calisir. Sahnedeki tum kutucuklar ve termal dalgalar aninda kaybolur.
+   * Tusa tekrar basildiginda (	rue / AKTIF) tum termal akis katmani aninda gorunur hale gelir.
+
+2. **Cift Yonlu Arayuz Dugmeleri (UI Synchronization):**
+   * **3B Sahne Alt Bari (TimelineControls.tsx):** Alev ikonlu Termal Akis: ACIK / Termal Akis: KAPALI dugmesi.
+   * **Tahliye Paneli (EvacuationPanel.tsx):** *"3B SFPE Hidrolik Termal Akis & Kuyruk Skalasi"* karti basligindaki dinamik 3B Termal Akis: AKTIF / 3B Termal Akis: PASIF toggle butonu.
+   * Iki arayuz bileseni de ayni reaktif state (showBottlenecks) uzerinden beslendiginden, birinde yapilan tiklama digerine aninda yansir.
+
+3. **Gorsel Yigilmayi Onleyen Akilli Kademelendirme (HUD Box Clutter Filter):**
+   * 8 veya 12 katli yapilarda 80+ kapinin her birinin ustune kutucuk koyarak mimariyi kapatmak yerine, havada asili HUD bilgi kartusu **yalnizca kayda deger darbogaz noktalarinda** (shouldShowHudCard) acilir:
+     - Geri-Tikanma riski olan kapilar (is_spillback_trigger = true),
+     - Kacis genisligi mevzuat sinirinin altinda olan kapilar (isViolated = true),
+     - Kuyruk birikmesi yuksek olan kapilar (queueCount >= 6),
+     - Veya kullanicinin tek bir kata odaklandigi izole modda (ctiveFloor !== 'all') kuyrugu 3 kisiyi asan kapilar.
+   * Normal akici gecislerde ekrani bogmamak icin yalnizca zemin diski kullanilir, havada asili kutucuk uretilmez.

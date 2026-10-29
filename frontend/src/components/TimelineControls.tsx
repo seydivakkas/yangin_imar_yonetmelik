@@ -207,15 +207,15 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
 
           <button
             onClick={() => setShowBottlenecks(!showBottlenecks)}
-            className={`px-2 py-1 rounded flex items-center gap-1 text-[11px] font-medium transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-2.5 py-1 rounded flex items-center gap-1.5 text-[11px] font-semibold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
               showBottlenecks
-                ? 'bg-[var(--ui-warning)] text-white font-semibold'
-                : 'text-[var(--ui-text-muted)] bg-[var(--ui-surface-raised)] hover:text-white'
+                ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/30'
+                : 'text-[var(--ui-text-muted)] bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] hover:text-white'
             }`}
-            title="SFPE Hidrolik Darboğaz Isı Haritası"
+            title="SFPE Hidrolik Darboğaz & Termal Isı Haritası (Açık / Kapalı)"
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Darboğaz</span>
+            <Flame className={`w-3.5 h-3.5 ${showBottlenecks ? 'animate-pulse text-white' : 'text-amber-400'}`} />
+            <span>{showBottlenecks ? 'Termal Akış: AÇIK' : 'Termal Akış: KAPALI'}</span>
           </button>
 
           {setShowDoorArcs && (

@@ -85,7 +85,7 @@ export const App: React.FC = () => {
   // Feature Toggles
   const [showSmoke, setShowSmoke] = useState<boolean>(true);
   const [showRAGOverlay, setShowRAGOverlay] = useState<boolean>(false);
-  const [showBottlenecks, setShowBottlenecks] = useState<boolean>(true);
+  const [showBottlenecks, setShowBottlenecks] = useState<boolean>(false);
   const [showBIMArchitecture, setShowBIMArchitecture] = useState<boolean>(true);
   const [showDoorArcs, setShowDoorArcs] = useState<boolean>(false);
   const [cadDiffMode, setCadDiffMode] = useState<'before' | 'after' | 'both'>('before');
@@ -523,6 +523,8 @@ export const App: React.FC = () => {
                     playbackSpeed={playbackSpeed}
                     setPlaybackSpeed={setPlaybackSpeed}
                     onSelectElement={(el) => setSelectedElement(el)}
+                    showBottlenecks={showBottlenecks}
+                    setShowBottlenecks={setShowBottlenecks}
                     onRefreshAudit={() => {
                       if (pipelineData?.metadata?.total_floors && pipelineData.metadata.total_floors > 3) {
                         runHighRiseAudit();
