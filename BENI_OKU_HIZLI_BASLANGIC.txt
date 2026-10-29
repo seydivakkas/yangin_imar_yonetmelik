@@ -67,3 +67,4 @@ Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas)
 Bu yazılım ve ilgili tüm dosyalar yalnızca görüntüleme ve eğitim amaçlıdır.
 İzinsiz kopyalanamaz, çoğaltılamaz veya ticari amaçla kullanılamaz.
 ================================================================================
+

@@ -89,3 +89,4 @@ echo    - Sistemi kapatmak istediginizde "durdur.bat" dosyasina tiklayiniz.
 echo ======================================================================
 timeout /t 5 >nul
 exit
+
