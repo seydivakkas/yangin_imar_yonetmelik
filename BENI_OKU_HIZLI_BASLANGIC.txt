@@ -1,0 +1,69 @@
+================================================================================
+   DiagramYönetmelik — Nöro-Sembolik 3B Yangın ve İmar Mevzuat Denetim Platformu
+                     HIZLI BAŞLANGIÇ VE KULLANIM REHBERİ
+================================================================================
+
+Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas) — Tüm Hakları Saklıdır.
+
+--------------------------------------------------------------------------------
+1. TEK TIKLA ÇALIŞTIRMA (EN KOLAY YÖNTEM)
+--------------------------------------------------------------------------------
+1. İndirdiğiniz zip arşivini masaüstünüze veya istediğiniz bir klasöre çıkartın.
+2. Klasör içindeki "TEK_TIKLA_BASLAT.bat" dosyasına çift tıklayın.
+3. Başlatıcı otomatik olarak:
+   - Bilgisayarınızdaki Python ortamını kontrol eder,
+   - Gerekli kütüphaneleri (FastAPI, ezdxf, networkx, torch vb.) ilk çalıştırmada
+     otomatik olarak yükler,
+   - Hem Backend analiz motorunu hem de 3B WebGL arayüzünü ayağa kaldırır,
+   - Varsayılan tarayıcınızda uygulamayı açar:
+     -> Standalone / Hızlı Mod: http://localhost:8790
+     -> Geliştirici Modu (Node.js varsa): http://localhost:5173
+
+* Not: Bilgisayarınızda Python yüklü değilse https://www.python.org/downloads/
+  adresinden indirip kurabilirsiniz. Kurulum ekranında "Add python.exe to PATH"
+  seçeneğini işaretlemeyi unutmayınız.
+
+--------------------------------------------------------------------------------
+2. UYGULAMA İLE NELER YAPABİLİRSİNİZ?
+--------------------------------------------------------------------------------
+- 3B İnteraktif Bina Gezgini:
+  Sol paneldeki "Örnekleri Yükle" düğmesi ile 8 katlı veya 12 katlı yüksek yapıyı
+  tek tıkla açabilir, 3B uzayda fare ile serbestçe gezinebilirsiniz.
+- SFPE Hidrolik Yangın Tahliye Simülasyonu:
+  Ajanların bina içindeki kaçış koridorlarından ve yangın merdivenlerinden
+  tahliyesini canlı simüle edin.
+- 3B Termal Akış ve Darboğaz Isı Haritası:
+  Zaman çizelgesindeki "Termal Akış" veya tahliye panelindeki toggle butonu ile
+  kapılardaki sıkışmaları ve geri-tıkanmaları renkli şok dalgalarıyla izleyin.
+- Mevzuat Denetimi & İmar Onayı:
+  BYKHY Yangın ve PAİY İmar yönetmeliklerine göre kritik ihlalleri, dar kapıları
+  ve yetersiz kaçış yollarını anında raporlayın.
+- Düzenlenmiş DXF Paftası İndirme:
+  "Denetlenmiş DXF İndir" butonuyla AutoCAD ve LibreOffice Draw uyumlu,
+  DENETIM_IHLALLERI ve OPTIMIZASYON_ONERILERI katmanları işlenmiş paftayı indirin.
+
+--------------------------------------------------------------------------------
+3. HAZIR ÖRNEK PAFTALAR
+--------------------------------------------------------------------------------
+Klasör içinde test edebileceğiniz hazır DXF dosyaları yer almaktadır:
+- 8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf
+- sample_high_rise_12_story.dxf
+- sample_building.dxf
+
+Arayüzdeki "DXF Paftası Yükle" alanına bu dosyaları veya kendi mimari
+çizimlerinizi sürükleyip bırakarak analiz ettirebilirsiniz.
+
+--------------------------------------------------------------------------------
+4. SİSTEMİ KAPATMA
+--------------------------------------------------------------------------------
+Çalışan servisleri ve pencereleri tek seferde güvenle kapatmak için
+klasör içindeki "durdur.bat" dosyasına çift tıklayınız.
+
+--------------------------------------------------------------------------------
+5. LİSANS BİLGİSİ
+--------------------------------------------------------------------------------
+ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR
+Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas)
+Bu yazılım ve ilgili tüm dosyalar yalnızca görüntüleme ve eğitim amaçlıdır.
+İzinsiz kopyalanamaz, çoğaltılamaz veya ticari amaçla kullanılamaz.
+================================================================================

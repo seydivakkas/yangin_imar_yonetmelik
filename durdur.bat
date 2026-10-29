@@ -21,6 +21,7 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr :5173 ^| findstr LISTENING') 
 :: Başlık ile açılmış cmd pencerelerini de temizle
 taskkill /fi "WINDOWTITLE eq DiagramYonetmelik - Backend*" /f /t >nul 2>&1
 taskkill /fi "WINDOWTITLE eq DiagramYonetmelik - Frontend*" /f /t >nul 2>&1
+taskkill /fi "WINDOWTITLE eq DiagramYonetmelik - Platform*" /f /t >nul 2>&1
 
 echo.
 echo Tum servisler basariyla durduruldu.
