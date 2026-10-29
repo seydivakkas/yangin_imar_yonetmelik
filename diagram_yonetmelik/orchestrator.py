@@ -33,6 +33,7 @@ from diagram_yonetmelik.evacuation import (
 from diagram_yonetmelik.dxf_annotator import (
     DXFViolationAnnotator,
     DXFOptimizationAnnotator,
+    DXFAuditTableAnnotator,
 )
 from diagram_yonetmelik.regulatory_rag import (
     HybridRegulatoryRetriever,
@@ -55,7 +56,11 @@ class DiagramYonetmelikPipeline:
         self.gnn = SpatialOrderGNN()
         self.gnn.eval()
         self.spminer = ArchitecturalSPMiner(gnn_model=self.gnn, min_support=self.config.spminer_min_support)
-        self.vf2_analyzer = ExplainableVF2Analyzer(max_escape_distance_m=self.config.max_escape_route_distance_m)
+        self.vf2_analyzer = ExplainableVF2Analyzer(
+            max_escape_distance_m=self.config.max_escape_route_distance_m,
+            gnn_model=self.gnn,
+            energy_threshold=self.config.gnn_violation_threshold
+        )
         self.basement_auditor = BasementComplianceAuditor()
         self.multi_floor_auditor = MultiFloorComprehensiveAuditor(
             default_floor_height_m=self.config.default_floor_height_m,
@@ -65,6 +70,7 @@ class DiagramYonetmelikPipeline:
         self.optimizer = CounterfactualEvacuationOptimizer()
         self.violation_annotator = DXFViolationAnnotator()
         self.opt_annotator = DXFOptimizationAnnotator()
+        self.table_annotator = DXFAuditTableAnnotator()
         self.retriever = HybridRegulatoryRetriever()
         self.report_gen = LocalMimarLLMReportGenerator(
             retriever=self.retriever,
@@ -109,17 +115,27 @@ class DiagramYonetmelikPipeline:
         # AŞAMA 4: GNN + VF2 YANGIN KAÇIŞ DENETİMİ
         # -------------------------------------------------------------
         t0 = time.perf_counter()
-        fire_query = self.vf2_analyzer.build_standard_fire_core_query()
         verified_cores: List[int] = []
         diagnostic_reports: List[CandidateDiagnosticReport] = []
 
-        candidate_anchors = [
-            n for n, d in G_3d.nodes(data=True)
-            if d.get("room_type") in ("yangin_holu", "yangin_merdiveni", "kat_koridoru")
-        ]
+        # Her katta öncelikle yangın güvenlik holleri çapa adayıdır
+        # Yangın holü bulunmayan katlarda merdivenler aday alınır
+        floors_in_g = set(d.get("floor_level", 0) for _, d in G_3d.nodes(data=True))
+        candidate_anchors: List[int] = []
+        for fl in floors_in_g:
+            fl_halls = [n for n, d in G_3d.nodes(data=True) if d.get("floor_level") == fl and d.get("room_type") == "yangin_holu"]
+            if fl_halls:
+                candidate_anchors.extend(fl_halls)
+            else:
+                fl_stairs = [n for n, d in G_3d.nodes(data=True) if d.get("floor_level") == fl and d.get("room_type") == "yangin_merdiveni"]
+                if fl_stairs:
+                    candidate_anchors.extend(fl_stairs)
 
         for anc in candidate_anchors:
+            fl = G_3d.nodes[anc].get("floor_level", 0)
             sub = extract_anchored_k_hop(G_3d, anc, k_hops=self.config.k_hops_gnn)
+            has_exit = any(G_3d.nodes[x].get("room_type") == "dis_cikis" for x in sub.nodes())
+            fire_query = self.vf2_analyzer.build_standard_fire_core_query(include_exit=(fl == 0 and has_exit))
             report = self.vf2_analyzer.explain_candidate(fire_query, sub, anc)
             if report.is_fully_compliant:
                 verified_cores.append(anc)
@@ -132,6 +148,8 @@ class DiagramYonetmelikPipeline:
         # (BYKHY M.31/33/34/40/48/52/53/60/62, PAİY M.5/29/30/34/36, Sığınak, Otopark)
         # -------------------------------------------------------------
         t0 = time.perf_counter()
+        has_sprinkler_indicator = any("sprinkler" in str(d.get("name_label", "")).lower() for _, d in G_3d.nodes(data=True)) or getattr(self.config, "sprinkler_enabled", False)
+        self.multi_floor_auditor.sprinkler = has_sprinkler_indicator
         existing_violation_keys: Set[Tuple[str, Any, Any, int]] = set()
         for rep in diagnostic_reports:
             for v in rep.violations:
@@ -169,12 +187,15 @@ class DiagramYonetmelikPipeline:
         metrics["stage7_optimization_sec"] = round(time.perf_counter() - t0, 3)
 
         # -------------------------------------------------------------
-        # AŞAMA 8: ÇİFT KATMANLI AUTOCAD (.DXF) GERİ YAZIM
+        # AŞAMA 8: ÇİFT KATMANLI VE CAD TABLOLU AUTOCAD (.DXF) GERİ YAZIM
         # -------------------------------------------------------------
         t0 = time.perf_counter()
         annotated_doc = copy.deepcopy(dxf_doc)
         annotated_doc = self.violation_annotator.annotate_violations_on_dxf(annotated_doc, diagnostic_reports, rooms, scale)
         annotated_doc = self.opt_annotator.annotate_optimizations_on_dxf(annotated_doc, opt_result, scale)
+        annotated_doc = self.table_annotator.annotate_audit_table_on_dxf(
+            annotated_doc, diagnostic_reports, opt_result, rooms, doors, scale, project_title=self.config.project_title
+        )
 
         if output_annotated_dxf_path:
             annotated_doc.saveas(output_annotated_dxf_path)
@@ -270,6 +291,14 @@ class DiagramYonetmelikPipeline:
             unit_scale=scale
         )
 
+        # DXF Anotasyonları ve Denetim Tablosu
+        annotated_doc = copy.deepcopy(dxf_doc)
+        annotated_doc = self.violation_annotator.annotate_violations_on_dxf(annotated_doc, diagnostics, rooms, scale)
+        annotated_doc = self.opt_annotator.annotate_optimizations_on_dxf(annotated_doc, opt_res, scale)
+        annotated_doc = self.table_annotator.annotate_audit_table_on_dxf(
+            annotated_doc, diagnostics, opt_res, rooms, doors, scale, project_title=self.config.project_title
+        )
+
         return DiagramYonetmelikPipelineOutput(
             unit_scale_to_meters=scale,
             used_line_soup_fallback=False,
@@ -280,7 +309,7 @@ class DiagramYonetmelikPipeline:
             diagnostic_reports=diagnostics,
             baseline_evacuation_report=baseline_evac,
             counterfactual_optimization=opt_res,
-            annotated_dxf_document=dxf_doc,
+            annotated_dxf_document=annotated_doc,
             official_markdown_report=report_md,
             grounded_evidence_json=ev_json,
             execution_metrics={"total_pipeline_latency_sec": 0.05}

@@ -72,6 +72,10 @@ export interface RouteResult {
   waypoints: EvacuationWaypoint[];
   pathNodes: string[];
   totalDistanceM: number;
+  horizontalDistanceM?: number;
+  verticalDistanceM?: number;
+  equivalentDistanceM?: number;
+  stairFactor?: number;
   estimatedTimeSec: number;
   failureReasonTr: string;
 }
@@ -325,8 +329,12 @@ export function computeDijkstraRoute(
 
     const rSrc = roomMap.get(s)!;
     const rTgt = roomMap.get(t)!;
+    const isVert = Boolean(d.is_vertical) || rSrc.floor_level !== rTgt.floor_level;
     const dist = rSrc.pos.distanceTo(rTgt.pos);
-    const weight = Math.max(0.6, dist);
+    // BYKHY M.39 & SFPE Standartları: Düşey merdiven yürüyüşü 2.2 kat daha fazla direnç ve süre gerektirir
+    const weight = isVert
+      ? Math.max(1.0, Math.abs(rSrc.pos.y - rTgt.pos.y) * 2.2)
+      : Math.max(0.6, dist);
 
     adj.get(s)?.push({ target: t, door: d, weight });
     adj.get(t)?.push({ target: s, door: d, weight });
@@ -366,8 +374,9 @@ export function computeDijkstraRoute(
             usable_in_fire: true,
             is_vertical: true,
           };
-          adj.get(id1)?.push({ target: id2, door: vertDoor, weight: vertDist * 1.5 });
-          adj.get(id2)?.push({ target: id1, door: vertDoor, weight: vertDist * 1.5 });
+          // 2.2x SFPE Düşey Kaçış Yürüme Direnci Faktörü
+          adj.get(id1)?.push({ target: id2, door: vertDoor, weight: vertDist * 2.2 });
+          adj.get(id2)?.push({ target: id1, door: vertDoor, weight: vertDist * 2.2 });
         }
       });
     });
@@ -605,11 +614,27 @@ export function computeDijkstraRoute(
     descriptionTr: 'Güvenli Dış Toplanma Alanına Ulaşıldı (Tahliye Başarılı)',
   });
 
-  // Toplam mesafe hesabı
+  // Toplam mesafe hesabı (SFPE Düşey 2.2x Efor Ayrımı ile)
   let totalDistanceM = 0;
+  let horizontalDistanceM = 0;
+  let verticalDistanceM = 0;
+
   for (let w = 0; w < waypoints.length - 1; w++) {
-    totalDistanceM += waypoints[w].pos.distanceTo(waypoints[w + 1].pos);
+    const p1 = waypoints[w].pos;
+    const p2 = waypoints[w + 1].pos;
+    const segDist = p1.distanceTo(p2);
+    totalDistanceM += segDist;
+
+    const horizSeg = Math.hypot(p2.x - p1.x, p2.z - p1.z);
+    const vertSeg = Math.abs(p2.y - p1.y);
+    horizontalDistanceM += horizSeg;
+    verticalDistanceM += vertSeg;
   }
+
+  // Eşdeğer kaçış mesafesi (SFPE & BYKHY M.39: Düşey kaçışta merdiven basamakları 2.2x yürüme direnci katsayısına sahiptir)
+  const stairFactor = 2.2;
+  const equivalentDistanceM = horizontalDistanceM + (verticalDistanceM * stairFactor);
+  const estimatedTimeSec = equivalentDistanceM / runSpeedMps;
 
   return {
     success: true,
@@ -618,7 +643,11 @@ export function computeDijkstraRoute(
     waypoints,
     pathNodes,
     totalDistanceM: Number(totalDistanceM.toFixed(2)),
-    estimatedTimeSec: Number((totalDistanceM / runSpeedMps).toFixed(1)),
+    horizontalDistanceM: Number(horizontalDistanceM.toFixed(2)),
+    verticalDistanceM: Number(verticalDistanceM.toFixed(2)),
+    equivalentDistanceM: Number(equivalentDistanceM.toFixed(2)),
+    stairFactor,
+    estimatedTimeSec: Number(estimatedTimeSec.toFixed(1)),
     failureReasonTr: '',
   };
 }

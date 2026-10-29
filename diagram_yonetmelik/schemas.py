@@ -97,6 +97,7 @@ class CandidateDiagnosticReport:
     violations: List[RuleViolationItem] = field(default_factory=list)
     partial_node_mapping: Dict[int, int] = field(default_factory=dict)
     summary_message: str = ""
+    gnn_energy: Optional[float] = None
 
 
 # =====================================================================

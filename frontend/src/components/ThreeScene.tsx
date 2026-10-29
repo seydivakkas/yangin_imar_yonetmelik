@@ -61,6 +61,7 @@ interface ThreeSceneProps {
   isPlaying?: boolean;
   onTogglePlay?: (playing: boolean) => void;
   onResetCamera?: () => void;
+  activeTab?: string;
 }
 
 // Semantic room color palette for realistic architectural floor finishes
@@ -168,6 +169,124 @@ function getFireBadgeTexture(name: string, floorText: string): THREE.CanvasTextu
   const label = `${floorText}: ${name}`;
   const cleanLabel = label.length > 20 ? label.substring(0, 18) + '...' : label;
   ctx.fillText(cleanLabel, 128, 80);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  return texture;
+}
+
+function getRagNodeBadgeTexture(title: string, sub: string, accentColor: string): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 300;
+  canvas.height = 120;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+  ctx.beginPath();
+  ctx.roundRect(8, 8, 284, 104, 14);
+  ctx.fill();
+
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  // Top accent bar
+  ctx.fillStyle = accentColor;
+  ctx.fillRect(16, 12, 268, 4);
+
+  // Title
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const cleanTitle = title.length > 22 ? title.substring(0, 20) + '...' : title;
+  ctx.fillText(cleanTitle, 150, 48);
+
+  // Subtitle
+  ctx.fillStyle = accentColor;
+  ctx.font = 'bold 16px monospace';
+  ctx.fillText(sub, 150, 84);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  return texture;
+}
+
+function getRagShaftBadgeTexture(title: string, factorText: string): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 380;
+  canvas.height = 130;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = 'rgba(6, 30, 45, 0.95)';
+  ctx.beginPath();
+  ctx.roundRect(8, 8, 364, 114, 14);
+  ctx.fill();
+
+  ctx.strokeStyle = '#06B6D4';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  // Top Cyan bar
+  ctx.fillStyle = '#06B6D4';
+  ctx.fillRect(16, 12, 348, 4);
+
+  // Title
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(title, 190, 44);
+
+  // Factor
+  ctx.fillStyle = '#22D3EE';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.fillText(factorText, 190, 74);
+
+  // Metric
+  ctx.fillStyle = '#38BDF8';
+  ctx.font = '14px monospace';
+  ctx.fillText('ΔH: 3.0m  |  Eşdeğer Kaçış Yolu: 6.6m', 190, 100);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  return texture;
+}
+
+function getRagElevatorIsolationBadgeTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 360;
+  canvas.height = 120;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = 'rgba(45, 10, 15, 0.96)';
+  ctx.beginPath();
+  ctx.roundRect(8, 8, 344, 104, 14);
+  ctx.fill();
+
+  ctx.strokeStyle = '#EF4444';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  // Top Red bar
+  ctx.fillStyle = '#EF4444';
+  ctx.fillRect(16, 12, 328, 4);
+
+  // Header
+  ctx.fillStyle = '#FCA5A5';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('⚠️ YANGIN ASANSÖRÜ (BYKHY M.62)', 180, 44);
+
+  // Text
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText('KAÇIŞTAN YALITILMIŞTIR', 180, 72);
+
+  ctx.fillStyle = '#F87171';
+  ctx.font = '13px monospace';
+  ctx.fillText('YALNIZCA İTFAİYE ERİŞİMİ', 180, 94);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.minFilter = THREE.LinearFilter;
@@ -292,7 +411,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   isPlaying = false,
   onTogglePlay,
   onResetCamera,
+  activeTab,
 }) => {
+  const isRagActive = Boolean(showRAGOverlay || activeTab === 'building_graph');
   const [showDoorArcs, setShowDoorArcs] = useState<boolean>(propShowDoorArcs);
 
   useEffect(() => {
@@ -1846,8 +1967,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
           roughness: roomTheme.roughness,
           metalness: 0.1,
           side: THREE.DoubleSide,
-          transparent: !isFloorActive,
-          opacity: isFloorActive ? 0.95 : 0.15,
+          transparent: !isFloorActive || isRagActive,
+          opacity: isFloorActive ? (isRagActive ? 0.45 : 0.95) : 0.12,
         });
 
         const floorMesh = new THREE.Mesh(floorFinishGeo, floorFinishMat);
@@ -1900,33 +2021,6 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
           badgeMesh.rotation.x = -Math.PI / 2;
           badgeMesh.position.set(cx, floorY + 0.035, cz);
           bGroup.add(badgeMesh);
-        }
-
-        // 3D RAG Graph Overlay Node (Küre ve Topoloji Çizgileri - Varsayılan Kapalı)
-        if (showRAGOverlay && isFloorActive) {
-          const nodeGeo = new THREE.SphereGeometry(0.38, 16, 16);
-          const nodeMat = new THREE.MeshStandardMaterial({
-            color: roomTheme.wall,
-            emissive: roomTheme.wall,
-            emissiveIntensity: 0.4,
-          });
-          const nodeMesh = new THREE.Mesh(nodeGeo, nodeMat);
-          nodeMesh.position.set(cx, floorY + 1.25, cz);
-          rGroup.add(nodeMesh);
-
-          // Connecting Topology Link to Floor Center
-          const linkGeo = new THREE.BufferGeometry().setFromPoints([
-            nodeMesh.position,
-            new THREE.Vector3((fMinX + fMaxX) / 2, floorY + 1.25, (fMinZ + fMaxZ) / 2),
-          ]);
-          const linkMat = new THREE.LineDashedMaterial({
-            color: 0x00F0FF,
-            dashSize: 0.4,
-            gapSize: 0.2,
-          });
-          const linkLine = new THREE.Line(linkGeo, linkMat);
-          linkLine.computeLineDistances();
-          rGroup.add(linkLine);
         }
       });
 
@@ -2141,6 +2235,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             length >= 2.8 &&
             (seg.roomType === 'salon' || seg.roomType === 'oda' || seg.roomType === 'mutfak');
 
+          const isWallTrans = !isFloorActive || isRagActive;
+          const wallOpacity = !isFloorActive ? 0.12 : (isRagActive ? 0.28 : 1.0);
+
           if (matchingDoors.length > 0) {
             // WALL WITH ONE OR MORE DOOR OPENINGS (Cutouts)
             matchingDoors.sort((a, b) => a.s - b.s);
@@ -2155,6 +2252,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                   color: wallColor,
                   roughness: 0.75,
                   metalness: 0.1,
+                  transparent: isWallTrans,
+                  opacity: wallOpacity,
                 });
                 const pieceMesh = new THREE.Mesh(pieceGeo, pieceMat);
                 const midS = curS + pieceLen / 2;
@@ -2174,6 +2273,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                   color: wallColor,
                   roughness: 0.75,
                   metalness: 0.1,
+                  transparent: isWallTrans,
+                  opacity: wallOpacity,
                 });
                 const lintelMesh = new THREE.Mesh(lintelGeo, lintelMat);
                 lintelMesh.position.set(seg.x1 + vx * s, floorY + 2.10 + lintelH / 2, seg.z1 + vz * s);
@@ -2194,6 +2295,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 color: wallColor,
                 roughness: 0.75,
                 metalness: 0.1,
+                transparent: isWallTrans,
+                opacity: wallOpacity,
               });
               const rightMesh = new THREE.Mesh(rightGeo, rightMat);
               const midS = curS + rightLen / 2;
@@ -2215,6 +2318,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 color: wallColor,
                 roughness: 0.75,
                 metalness: 0.1,
+                transparent: isWallTrans,
+                opacity: wallOpacity,
               });
               const pierMesh = new THREE.Mesh(pierGeo, pierMat);
               pierMesh.position.set(
@@ -2238,6 +2343,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             const parapetMat = new THREE.MeshStandardMaterial({
               color: wallColor,
               roughness: 0.75,
+              metalness: 0.1,
+              transparent: isWallTrans,
+              opacity: wallOpacity,
             });
             const parapetMesh = new THREE.Mesh(parapetGeo, parapetMat);
             parapetMesh.position.set(winCenterX, floorY + parapetH / 2, winCenterZ);
@@ -2280,6 +2388,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
               const topMat = new THREE.MeshStandardMaterial({
                 color: wallColor,
                 roughness: 0.75,
+                metalness: 0.1,
+                transparent: isWallTrans,
+                opacity: wallOpacity,
               });
               const topMesh = new THREE.Mesh(topGeo, topMat);
               topMesh.position.set(winCenterX, floorY + 2.30 + topLintelH / 2, winCenterZ);
@@ -2294,8 +2405,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
               color: wallColor,
               roughness: 0.75,
               metalness: 0.1,
-              transparent: !isFloorActive,
-              opacity: isFloorActive ? 1.0 : 0.2,
+              transparent: isWallTrans,
+              opacity: wallOpacity,
             });
             const wallMesh = new THREE.Mesh(wallGeo, wallMat);
             wallMesh.position.set(
@@ -2880,6 +2991,373 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       sGroup.add(smokeLayer);
       smokeMeshRef.current = smokeLayer;
     }
+
+    // =========================================================================
+    // 9. ÇOK KATLI 3B MEKÂNSAL RAG GRAFI (SPATIAL RAG 3D GRAPH ENGINE)
+    // =========================================================================
+    if (isRagActive) {
+      rGroup.visible = true;
+
+      // 9.1 Mekânsal Düğümler (Rooms, Lobbies, Core Stairs, Exits, Elevators)
+      collectedRooms.forEach((rm) => {
+        const isCurrentFloor = activeFloor === 'all' || rm.floor_level === activeFloor;
+        const nodeY = rm.pos.y + 1.15;
+        const nodePos = new THREE.Vector3(rm.pos.x, nodeY, rm.pos.z);
+
+        const isExit =
+          rm.room_type === 'dis_cikis' ||
+          rm.name.toLowerCase().includes('çıkış') ||
+          rm.name.toLowerCase().includes('cikis') ||
+          rm.name.toLowerCase().includes('exit');
+        const isStair =
+          rm.room_type === 'yangin_merdiveni' ||
+          rm.name.toLowerCase().includes('yangın merdiveni') ||
+          rm.name.toLowerCase().includes('merdiven');
+        const isLobby =
+          rm.room_type === 'yangin_holu' ||
+          rm.name.toLowerCase().includes('yangın güvenlik holü') ||
+          rm.name.toLowerCase().includes('yangin holu') ||
+          rm.name.toLowerCase().includes('duman_kilit');
+        const isCorridor =
+          rm.room_type === 'kat_koridoru' ||
+          rm.name.toLowerCase().includes('koridor');
+        const isElevator =
+          rm.room_type === 'asansor' ||
+          rm.name.toLowerCase().includes('asansör') ||
+          rm.name.toLowerCase().includes('asansor');
+
+        let nodeColor = 0x38BDF8;
+        let emissiveColor = 0x0284C7;
+        let radius = 0.32;
+
+        if (isExit) {
+          nodeColor = 0x10B981;
+          emissiveColor = 0x10B981;
+          radius = 0.52;
+        } else if (isStair) {
+          nodeColor = 0x06B6D4;
+          emissiveColor = 0x06B6D4;
+          radius = 0.44;
+        } else if (isLobby) {
+          nodeColor = 0x8B5CF6;
+          emissiveColor = 0x8B5CF6;
+          radius = 0.38;
+        } else if (isCorridor) {
+          nodeColor = 0xF59E0B;
+          emissiveColor = 0xD97706;
+          radius = 0.34;
+        } else if (isElevator) {
+          nodeColor = 0xEF4444;
+          emissiveColor = 0xDC2626;
+          radius = 0.40;
+        }
+
+        const sphereGeo = new THREE.SphereGeometry(radius, 16, 16);
+        const sphereMat = new THREE.MeshStandardMaterial({
+          color: nodeColor,
+          emissive: emissiveColor,
+          emissiveIntensity: 0.7,
+          roughness: 0.25,
+          metalness: 0.2,
+          transparent: !isCurrentFloor,
+          opacity: isCurrentFloor ? 0.95 : 0.25,
+        });
+        const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
+        sphereMesh.position.copy(nodePos);
+        sphereMesh.userData = {
+          id: rm.id,
+          name: rm.name,
+          type: 'room',
+          floor: rm.floor_level,
+          category: rm.room_type,
+          area_m2: rm.area_m2,
+        };
+        rGroup.add(sphereMesh);
+
+        // Pulsing Ring for Special Nodes (Stairs, Exits, Lobbies)
+        if (isExit || isStair || isLobby) {
+          const ringGeo = new THREE.RingGeometry(radius + 0.12, radius + 0.22, 24);
+          const ringMat = new THREE.MeshBasicMaterial({
+            color: nodeColor,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: isCurrentFloor ? 0.85 : 0.25,
+          });
+          const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+          ringMesh.rotation.x = -Math.PI / 2;
+          ringMesh.position.copy(nodePos);
+          rGroup.add(ringMesh);
+        }
+
+        // Exterior Exit Beacon Cylinder (Pulsing upwards)
+        if (isExit) {
+          const beaconGeo = new THREE.CylinderGeometry(0.55, 0.55, 4.0, 16, 1, true);
+          const beaconMat = new THREE.MeshBasicMaterial({
+            color: 0x10B981,
+            transparent: true,
+            opacity: 0.35,
+            side: THREE.DoubleSide,
+          });
+          const beaconMesh = new THREE.Mesh(beaconGeo, beaconMat);
+          beaconMesh.position.set(nodePos.x, nodePos.y + 2.0, nodePos.z);
+          rGroup.add(beaconMesh);
+        }
+
+        // Fire Elevator Isolation Barrier Cage (BYKHY M.62)
+        if (isElevator) {
+          const cageGeo = new THREE.CylinderGeometry(radius + 0.25, radius + 0.25, 1.4, 8, 1, true);
+          const cageMat = new THREE.MeshBasicMaterial({
+            color: 0xEF4444,
+            wireframe: true,
+            transparent: true,
+            opacity: isCurrentFloor ? 0.9 : 0.3,
+          });
+          const cageMesh = new THREE.Mesh(cageGeo, cageMat);
+          cageMesh.position.copy(nodePos);
+          rGroup.add(cageMesh);
+        }
+
+        // Floating 3D Text Badge on Important Nodes or Active Floor
+        if ((isExit || isStair || isLobby || isElevator) && isCurrentFloor) {
+          let badgeTitle = rm.name;
+          let badgeSub = `${rm.area_m2.toFixed(1)} m²`;
+          let badgeColor = '#38BDF8';
+
+          if (isExit) {
+            badgeTitle = 'GÜVENLİ DIŞ ÇIKIŞ';
+            badgeSub = 'Tahliye Hedefi (Zemin Kotu)';
+            badgeColor = '#10B981';
+          } else if (isStair) {
+            badgeTitle = `YANGIN MERDİVENİ (K${rm.floor_level})`;
+            badgeSub = 'Düşey Kaçış Çekirdeği';
+            badgeColor = '#06B6D4';
+          } else if (isLobby) {
+            badgeTitle = 'YANGIN GÜVENLİK HOLÜ';
+            badgeSub = 'Basınçlı Duman Kilidi';
+            badgeColor = '#8B5CF6';
+          } else if (isElevator) {
+            badgeTitle = 'YANGIN ASANSÖRÜ';
+            badgeSub = 'BYKHY M.62 İZOLE (İtfaiyeci)';
+            badgeColor = '#EF4444';
+          }
+
+          const badgeTex = getRagNodeBadgeTexture(badgeTitle, badgeSub, badgeColor);
+          const badgeGeo = new THREE.PlaneGeometry(2.6, 1.1);
+          const badgeMat = new THREE.MeshBasicMaterial({
+            map: badgeTex,
+            transparent: true,
+            opacity: 0.92,
+            side: THREE.DoubleSide,
+          });
+          const badgeMesh = new THREE.Mesh(badgeGeo, badgeMat);
+          badgeMesh.position.set(nodePos.x, nodePos.y + 0.85, nodePos.z);
+          badgeMesh.rotation.y = -Math.PI / 4;
+          rGroup.add(badgeMesh);
+        }
+      });
+
+      // 9.2 Horizontal Edges (Kapı ve Koridor Geçiş Hatları)
+      navDoors.forEach((door) => {
+        if (door.is_vertical) return;
+        const rFrom = collectedRooms.find((r) => r.id === door.source);
+        const rTo = collectedRooms.find((r) => r.id === door.target);
+        if (!rFrom || !rTo) return;
+
+        const isCurrentFloor = activeFloor === 'all' || rFrom.floor_level === activeFloor;
+        const fromY = rFrom.pos.y + 1.15;
+        const toY = rTo.pos.y + 1.15;
+        const portalY = (fromY + toY) / 2;
+
+        const pFrom = new THREE.Vector3(rFrom.pos.x, fromY, rFrom.pos.z);
+        const pPortal = new THREE.Vector3(door.portal_pos.x, portalY, door.portal_pos.z);
+        const pTo = new THREE.Vector3(rTo.pos.x, toY, rTo.pos.z);
+
+        const edgePoints = [pFrom, pPortal, pTo];
+        const edgeGeo = new THREE.BufferGeometry().setFromPoints(edgePoints);
+        const edgeColor = door.is_fire_resistant ? 0x10B981 : 0x00F0FF;
+        const edgeMat = new THREE.LineBasicMaterial({
+          color: edgeColor,
+          linewidth: door.is_fire_resistant ? 3 : 2,
+          transparent: true,
+          opacity: isCurrentFloor ? 0.85 : 0.2,
+        });
+        const edgeLine = new THREE.Line(edgeGeo, edgeMat);
+        rGroup.add(edgeLine);
+
+        // 3D Portal Marker (Doorway Torus Ring)
+        if (isCurrentFloor) {
+          const torusGeo = new THREE.TorusGeometry(0.32, 0.045, 12, 24);
+          const torusMat = new THREE.MeshBasicMaterial({
+            color: edgeColor,
+            transparent: true,
+            opacity: 0.9,
+          });
+          const torusMesh = new THREE.Mesh(torusGeo, torusMat);
+          torusMesh.position.copy(pPortal);
+          rGroup.add(torusMesh);
+        }
+      });
+
+      // 9.3 Vertical Core Shafts (Düşey Kaçış Çekirdeği - 2.2x SFPE Yürüme Direnci)
+      const stairRooms = collectedRooms.filter(
+        (r) => r.room_type === 'yangin_merdiveni' || r.name.toLowerCase().includes('merdiven')
+      );
+      const shaftCores: RoomCentroidInfo[][] = [];
+      stairRooms.forEach((st) => {
+        let placed = false;
+        for (const core of shaftCores) {
+          const rep = core[0];
+          if (Math.hypot(st.pos.x - rep.pos.x, st.pos.z - rep.pos.z) < 4.0) {
+            core.push(st);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          shaftCores.push([st]);
+        }
+      });
+
+      shaftCores.forEach((core, shaftIdx) => {
+        core.sort((a, b) => a.floor_level - b.floor_level);
+
+        for (let i = 0; i < core.length - 1; i++) {
+          const lower = core[i];
+          const upper = core[i + 1];
+
+          const pLower = new THREE.Vector3(lower.pos.x, lower.pos.y + 1.15, lower.pos.z);
+          const pUpper = new THREE.Vector3(upper.pos.x, upper.pos.y + 1.15, upper.pos.z);
+          const shaftH = Math.abs(pUpper.y - pLower.y);
+          const midPos = new THREE.Vector3().lerpVectors(pLower, pUpper, 0.5);
+
+          // Glowing Vertical Cylinder Shaft Column
+          const colGeo = new THREE.CylinderGeometry(0.35, 0.35, shaftH, 16, 1, true);
+          const colMat = new THREE.MeshStandardMaterial({
+            color: 0x06B6D4,
+            emissive: 0x0891B2,
+            emissiveIntensity: 0.6,
+            roughness: 0.3,
+            metalness: 0.4,
+            transparent: true,
+            opacity: 0.55,
+            side: THREE.DoubleSide,
+          });
+          const colMesh = new THREE.Mesh(colGeo, colMat);
+          colMesh.position.copy(midPos);
+          rGroup.add(colMesh);
+
+          // Center Line
+          const lineGeo = new THREE.BufferGeometry().setFromPoints([pLower, pUpper]);
+          const lineMat = new THREE.LineBasicMaterial({
+            color: 0x00F0FF,
+            linewidth: 4,
+          });
+          const line = new THREE.Line(lineGeo, lineMat);
+          rGroup.add(line);
+
+          // Downward escape chevrons
+          const numChevrons = 3;
+          for (let c = 1; c <= numChevrons; c++) {
+            const t = c / (numChevrons + 1);
+            const chY = pUpper.y - t * shaftH;
+            const coneGeo = new THREE.ConeGeometry(0.22, 0.35, 8);
+            const coneMat = new THREE.MeshBasicMaterial({
+              color: 0x22D3EE,
+            });
+            const coneMesh = new THREE.Mesh(coneGeo, coneMat);
+            coneMesh.position.set(midPos.x, chY, midPos.z);
+            coneMesh.rotation.x = Math.PI;
+            rGroup.add(coneMesh);
+          }
+
+          // 3D Billboard Badge indicating 2.2x SFPE Stair Resistance Factor
+          const shaftBadgeTex = getRagShaftBadgeTexture(
+            `ŞAFT ${shaftIdx + 1}: K${lower.floor_level} ➔ K${upper.floor_level}`,
+            '2.2x Düşey Yürüme Faktörü (SFPE / BYKHY M.39)'
+          );
+          const shaftBadgeGeo = new THREE.PlaneGeometry(3.2, 1.2);
+          const shaftBadgeMat = new THREE.MeshBasicMaterial({
+            map: shaftBadgeTex,
+            transparent: true,
+            opacity: 0.95,
+            side: THREE.DoubleSide,
+          });
+          const shaftBadgeMesh = new THREE.Mesh(shaftBadgeGeo, shaftBadgeMat);
+          shaftBadgeMesh.position.set(midPos.x + 0.8, midPos.y, midPos.z);
+          shaftBadgeMesh.rotation.y = -Math.PI / 4;
+          rGroup.add(shaftBadgeMesh);
+        }
+      });
+
+      // 9.4 Fire Elevator Isolation (BYKHY M.62) Vertical Core
+      const elevRooms = collectedRooms.filter(
+        (r) => r.room_type === 'asansor' || r.name.toLowerCase().includes('asansör') || r.name.toLowerCase().includes('asansor')
+      );
+      if (elevRooms.length >= 2) {
+        elevRooms.sort((a, b) => a.floor_level - b.floor_level);
+        for (let i = 0; i < elevRooms.length - 1; i++) {
+          const lower = elevRooms[i];
+          const upper = elevRooms[i + 1];
+          const pLower = new THREE.Vector3(lower.pos.x, lower.pos.y + 1.15, lower.pos.z);
+          const pUpper = new THREE.Vector3(upper.pos.x, upper.pos.y + 1.15, upper.pos.z);
+          const midPos = new THREE.Vector3().lerpVectors(pLower, pUpper, 0.5);
+
+          const elLineGeo = new THREE.BufferGeometry().setFromPoints([pLower, pUpper]);
+          const elLineMat = new THREE.LineDashedMaterial({
+            color: 0xEF4444,
+            dashSize: 0.4,
+            gapSize: 0.25,
+            linewidth: 2,
+          });
+          const elLine = new THREE.Line(elLineGeo, elLineMat);
+          elLine.computeLineDistances();
+          rGroup.add(elLine);
+
+          if (i === Math.floor(elevRooms.length / 2)) {
+            const elBadgeTex = getRagElevatorIsolationBadgeTexture();
+            const elBadgeGeo = new THREE.PlaneGeometry(3.0, 1.1);
+            const elBadgeMat = new THREE.MeshBasicMaterial({
+              map: elBadgeTex,
+              transparent: true,
+              opacity: 0.92,
+              side: THREE.DoubleSide,
+            });
+            const elBadgeMesh = new THREE.Mesh(elBadgeGeo, elBadgeMat);
+            elBadgeMesh.position.set(midPos.x - 0.7, midPos.y, midPos.z);
+            elBadgeMesh.rotation.y = -Math.PI / 4;
+            rGroup.add(elBadgeMesh);
+          }
+        }
+      }
+
+      // 9.5 Active 3D Dijkstra Escape Route (with 2.2x vertical resistance)
+      if (habitableRooms.length > 0) {
+        const startTargetRoomId = selectedTelAliRoomId || defaultRoom?.id || habitableRooms[0].id;
+        const currentRoute = computeDijkstraRoute(collectedRooms, navDoors, startTargetRoomId);
+        if (currentRoute.success && currentRoute.waypoints.length >= 2) {
+          const routePoints = currentRoute.waypoints.map((wp) => wp.pos.clone().add(new THREE.Vector3(0, 0.35, 0)));
+          const routeGeo = new THREE.BufferGeometry().setFromPoints(routePoints);
+          const routeMat = new THREE.LineBasicMaterial({
+            color: 0x10B981,
+            linewidth: 5,
+          });
+          const routeLine = new THREE.Line(routeGeo, routeMat);
+          rGroup.add(routeLine);
+
+          routePoints.forEach((p, idx) => {
+            const wpGeo = new THREE.SphereGeometry(0.18, 12, 12);
+            const wpMat = new THREE.MeshBasicMaterial({
+              color: idx === 0 ? 0x38BDF8 : idx === routePoints.length - 1 ? 0x10B981 : 0xF59E0B,
+            });
+            const wpMesh = new THREE.Mesh(wpGeo, wpMat);
+            wpMesh.position.copy(p);
+            rGroup.add(wpMesh);
+          });
+        }
+      }
+    } else {
+      rGroup.visible = false;
+    }
   }, [
     data,
     activeFloor,
@@ -2892,6 +3370,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     showBIMArchitecture,
     showDoorArcs,
     cadDiffMode,
+    activeTab,
   ]);
 
   // Re-render debug route when showDebugRoute toggles

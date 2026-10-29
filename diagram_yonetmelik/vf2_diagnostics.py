@@ -17,27 +17,34 @@ class ExplainableVF2Analyzer:
         min_door_width_cm: float = 90.0,
         min_fire_hall_area_m2: float = 3.0,
         max_fire_hall_area_m2: float = 6.0,
-        max_escape_distance_m: float = 30.0
+        max_escape_distance_m: float = 30.0,
+        gnn_model: Optional[Any] = None,
+        energy_threshold: float = 0.25,
+        enable_hybrid_pruning: bool = False
     ):
         self.min_w = min_door_width_cm
         self.min_fh_area = min_fire_hall_area_m2
         self.max_fh_area = max_fire_hall_area_m2
         self.max_dist = max_escape_distance_m
+        self.gnn = gnn_model
+        self.energy_threshold = energy_threshold
+        self.enable_hybrid_pruning = enable_hybrid_pruning
 
-    def build_standard_fire_core_query(self) -> nx.Graph:
+    def build_standard_fire_core_query(self, include_exit: bool = True) -> nx.Graph:
         """
         BYKHY Madde 34 / 38'e uygun standart kaçış şablonu:
-        Kat Koridoru (0) -> Yangın Güvenlik Holü (1, Çapa) -> Yangın Merdiveni (2) -> Dış Çıkış (3)
+        Kat Koridoru (0) -> Yangın Güvenlik Holü (1, Çapa) -> Yangın Merdiveni (2) [-> Dış Çıkış (3)]
         """
         Q = nx.Graph()
         Q.add_node(0, room_type="kat_koridoru", min_area=4.0)
         Q.add_node(1, room_type="yangin_holu", min_area=3.0, max_area=6.0, is_anchor=True)
         Q.add_node(2, room_type="yangin_merdiveni", min_area=5.0)
-        Q.add_node(3, room_type="dis_cikis", min_area=2.0)
 
         Q.add_edge(0, 1, min_width=90.0, is_fire_resistant=True, max_dist=15.0)
         Q.add_edge(1, 2, min_width=90.0, is_fire_resistant=True, max_dist=5.0)
-        Q.add_edge(2, 3, min_width=100.0, is_fire_resistant=True, max_dist=20.0)
+        if include_exit:
+            Q.add_node(3, room_type="dis_cikis", min_area=2.0)
+            Q.add_edge(2, 3, min_width=100.0, is_fire_resistant=True, max_dist=20.0)
         return Q
 
     def explain_candidate(
@@ -56,6 +63,52 @@ class ExplainableVF2Analyzer:
             query_anchor = list(query_pattern.nodes())[0]
 
         # -------------------------------------------------------------
+        # NÖRAL ÖN ELEME: Order Embedding İhlal Enerjisi (NeuroMatch)
+        # -------------------------------------------------------------
+        gnn_energy_val: Optional[float] = None
+        if self.gnn is not None:
+            try:
+                import torch
+                from diagram_yonetmelik.gnn_order import nx_subgraph_to_pyg_data, violation_energy
+                q_data = nx_subgraph_to_pyg_data(query_pattern, anchor_node=query_anchor)
+                t_data = nx_subgraph_to_pyg_data(target_subgraph, anchor_node=anchor_node_id)
+                with torch.no_grad():
+                    if hasattr(q_data, 'x'):
+                        z_q = self.gnn(q_data.x, q_data.edge_index, q_data.edge_attr, q_data.anchor_mask)
+                        z_t = self.gnn(t_data.x, t_data.edge_index, t_data.edge_attr, t_data.anchor_mask)
+                    else:
+                        z_q = self.gnn(q_data['x'], q_data['edge_index'], q_data['edge_attr'], q_data['anchor_mask'])
+                        z_t = self.gnn(t_data['x'], t_data['edge_index'], t_data['edge_attr'], t_data['anchor_mask'])
+                    e = violation_energy(z_q, z_t)
+                    gnn_energy_val = round(float(e.squeeze().item()), 4)
+            except Exception:
+                gnn_energy_val = None
+
+        if self.enable_hybrid_pruning and gnn_energy_val is not None and gnn_energy_val > self.energy_threshold:
+            return CandidateDiagnosticReport(
+                anchor_node_id=anchor_node_id,
+                target_subgraph_nodes=list(target_subgraph.nodes()),
+                is_fully_compliant=False,
+                diagnostic_stage_reached=3,
+                violations=[
+                    RuleViolationItem(
+                        violation_code="NEUROMATCH_ENERGY_PRUNED",
+                        target_node_id=anchor_node_id,
+                        expected_value=self.energy_threshold,
+                        actual_value=gnn_energy_val,
+                        diagnostic_stage=3,
+                        severity="WARNING",
+                        description_tr=f"NeuroMatch Order Embedding ihlal enerjisi ({gnn_energy_val:.4f} > {self.energy_threshold}) eşiği aştı. VF2 aramasından budandı.",
+                        remedy_recommendation_tr="Yangın kaçış çekirdeği şablonu bu alt bölgede topolojik olarak bulunmamaktadır.",
+                        regulation_reference="BYKHY Madde 34 / NeuroMatch Pruning"
+                    )
+                ],
+                partial_node_mapping={},
+                summary_message=f"NeuroMatch hibrit budama: İhlal enerjisi yüksek ({gnn_energy_val:.4f}), VF2 aramasından budandı.",
+                gnn_energy=gnn_energy_val
+            )
+
+        # -------------------------------------------------------------
         # 0. TAM MONOMORFİZM DENETİMİ (%100 UYGUNLUK)
         # -------------------------------------------------------------
         full_match, mapping = self._run_strict_vf2(query_pattern, target_subgraph, query_anchor, anchor_node_id)
@@ -67,7 +120,8 @@ class ExplainableVF2Analyzer:
                 diagnostic_stage_reached=0,
                 violations=[],
                 partial_node_mapping=mapping,
-                summary_message="Yangın çekirdeği yönetmeliğe %100 uygundur."
+                summary_message="Yangın çekirdeği yönetmeliğe %100 uygundur.",
+                gnn_energy=gnn_energy_val
             )
 
         # -------------------------------------------------------------
@@ -83,7 +137,8 @@ class ExplainableVF2Analyzer:
                 diagnostic_stage_reached=1,
                 violations=violations,
                 partial_node_mapping=stage1_mapping,
-                summary_message=f"Topolojik bağlantı tam fakat {len(violations)} adet parametrik kusur tespit edildi."
+                summary_message=f"Topolojik bağlantı tam fakat {len(violations)} adet parametrik kusur tespit edildi.",
+                gnn_energy=gnn_energy_val
             )
 
         # -------------------------------------------------------------
@@ -99,7 +154,8 @@ class ExplainableVF2Analyzer:
                 diagnostic_stage_reached=2,
                 violations=violations,
                 partial_node_mapping=stage2_mapping,
-                summary_message=f"Mekan fonksiyon uyuşmazlığı: Şablon iskeleti bulundu ancak {len(violations)} odanın tipi hatalı."
+                summary_message=f"Mekan fonksiyon uyuşmazlığı: Şablon iskeleti bulundu ancak {len(violations)} odanın tipi hatalı.",
+                gnn_energy=gnn_energy_val
             )
 
         # -------------------------------------------------------------
@@ -113,7 +169,8 @@ class ExplainableVF2Analyzer:
             diagnostic_stage_reached=3,
             violations=violations,
             partial_node_mapping=partial_map,
-            summary_message="Ağır topolojik kusur: Zorunlu kapı bağlantısı veya mekan kat planında mevcut değil."
+            summary_message="Ağır topolojik kusur: Zorunlu kapı bağlantısı veya mekan kat planında mevcut değil.",
+            gnn_energy=gnn_energy_val
         )
 
     def _run_strict_vf2(self, Q: nx.Graph, T: nx.Graph, q_anc: int, t_anc: int) -> Tuple[bool, Dict[int, int]]:

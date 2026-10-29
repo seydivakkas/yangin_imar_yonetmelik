@@ -435,3 +435,43 @@ class TestCanonicalRegulationsAndLiveSync:
         assert len(art["sha256_hash"]) == 64
 
 
+class TestSubgraphDatasetAndDataLoader:
+    def test_spatial_rag_subgraph_dataset_and_pair_batching(self):
+        from diagram_yonetmelik.subgraph_dataset import (
+            build_sample_architectural_rag,
+            SpatialRAGSubgraphDataset,
+            SubgraphPairData,
+            split_pair_batch,
+        )
+        from torch_geometric.loader import DataLoader
+
+        rag = build_sample_architectural_rag()
+        assert rag.number_of_nodes() >= 10
+        assert rag.number_of_edges() >= 10
+
+        dataset = SpatialRAGSubgraphDataset(
+            floorplan_graphs=[rag],
+            num_samples=8,
+            k_hops=2,
+            min_query_nodes=3,
+            max_query_nodes=5,
+            pos_ratio=0.5
+        )
+        assert len(dataset) == 8
+        item = dataset[0]
+        assert hasattr(item, "x_q")
+        assert hasattr(item, "x_u")
+        assert hasattr(item, "y")
+        assert item.y.item() in (0.0, 1.0)
+
+        loader = DataLoader(dataset, batch_size=4, shuffle=False, follow_batch=["x_q", "x_u"])
+        batch = next(iter(loader))
+        assert hasattr(batch, "x_q_batch")
+        assert hasattr(batch, "x_u_batch")
+
+        q_b, u_b, labels = split_pair_batch(batch)
+        assert labels.shape[0] == 4
+        assert q_b.x.shape[1] == 17  # 10 feat + 6 rwpe + 1 anchor
+        assert u_b.x.shape[1] == 17
+
+

@@ -4,7 +4,7 @@ import { X, DoorOpen, Square, AlertTriangle, ShieldCheck, Layers, RotateCcw } fr
 interface DetailsDrawerProps {
   selectedElement: {
     id: string;
-    type: 'room' | 'door' | 'wall' | 'arc' | 'violation';
+    type: 'room' | 'door' | 'wall' | 'arc' | 'violation' | 'checklist_item';
     details: any;
   } | null;
   onClose: () => void;
@@ -137,6 +137,38 @@ export const DetailsDrawer: React.FC<DetailsDrawerProps> = ({ selectedElement, o
           <div className="flex items-center justify-between text-[13px]">
             <span className="text-[var(--ui-text-muted)]">Darboğaz Kuyruğu:</span>
             <span className="font-mono text-[var(--ui-warning)] font-bold">{details.queue} kişi</span>
+          </div>
+        )}
+
+        {type === 'checklist_item' && details && (
+          <div className="space-y-2 pt-1">
+            <div className="p-2.5 rounded bg-[var(--ui-bg)] border border-[var(--ui-border)] space-y-1">
+              <span className="text-[11px] text-[var(--ui-text-muted)] block font-semibold uppercase">
+                Yönetmelik Maddesi:
+              </span>
+              <span className="text-xs font-medium text-[var(--ui-primary)]">{details.legal_basis}</span>
+              <p className="text-[12px] text-[var(--ui-text)] mt-1">{details.mandatory_rule}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2 rounded bg-[var(--ui-bg)] border border-[var(--ui-border)]">
+                <span className="text-[10px] text-[var(--ui-text-muted)] block font-medium">Hedef Kriter:</span>
+                <span className="font-semibold text-xs text-[var(--ui-text)]">{details.target_value_str}</span>
+              </div>
+              <div className={`p-2 rounded border ${details.is_compliant ? 'bg-[var(--ui-bg)] border-[var(--ui-border)]' : 'bg-[var(--ui-danger-subtle)] border-[var(--ui-danger)]'}`}>
+                <span className="text-[10px] text-[var(--ui-text-muted)] block font-medium">Mevcut Durum:</span>
+                <span className={`font-semibold text-xs ${details.is_compliant ? 'text-[var(--ui-success)]' : 'text-[var(--ui-danger)]'}`}>
+                  {details.actual_value_str}
+                </span>
+              </div>
+            </div>
+
+            {!details.is_compliant && details.design_remedy_tr && (
+              <div className="p-2.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs">
+                <strong className="text-amber-400 font-semibold block mb-0.5">Mimar Çözüm Önerisi:</strong>
+                <span>{details.design_remedy_tr}</span>
+              </div>
+            )}
           </div>
         )}
 

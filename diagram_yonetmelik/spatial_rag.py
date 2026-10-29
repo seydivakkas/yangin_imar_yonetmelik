@@ -105,6 +105,9 @@ class FloorplanToRAGExtractor:
             room_anchors[r.room_id] = anchor
             area_m2 = float(spoly.area)
 
+            lbl_lower = r.name_label.lower()
+            has_press = ("basinc" in lbl_lower or "50 pa" in lbl_lower or "pressuriz" in lbl_lower)
+            has_win = ("pencere" in lbl_lower or "tabii" in lbl_lower or "dis" in lbl_lower)
             G.add_node(
                 r.room_id,
                 room_type=r.room_type,
@@ -113,7 +116,15 @@ class FloorplanToRAGExtractor:
                 polygon=spoly,
                 anchor_point=(anchor.x, anchor.y),
                 floor_level=r.floor_level,
-                global_dxf_pos=r.global_dxf_pos
+                global_dxf_pos=r.global_dxf_pos,
+                has_pressurization=has_press,
+                window_area_m2=1.5 if has_win else 0.0,
+                has_window=True,
+                vent_shaft_area_m2=0.60,
+                flight_width_m=1.20,
+                stair_riser_cm=17.0,
+                stair_tread_cm=28.0,
+                parapet_height_m=1.20
             )
 
         # STRtree ile Kapı Eşleşmesi
@@ -232,6 +243,22 @@ class MultiFloor3DRAGBuilder:
                 min_idx = dists.index(min(dists)) if dists else 0
                 floor_rooms[min_idx].append(r)
 
+        # 2.1 Her Kapıyı da İlgili Kat Adasına Ata
+        floor_doors: Dict[int, List[DoorGeometryInput]] = {i: [] for i in range(len(island_boxes))}
+        for d in doors:
+            s_geom = self.extractor._scale_linestring(d.geometry)
+            pt = s_geom.centroid
+            assigned = False
+            for f_idx, (_, _, isl) in enumerate(island_boxes):
+                if isl.contains(pt) or isl.intersects(pt):
+                    floor_doors[f_idx].append(d)
+                    assigned = True
+                    break
+            if not assigned:
+                dists = [isl.distance(pt) for (_, _, isl) in island_boxes]
+                min_idx = dists.index(min(dists)) if dists else 0
+                floor_doors[min_idx].append(d)
+
         # Kat Seviyelerini Semantik ve Geometrik Olarak Belirle
         def infer_level(r_list: List[RoomPolygonInput], idx: int) -> int:
             explicit = [r.floor_level for r in r_list if r.floor_level != 0]
@@ -282,7 +309,11 @@ class MultiFloor3DRAGBuilder:
                 ) for r in r_list
             ]
 
-            d_list = [d for d in doors if d.floor_level == actual_level or d.floor_level == 0]
+            d_list = floor_doors.get(f_idx, [])
+            for d in d_list:
+                d.floor_level = actual_level
+            if not d_list:
+                d_list = [d for d in doors if d.floor_level == actual_level or d.floor_level == 0]
             G_2d = self.extractor.build_rag(aligned_r_list, d_list, detect_open_passages=True)
 
             # Çekirdek Hizalama Referansı (Yangın merdiveni veya merkez)

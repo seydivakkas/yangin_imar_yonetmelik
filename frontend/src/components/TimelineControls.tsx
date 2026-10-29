@@ -29,6 +29,8 @@ interface TimelineControlsProps {
   setShowDoorArcs?: (show: boolean) => void;
   cadDiffMode: 'before' | 'after' | 'both';
   setCadDiffMode: (m: 'before' | 'after' | 'both') => void;
+  availableFloors?: number[];
+  maxSimulationTime?: number;
 }
 
 
@@ -59,6 +61,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   setShowDoorArcs,
   cadDiffMode,
   setCadDiffMode,
+  availableFloors,
+  maxSimulationTime = 180,
 }) => {
   return (
     <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5 pointer-events-auto w-[calc(100%-40px)] max-w-5xl">
@@ -93,19 +97,22 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         {/* Floor Isolation */}
         <div className="flex items-center gap-1">
           <span className="text-[var(--ui-text-muted)] font-medium text-[11px] mr-0.5 whitespace-nowrap">Kat:</span>
-          {(['all', 1, 0, -1] as const).map((fl) => (
-            <button
-              key={fl}
-              onClick={() => setActiveFloor(fl)}
-              className={`px-2 py-1 rounded font-mono text-[11px] font-medium transition-colors whitespace-nowrap shrink-0 ${
-                activeFloor === fl
-                  ? 'bg-[var(--ui-primary)] text-white font-semibold'
-                  : 'text-[var(--ui-text-muted)] hover:text-white bg-[var(--ui-surface-raised)]'
-              }`}
-            >
-              {fl === 'all' ? 'Tümü' : fl === 0 ? 'Zemin' : `K${fl}`}
-            </button>
-          ))}
+          <div className="flex items-center gap-1 overflow-x-auto max-w-[280px] scrollbar-thin">
+            {(['all', ...(availableFloors && availableFloors.length > 0 ? availableFloors : [1, 0, -1])] as const).map((fl) => (
+              <button
+                key={fl}
+                onClick={() => setActiveFloor(fl as 'all' | number)}
+                className={`px-2 py-1 rounded font-mono text-[11px] font-medium transition-colors whitespace-nowrap shrink-0 ${
+                  activeFloor === fl
+                    ? 'bg-[var(--ui-primary)] text-white font-semibold'
+                    : 'text-[var(--ui-text-muted)] hover:text-white bg-[var(--ui-surface-raised)]'
+                }`}
+                title={fl === 'all' ? 'Tüm Katları Göster' : fl === 0 ? 'Zemin Kat' : fl < 0 ? `Bodrum ${Math.abs(fl)}` : `Kat ${fl}`}
+              >
+                {fl === 'all' ? 'Tümü' : fl === 0 ? 'Zemin' : fl < 0 ? `B${Math.abs(fl)}` : `K${fl}`}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Exploded Z Slider */}
@@ -280,14 +287,14 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
           <input
             type="range"
             min="0"
-            max="180"
+            max={maxSimulationTime}
             step="0.5"
             value={simulationTime}
             onChange={(e) => setSimulationTime(parseFloat(e.target.value))}
             className="w-full accent-[var(--ui-primary)] cursor-pointer h-1.5 bg-[var(--ui-surface)] rounded border border-[var(--ui-border)]"
           />
           <span className="font-mono text-[12px] text-[var(--ui-text-muted)] whitespace-nowrap shrink-0 min-w-[50px] text-right">
-            180.0 sn
+            {maxSimulationTime.toFixed(1)} sn
           </span>
         </div>
 

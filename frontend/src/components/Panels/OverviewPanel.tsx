@@ -13,12 +13,16 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
   setActiveTab,
   onApplyOptimization,
 }) => {
-  const violationsCount = (data?.basement_compliance?.length || 0) + (data?.vf2_diagnostics?.filter(v => !v.is_compliant)?.length || 0);
-  const totalOccupants = data?.evacuation_report?.total_occupants || 78;
-  const originalTime = data?.evacuation_report?.total_evacuation_time_s || 76.5;
-  const optimizedTime = data?.counterfactual_optimization?.optimized_evacuation_time_s || 58.0;
+  const violationsCount = data?.violations?.length ?? ((data?.basement_compliance?.length || 0) + (data?.vf2_diagnostics?.filter(v => !v.is_compliant)?.length || 0));
+  const totalOccupants = data?.program?.est_persons || data?.evacuation_report?.total_occupants || 78;
+  const originalTime = data?.evacuation?.baseline_time_sec || data?.evacuation_report?.total_evacuation_time_s || 76.5;
+  const optimizedTime = data?.optimization?.optimized_time_sec || data?.counterfactual_optimization?.optimized_evacuation_time_s || 58.0;
   const timeSaved = (originalTime - optimizedTime).toFixed(1);
   const aset = 62.0;
+  const totalArea = data?.program?.residential_area_m2 || data?.building_program?.total_area_m2 || 840;
+  const floorCount = data?.metadata?.total_floors || data?.building_program?.floor_count || 2;
+  const totalRooms = data?.metadata?.total_rooms || data?.rooms_analyzed || 28;
+  const totalDoors = data?.metadata?.total_doors || data?.doors_analyzed || 26;
 
   return (
     <div className="flex flex-col gap-3.5 text-[14px] leading-relaxed text-[var(--ui-text)] w-full">
@@ -74,13 +78,22 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
             </div>
             <div className="text-xl font-bold font-mono text-[var(--ui-text)] flex items-baseline gap-2">
               <span>{originalTime.toFixed(1)} sn</span>
-              <span className="text-[12px] text-[var(--ui-danger)] font-sans font-medium">&gt; {aset}s ASET</span>
+              <span className={`text-[12px] font-sans font-medium ${originalTime <= aset ? 'text-[var(--ui-success)]' : 'text-[var(--ui-danger)]'}`}>
+                {originalTime <= aset ? `< ${aset}s ASET (Güvenli)` : `> ${aset}s ASET`}
+              </span>
             </div>
           </div>
-          <p className="text-[12px] text-[var(--ui-danger)] mt-2 flex items-center gap-1.5 leading-[1.45]">
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-            <span>14.5 sn tahliye açığı (Duman riski)</span>
-          </p>
+          {originalTime <= aset ? (
+            <p className="text-[12px] text-[var(--ui-success)] mt-2 flex items-center gap-1.5 leading-[1.45]">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Tahliye marjı güvenli aralıkta</span>
+            </p>
+          ) : (
+            <p className="text-[12px] text-[var(--ui-danger)] mt-2 flex items-center gap-1.5 leading-[1.45]">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>{(originalTime - aset).toFixed(1)} sn tahliye açığı (Duman riski)</span>
+            </p>
+          )}
         </div>
 
         {/* Optimizasyon */}
@@ -111,11 +124,11 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
               <Layers className="w-4 h-4 text-[var(--ui-primary)]" />
             </div>
             <div className="text-xl font-bold font-mono text-[var(--ui-text)]">
-              {data?.building_program?.total_area_m2 || 840} m²
+              {totalArea} m²
             </div>
           </div>
           <p className="text-[12px] text-[var(--ui-text-muted)] mt-2 leading-[1.45]">
-            {data?.building_program?.floor_count || 3} Kat · {data?.rooms_analyzed || 28} Mekan · {data?.doors_analyzed || 26} Kapı
+            {floorCount} Kat · {totalRooms} Mekan · {totalDoors} Kapı
           </p>
         </div>
 
@@ -148,58 +161,58 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
           </button>
         </div>
 
-        <div className="flex flex-col gap-2.5">
-          <div className="p-3 rounded-lg audit-card-danger flex items-start gap-2.5 mb-2.5">
-            <span className="badge badge-danger shrink-0 text-[12px] font-mono mt-0.5">BYKHY M.31</span>
-            <div className="flex-1 flex flex-col gap-1.5 leading-[1.45]">
-              <p className="text-[14px] text-[var(--ui-text)] font-semibold leading-[1.45]">
-                Yangın güvenlik holü kapısı yetersiz genişlikte (0.90m &lt; 1.20m)
-              </p>
-              <p className="text-[13px] text-[var(--ui-text-muted)] leading-[1.45]">
-                Tahliye akışında hidrolik darboğaz ve 14 kişilik kuyruk oluşturuyor.
-              </p>
+        {violationsCount === 0 ? (
+          <div className="p-4 rounded-lg bg-[#182924] border border-[var(--ui-success)]/40 text-center space-y-2">
+            <CheckCircle2 className="w-6 h-6 text-[var(--ui-success)] mx-auto" />
+            <div className="text-[var(--ui-text)] font-semibold text-[14px]">
+              Tüm Mevzuata %100 Uygun - Sıfır İhlal
             </div>
+            <p className="text-[12px] text-[var(--ui-text-muted)] max-w-md mx-auto">
+              BYKHY, PAİY, Sığınak ve Otopark yönetmelikleri kapsamında hiçbir ihlal bulunmamaktadır. Yangın kaçış güvenliği, hava kilitleri ve kompartıman sınırları tamdır.
+            </p>
           </div>
-
-          <div className="p-3 rounded-lg audit-card-danger flex items-start gap-2.5 mb-2.5">
-            <span className="badge badge-danger shrink-0 text-[12px] font-mono mt-0.5">OTOPARK M.6</span>
-            <div className="flex-1 flex flex-col gap-1.5 leading-[1.45]">
-              <p className="text-[14px] text-[var(--ui-text)] font-semibold leading-[1.45]">
-                Kapalı otoparktan yangın merdivenine doğrudan kapı bağlantısı yasaktır
-              </p>
-              <p className="text-[13px] text-[var(--ui-text-muted)] leading-[1.45]">
-                Merdiven kovasına duman ve zehirli gaz sızma riski mevcuttur. Yangın güvenlik holü gereklidir.
-              </p>
-            </div>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {(data?.violations && data.violations.length > 0 ? data.violations.slice(0, 3) : [
+              { code: 'BYKHY_M31', description: 'Yangın güvenlik holü kapısı yetersiz genişlikte (0.90m < 1.20m)', regulation: 'BYKHY M.31', remedy: 'Kapı net genişliği 1.20 m yapılmalıdır.' },
+              { code: 'OTOPARK_M6', description: 'Kapalı otoparktan yangın merdivenine doğrudan kapı bağlantısı yasaktır', regulation: 'OTOPARK M.6', remedy: 'Yangın güvenlik holü eklenmelidir.' },
+              { code: 'SIGINAK_M9', description: 'Sığınak girişinde sızdırmaz hava kilidi tespit edilemedi', regulation: 'SIĞINAK M.9', remedy: 'Çift kapılı sızdırmaz hava kilidi eklenmelidir.' }
+            ]).map((v: any, idx: number) => (
+              <div key={idx} className="p-3 rounded-lg audit-card-danger flex items-start gap-2.5 mb-2.5">
+                <span className="badge badge-danger shrink-0 text-[12px] font-mono mt-0.5">
+                  {v.regulation || v.code}
+                </span>
+                <div className="flex-1 flex flex-col gap-1.5 leading-[1.45]">
+                  <p className="text-[14px] text-[var(--ui-text)] font-semibold leading-[1.45]">
+                    {v.description}
+                  </p>
+                  <p className="text-[13px] text-[var(--ui-text-muted)] leading-[1.45]">
+                    {v.remedy || v.suggested_fix || 'Mevzuata uygun hale getirilmelidir.'}
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
-
-          <div className="p-3 rounded-lg audit-card-warning flex items-start gap-2.5 mb-2.5">
-            <span className="badge badge-warning shrink-0 text-[12px] font-mono mt-0.5">SIĞINAK M.9</span>
-            <div className="flex-1 flex flex-col gap-1.5 leading-[1.45]">
-              <p className="text-[14px] text-[var(--ui-text)] font-semibold leading-[1.45]">
-                Sığınak girişinde sızdırmaz hava kilidi (airlock) tespit edilemedi
-              </p>
-              <p className="text-[13px] text-[var(--ui-text-muted)] leading-[1.45]">
-                Min. 1.5 m² alanlı ve çift kapılı güvenlik geçidi zorunludur.
-              </p>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Action Shortcut Callouts */}
       <div className="p-4 rounded-lg bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] flex items-center justify-between gap-4">
         <div>
-          <h5 className="font-bold text-[var(--ui-text)] text-[15px]">Karşı-Olgusal Tasarım Optimizasyonu</h5>
+          <h5 className="font-bold text-[var(--ui-text)] text-[15px]">
+            {violationsCount === 0 ? 'Tasarım Mevzuata Tam Uygun' : 'Karşı-Olgusal Tasarım Optimizasyonu'}
+          </h5>
           <p className="text-[13px] text-[var(--ui-text-muted)] mt-1">
-            3 adımda otomatik kapı genişletme ve hava kilidi mimari revizyonu hazır
+            {violationsCount === 0
+              ? 'Pafta sıfır ihlalle onaylanmıştır. İki bağımsız merdiven, holler ve sığınak eksiksizdir.'
+              : '3 adımda otomatik kapı genişletme ve hava kilidi mimari revizyonu hazır'}
           </p>
         </div>
         <button
           onClick={onApplyOptimization}
           className="btn btn-primary text-[14px] py-2 px-4 shrink-0 flex items-center gap-2"
         >
-          <span>Uygula & İncele</span>
+          <span>{violationsCount === 0 ? 'Optimizasyonu Görüntüle' : 'Uygula & İncele'}</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

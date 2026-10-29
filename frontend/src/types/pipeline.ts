@@ -71,6 +71,10 @@ export interface MacroNodeRecord {
   member_rooms: string[];
   internal_exit_depth_m: number;
   boundary_portals: string[];
+  total_area_m2?: number;
+  module_type?: string;
+  member_count?: number;
+  motif_id?: number;
 }
 
 export interface EdgeBottleneckRecord {
@@ -164,6 +168,33 @@ export interface DiagramYonetmelikPipelineOutput {
   optimization?: any;
   report_markdown?: string;
   evidence_json?: any;
+  dxf_export_info?: {
+    filename: string;
+    active_pafta_name: string;
+    total_entities: number;
+    dxf_version: string;
+    unit_scale: string;
+    compliance_status: 'UYGUN' | 'IHLAL_VAR';
+    total_violations: number;
+    total_interventions: number;
+    layers: Array<{
+      name: string;
+      aci_color: number;
+      color_name: string;
+      color_hex: string;
+      lineweight: number;
+      entity_count: number;
+      description: string;
+      status_text: string;
+    }>;
+    cad_table?: {
+      title: string;
+      stamp: string;
+      is_compliant: boolean;
+      author: string;
+      license: string;
+    };
+  };
 
   // Legacy fields
   pipeline_id?: string;
@@ -176,8 +207,26 @@ export interface DiagramYonetmelikPipelineOutput {
     node_count: number;
     edge_count: number;
     floors: number[];
+    total_floors?: number;
     vertical_shafts: number;
+    vertical_links?: Array<{
+      shaft_type: string;
+      lower_node: number | string;
+      upper_node: number | string;
+      lower_floor: number;
+      upper_floor: number;
+      walking_distance_m: number;
+      usable_in_fire: boolean;
+    }>;
+    vertical_edges?: number;
+    horizontal_edges?: number;
+    exit_nodes_count?: number;
+    stair_nodes_count?: number;
+    hall_nodes_count?: number;
+    fire_elevators_count?: number;
     fire_elevators_excluded: boolean;
+    stair_walking_factor?: number;
+    floor_height_m?: number;
   };
   building_program?: BuildingProgramSummary;
   spminer_macro_nodes?: MacroNodeRecord[];
@@ -242,12 +291,58 @@ export interface RegulationArticleDetail {
   };
 }
 
+export type BuildingOccupancyClass =
+  | 'konut'
+  | 'hastane_saglik'
+  | 'egitim_okul'
+  | 'otel_konaklama'
+  | 'toplanma_ticari'
+  | 'endustri_depo';
+
+export interface ChecklistVerificationItem {
+  item_id: string;
+  category_id: string;
+  title_tr: string;
+  legal_basis: string;
+  mandatory_rule: string;
+  target_value_str: string;
+  actual_value_str: string;
+  is_compliant: boolean;
+  severity: 'CRITICAL' | 'MAJOR' | 'WARNING' | 'INFO';
+  design_remedy_tr: string;
+  details?: Record<string, any>;
+}
+
+export interface ComprehensiveBuildingChecklistReport {
+  building_occupancy: BuildingOccupancyClass;
+  occupancy_title: string;
+  sprinkler_enabled: boolean;
+  building_height_m: number;
+  total_floors: number;
+  is_high_rise: boolean;
+  total_checks: number;
+  passed_checks: number;
+  failed_checks: number;
+  compliance_score_percent: number;
+  categories: Record<string, ChecklistVerificationItem[]>;
+  critical_violations: {
+    item_id: string;
+    title_tr: string;
+    legal_basis: string;
+    actual_value_str: string;
+    target_value_str: string;
+    severity: string;
+    design_remedy_tr: string;
+  }[];
+}
+
 export type ActiveTab =
   | 'overview'
   | 'cad_polygon'
   | 'building_graph'
   | 'spminer'
   | 'fire_audit'
+  | 'fire_checklist'
   | 'basement_audit'
   | 'evacuation'
   | 'optimization'

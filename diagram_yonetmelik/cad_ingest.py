@@ -198,7 +198,14 @@ class DXFFloorplanParser:
 
         # 3. Odaları Çıkar (LWPOLYLINE - Bulge/Yay Eğrilerini Koru)
         closed_polys: List[Polygon] = []
+        non_room_layers = {
+            'a-sheet', 'a-border', 'denetim_ozet_tablosu', 'denetim_ozet_tablosu_metin',
+            'a-anno', 'a-cols', 'defpoints', 'viewport', 'denetim_onay_damgasi'
+        }
         for polyline in msp.query('LWPOLYLINE'):
+            layer_name = getattr(polyline.dxf, 'layer', '').lower()
+            if layer_name in non_room_layers:
+                continue
             if polyline.is_closed and len(polyline) >= 3:
                 if getattr(polyline, 'has_arc', False):
                     from ezdxf import path as dxf_path
@@ -208,7 +215,8 @@ class DXFFloorplanParser:
                 else:
                     pts = [(round(float(p[0]), 6), round(float(p[1]), 6)) for p in polyline.get_points('xy')]
                 poly = Polygon(pts)
-                if poly.is_valid and poly.area > (2.0 / (scale ** 2)):
+                area_m2 = poly.area * (scale ** 2)
+                if poly.is_valid and 2.0 <= area_m2 <= 600.0:
                     closed_polys.append(poly)
 
         # 4. Fallback Kontrolü: Yeterli kapalı poligon yoksa LINE Soup modunu devreye sok (LINE, ARC, CIRCLE)

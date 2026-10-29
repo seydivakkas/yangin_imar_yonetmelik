@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Play, Upload, Flame, CheckCircle2, AlertTriangle, Image as ImageIcon, Layers, FileText } from 'lucide-react';
+import { Play, Upload, Flame, CheckCircle2, AlertTriangle, Image as ImageIcon, Layers, FileText, ShieldCheck, Loader2 } from 'lucide-react';
 import { ActiveTab, DiagramYonetmelikPipelineOutput } from '../types/pipeline';
 
 interface HeaderProps {
@@ -7,8 +7,10 @@ interface HeaderProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   isLoading: boolean;
+  loadingAction?: 'sample' | 'high_rise' | 'compliant_8' | 'upload' | null;
   onRunAudit: () => void;
   onRunHighRiseAudit?: () => void;
+  onRunCompliant8StoryAudit?: () => void;
   onUploadDXF: (file: File) => void;
   onUploadImage: (file: File) => void;
 }
@@ -18,8 +20,10 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   isLoading,
+  loadingAction,
   onRunAudit,
   onRunHighRiseAudit,
+  onRunCompliant8StoryAudit,
   onUploadDXF,
   onUploadImage,
 }) => {
@@ -34,6 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
       case 'building_graph': return '3B RAG Grafı & Mekânsal Topoloji';
       case 'spminer': return 'SPMiner Mekânsal Madencilik';
       case 'fire_audit': return 'Yangın Mevzuatı Denetimi (BYKHY)';
+      case 'fire_checklist': return 'Kaçış Yolları & Merdiven Kontrol Listesi (BYKHY)';
       case 'basement_audit': return 'Bodrum & Sığınak Denetimi (PAİY/Sığınak)';
       case 'evacuation': return 'Tahliye & Güvenli Kaçış Simülasyonu';
       case 'optimization': return 'Karşı-Olgusal Tasarım Optimizasyonu';
@@ -76,6 +81,11 @@ export const Header: React.FC<HeaderProps> = ({
               ? data.metadata.title
               : 'Çok Katlı Konut Yapısı (BYKHY/PAİY/Sığınak)'}
           </span>
+          {data?.metadata?.total_floors && (
+            <span className="badge badge-neutral text-xs font-mono ml-1">
+              {data.metadata.total_floors} Kat
+            </span>
+          )}
           <div className="w-px h-3.5 bg-[var(--ui-border)] mx-1" />
           {data ? (
             <span className="flex items-center gap-1.5 text-[var(--ui-success)] text-xs font-medium">
@@ -138,11 +148,35 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onRunHighRiseAudit}
             disabled={isLoading}
-            className="btn btn-secondary btn-sm hidden xl:inline-flex"
-            title="12 Katlı Yüksek Yapı Analiz Şablonunu Çalıştır"
+            className="btn btn-secondary btn-sm inline-flex items-center gap-1.5"
+            title="12 Katlı Yüksek Yapı Analiz Şablonunu Çalıştır (312 İhlalli Başlangıç Senaryosu)"
           >
-            <Layers className="w-4 h-4 text-[var(--ui-text-muted)]" />
-            <span>12 Katlı Yapı</span>
+            {loadingAction === 'high_rise' ? (
+              <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+            ) : (
+              <Layers className="w-4 h-4 text-[var(--ui-text-muted)]" />
+            )}
+            <span>{loadingAction === 'high_rise' ? 'Hesaplanıyor...' : '12 Katlı (312 İhlal)'}</span>
+          </button>
+        )}
+
+        {onRunCompliant8StoryAudit && (
+          <button
+            onClick={onRunCompliant8StoryAudit}
+            disabled={isLoading}
+            className="btn btn-sm inline-flex items-center gap-1.5 font-semibold px-3.5 py-1.5 rounded-md text-white shadow-sm transition-all hover:brightness-110 active:scale-95"
+            style={{
+              backgroundColor: '#059669',
+              border: '1px solid #047857',
+            }}
+            title="312 İhlalin Tümü Çözümlenmiş Kusursuz 8 Katlı Paftayı Yükle ve Canlı İncele"
+          >
+            {loadingAction === 'compliant_8' ? (
+              <Loader2 className="w-4 h-4 animate-spin text-white" />
+            ) : (
+              <ShieldCheck className="w-4 h-4 text-white" />
+            )}
+            <span>{loadingAction === 'compliant_8' ? '8 Kat Doğrulanıyor...' : '8 Katlı Kusursuz Pafta'}</span>
           </button>
         )}
 

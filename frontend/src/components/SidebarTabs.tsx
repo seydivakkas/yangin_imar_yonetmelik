@@ -18,9 +18,10 @@ import {
   Compass,
   Cpu,
   ShieldCheck,
+  ShieldAlert,
   ClipboardList
 } from 'lucide-react';
-import { ActiveTab } from '../types/pipeline';
+import { ActiveTab, DiagramYonetmelikPipelineOutput } from '../types/pipeline';
 
 interface SidebarTabsProps {
   activeTab: ActiveTab;
@@ -28,6 +29,7 @@ interface SidebarTabsProps {
   isCollapsed: boolean;
   setIsCollapsed: (c: boolean) => void;
   violationsCount: number;
+  data?: DiagramYonetmelikPipelineOutput | null;
 }
 
 interface NavCategory {
@@ -49,7 +51,37 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
   isCollapsed,
   setIsCollapsed,
   violationsCount,
+  data,
 }) => {
+  // Yangın ve Bodrum denetimi ihlal sayılarını dinamik hesapla
+  const fireViolationsCount = React.useMemo(() => {
+    if (!data?.violations) return violationsCount;
+    return data.violations.filter(
+      (v: any) => !String(v.code || '').startsWith('SIGINAK') && !String(v.code || '').startsWith('OTOPARK')
+    ).length;
+  }, [data?.violations, violationsCount]);
+
+  const basementViolationsCount = React.useMemo(() => {
+    if (!data?.violations) return 0;
+    return data.violations.filter(
+      (v: any) =>
+        (typeof v.floor_level === 'number' && v.floor_level < 0) ||
+        String(v.code || '').startsWith('SIGINAK') ||
+        String(v.code || '').startsWith('OTOPARK')
+    ).length;
+  }, [data?.violations]);
+
+  const spminerCount = React.useMemo(() => {
+    if (data?.spminer_macro_nodes && data.spminer_macro_nodes.length > 0) {
+      return data.spminer_macro_nodes.length;
+    }
+    const sp = (data as any)?.spminer?.macro_nodes;
+    if (Array.isArray(sp) && sp.length > 0) {
+      return sp.length;
+    }
+    return 0;
+  }, [data]);
+
   // 5 Ana Mantıksal Kategori Hiyerarşisi (Bilgi Mimarisi İyileştirmesi)
   const categories: NavCategory[] = [
     {
@@ -99,21 +131,30 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
         {
           id: 'spminer',
           label: 'SPMiner Modülü',
-          icon: <Boxes className="w-4 h-4" />,
+          icon: <Boxes className="w-4 h-4 text-[var(--ui-primary)]" />,
+          badge: spminerCount > 0 ? `${spminerCount} Modül` : undefined,
+          badgeVariant: 'primary',
         },
         {
           id: 'fire_audit',
           label: 'Yangın Denetimi',
-          icon: <Flame className="w-4 h-4 text-[var(--ui-danger)]" />,
-          badge: '2 İhlal',
-          badgeVariant: 'danger',
+          icon: <Flame className={`w-4 h-4 ${fireViolationsCount > 0 ? 'text-[var(--ui-danger)]' : 'text-[var(--ui-success)]'}`} />,
+          badge: fireViolationsCount > 0 ? `${fireViolationsCount} İhlal` : 'Uygun',
+          badgeVariant: fireViolationsCount > 0 ? 'danger' : 'success',
+        },
+        {
+          id: 'fire_checklist',
+          label: 'Kaçış & Merdiven Listesi',
+          icon: <ShieldAlert className="w-4 h-4 text-[var(--ui-primary)]" />,
+          badge: 'BYKHY 5 Kriter',
+          badgeVariant: 'primary',
         },
         {
           id: 'basement_audit',
           label: 'Bodrum Denetimi',
-          icon: <Warehouse className="w-4 h-4 text-[var(--ui-warning)]" />,
-          badge: '2 İhlal',
-          badgeVariant: 'danger',
+          icon: <Warehouse className={`w-4 h-4 ${basementViolationsCount > 0 ? 'text-[var(--ui-danger)]' : 'text-[var(--ui-success)]'}`} />,
+          badge: basementViolationsCount > 0 ? `${basementViolationsCount} İhlal` : 'Uygun',
+          badgeVariant: basementViolationsCount > 0 ? 'danger' : 'success',
         },
         {
           id: 'evacuation',

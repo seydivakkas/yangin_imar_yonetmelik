@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { SidebarTabs } from './components/SidebarTabs';
 import { ThreeScene } from './components/ThreeScene';
@@ -11,6 +11,7 @@ import { CadPolygonPanel } from './components/Panels/CadPolygonPanel';
 import { SpatialRagPanel } from './components/Panels/SpatialRagPanel';
 import { SpminerPanel } from './components/Panels/SpminerPanel';
 import { FireAuditPanel } from './components/Panels/FireAuditPanel';
+import { FireChecklistPanel } from './components/Panels/FireChecklistPanel';
 import { BasementAuditPanel } from './components/Panels/BasementAuditPanel';
 import { EvacuationPanel } from './components/Panels/EvacuationPanel';
 import { OptimizationPanel } from './components/Panels/OptimizationPanel';
@@ -30,6 +31,7 @@ import {
 export const App: React.FC = () => {
   const [pipelineData, setPipelineData] = useState<DiagramYonetmelikPipelineOutput | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadingAction, setLoadingAction] = useState<'sample' | 'high_rise' | 'compliant_8' | 'upload' | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isPanelOpen, setIsPanelOpen] = useState<boolean>(true);
@@ -42,6 +44,43 @@ export const App: React.FC = () => {
   const [simulationTime, setSimulationTime] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  // Yüklenen paftadan dinamik olarak çıkarılan kat seviyeleri
+  const availableFloors = useMemo<number[]>(() => {
+    const floorSet = new Set<number>();
+    if (pipelineData?.nodes && pipelineData.nodes.length > 0) {
+      pipelineData.nodes.forEach((n: any) => {
+        if (typeof n.floor_level === 'number') {
+          floorSet.add(n.floor_level);
+        }
+      });
+    }
+    if (pipelineData?.violations && pipelineData.violations.length > 0) {
+      pipelineData.violations.forEach((v: any) => {
+        if (typeof v.floor_level === 'number') {
+          floorSet.add(v.floor_level);
+        }
+      });
+    }
+    if (floorSet.size > 0) {
+      return Array.from(floorSet).sort((a, b) => b - a);
+    }
+    const total = pipelineData?.metadata?.total_floors || 2;
+    if (total <= 2) return [0, -1];
+    const topFloor = Math.max(1, total - 2);
+    const generated: number[] = [];
+    for (let f = topFloor; f >= -1; f--) {
+      generated.push(f);
+    }
+    return generated;
+  }, [pipelineData]);
+
+  // Pafta değişiminde seçili kat o paftada yoksa 'all' seviyesine sıfırla
+  useEffect(() => {
+    if (activeFloor !== 'all' && !availableFloors.includes(activeFloor)) {
+      setActiveFloor('all');
+    }
+  }, [availableFloors, activeFloor]);
+
 
   // Feature Toggles
   const [showSmoke, setShowSmoke] = useState<boolean>(true);
@@ -54,7 +93,7 @@ export const App: React.FC = () => {
   // Object Inspector
   const [selectedElement, setSelectedElement] = useState<{
     id: string;
-    type: 'room' | 'door' | 'wall' | 'arc' | 'violation';
+    type: 'room' | 'door' | 'wall' | 'arc' | 'violation' | 'checklist_item';
     details: any;
   } | null>(null);
 
@@ -111,28 +150,34 @@ export const App: React.FC = () => {
   useEffect(() => {
     let interval: any = null;
     if (isPlaying) {
+      const maxT = pipelineData?.evacuation?.total_evacuation_time_s
+        || pipelineData?.evacuation?.baseline_time_sec
+        || 180;
+      const limitT = Math.max(180, Math.ceil(maxT));
       interval = setInterval(() => {
         setSimulationTime((prev) => {
           const next = prev + 0.5 * playbackSpeed;
-          if (next >= 180) {
+          if (next >= limitT) {
             setIsPlaying(false);
-            return 180;
+            return limitT;
           }
-          return next;
+          return Number(next.toFixed(1));
         });
       }, 100);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, playbackSpeed]);
+  }, [isPlaying, playbackSpeed, pipelineData]);
 
   // Load Initial / Sample Data on mount
   const runSampleAudit = async () => {
     setIsLoading(true);
+    setLoadingAction('sample');
     try {
       const res = await fetch('/api/audit/sample', { method: 'POST' });
       if (res.ok) {
         const json = await res.json();
         setPipelineData(json);
+        setActiveFloor('all');
       } else {
         console.warn('Backend returned error or not running; loading client fallback.');
       }
@@ -140,17 +185,21 @@ export const App: React.FC = () => {
       console.warn('Using client mock pipeline data:', err);
     } finally {
       setIsLoading(false);
+      setLoadingAction(null);
     }
   };
 
   // Load 12-Story High-Rise Audit
   const runHighRiseAudit = async () => {
     setIsLoading(true);
+    setLoadingAction('high_rise');
     try {
       const res = await fetch('/api/audit/high-rise-12', { method: 'POST' });
       if (res.ok) {
         const json = await res.json();
         setPipelineData(json);
+        setActiveFloor('all');
+        setActiveTab('overview');
       } else {
         console.warn('Backend high-rise endpoint returned error');
       }
@@ -158,6 +207,29 @@ export const App: React.FC = () => {
       console.error('Failed to run 12-story high rise audit:', err);
     } finally {
       setIsLoading(false);
+      setLoadingAction(null);
+    }
+  };
+
+  // Load 8-Story Fully Compliant Pafta (312 İhlali Sıfırlayan Kusursuz Model)
+  const runCompliant8StoryAudit = async () => {
+    setIsLoading(true);
+    setLoadingAction('compliant_8');
+    try {
+      const res = await fetch('/api/audit/compliant-8-story', { method: 'POST' });
+      if (res.ok) {
+        const json = await res.json();
+        setPipelineData(json);
+        setActiveFloor('all');
+        setActiveTab('overview');
+      } else {
+        console.warn('Backend compliant 8-story endpoint returned error');
+      }
+    } catch (err) {
+      console.error('Failed to run compliant 8-story audit:', err);
+    } finally {
+      setIsLoading(false);
+      setLoadingAction(null);
     }
   };
 
@@ -208,7 +280,13 @@ export const App: React.FC = () => {
   };
 
   const handleDownloadDXF = () => {
-    window.open('/api/download/annotated-dxf', '_blank');
+    const filename = pipelineData?.dxf_export_info?.filename || 'denetlenmis_diagram_yonetmelik.dxf';
+    const link = document.createElement('a');
+    link.href = '/api/download/annotated-dxf';
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleApplyOptimization = () => {
@@ -226,8 +304,10 @@ export const App: React.FC = () => {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isLoading={isLoading}
+        loadingAction={loadingAction}
         onRunAudit={runSampleAudit}
         onRunHighRiseAudit={runHighRiseAudit}
+        onRunCompliant8StoryAudit={runCompliant8StoryAudit}
         onUploadDXF={handleUploadDXF}
         onUploadImage={handleUploadImage}
       />
@@ -240,10 +320,14 @@ export const App: React.FC = () => {
           setActiveTab={(tab) => {
             setActiveTab(tab);
             setIsPanelOpen(true);
+            if (tab === 'building_graph') {
+              setShowRAGOverlay(true);
+            }
           }}
           isCollapsed={isSidebarCollapsed}
           setIsCollapsed={setIsSidebarCollapsed}
-          violationsCount={4}
+          violationsCount={pipelineData?.violations ? pipelineData.violations.length : 0}
+          data={pipelineData}
         />
 
         {/* Center: 3D WebGL Canvas */}
@@ -268,6 +352,7 @@ export const App: React.FC = () => {
             isPlaying={isPlaying}
             onTogglePlay={(p) => setIsPlaying(p)}
             onResetCamera={() => setCameraPreset('isometric')}
+            activeTab={activeTab}
           />
 
           {/* Bottom HUD: Timeline & Preset Controls */}
@@ -298,6 +383,8 @@ export const App: React.FC = () => {
             setShowDoorArcs={setShowDoorArcs}
             cadDiffMode={cadDiffMode}
             setCadDiffMode={setCadDiffMode}
+            availableFloors={availableFloors}
+            maxSimulationTime={Math.max(180, Math.ceil(pipelineData?.evacuation?.total_evacuation_time_s || pipelineData?.evacuation?.baseline_time_sec || 180))}
           />
 
           {/* Interactive Object Inspector Drawer */}
@@ -348,9 +435,29 @@ export const App: React.FC = () => {
                       ? 'Mevzuat Kütüphanesi'
                       : activeTab === 'fire_audit'
                       ? 'Yangın Denetimi Sonuçları'
+                      : activeTab === 'fire_checklist'
+                      ? 'Kaçış Yolları ve Merdiven Kontrol Listesi'
+                      : activeTab === 'basement_audit'
+                      ? 'Bodrum Kat, Sığınak & Otopark Denetimi'
                       : activeTab === 'overview'
                       ? 'Proje Özeti & Bulgular'
-                      : activeTab.replace('_', ' ')}
+                      : activeTab === 'cad_polygon'
+                      ? 'CAD Kat Planı & Poligon Modeli'
+                      : activeTab === 'dxf_preview'
+                      ? 'DXF Pafta Çıktısı & İndirme'
+                      : activeTab === 'cv_image'
+                      ? 'OpenCV Plan Görü Analizi'
+                      : activeTab === 'building_graph'
+                      ? '3B Mekânsal RAG Grafı'
+                      : activeTab === 'spminer'
+                      ? 'SPMiner Sık Alt-Graf Madenciliği'
+                      : activeTab === 'evacuation'
+                      ? 'Çok Katlı Tahliye Simülasyonu'
+                      : activeTab === 'optimization'
+                      ? 'Karşı-Olgusal Tasarım Optimizasyonu'
+                      : activeTab === 'regulatory_report'
+                      ? 'Mevzuat Uygunluk Raporu'
+                      : String(activeTab).replace(/_/g, ' ')}
                   </span>
                 </div>
                 <button
@@ -370,7 +477,14 @@ export const App: React.FC = () => {
                     onApplyOptimization={handleApplyOptimization}
                   />
                 )}
-                {activeTab === 'cad_polygon' && <CadPolygonPanel data={pipelineData} />}
+                {activeTab === 'cad_polygon' && (
+                  <CadPolygonPanel
+                    data={pipelineData}
+                    onSelectElement={(el) => setSelectedElement(el)}
+                    activeFloor={activeFloor}
+                    onFloorChange={(fl) => setActiveFloor(fl)}
+                  />
+                )}
                 {activeTab === 'building_graph' && <SpatialRagPanel data={pipelineData} />}
                 {activeTab === 'spminer' && <SpminerPanel data={pipelineData} />}
                 {activeTab === 'fire_audit' && (
@@ -382,6 +496,15 @@ export const App: React.FC = () => {
                     onOpenArticle={(artId) => setSelectedArticleId(artId)}
                   />
                 )}
+                {activeTab === 'fire_checklist' && (
+                  <FireChecklistPanel
+                    data={pipelineData}
+                    onOpenArticle={(artId) => setSelectedArticleId(artId)}
+                    onSelectChecklistItem={(it) =>
+                      setSelectedElement({ id: it.item_id, type: 'checklist_item', details: it })
+                    }
+                  />
+                )}
                 {activeTab === 'basement_audit' && (
                   <BasementAuditPanel
                     data={pipelineData}
@@ -391,7 +514,22 @@ export const App: React.FC = () => {
                   />
                 )}
                 {activeTab === 'evacuation' && (
-                  <EvacuationPanel data={pipelineData} simulationTime={simulationTime} />
+                  <EvacuationPanel
+                    data={pipelineData}
+                    simulationTime={simulationTime}
+                    setSimulationTime={setSimulationTime}
+                    isPlaying={isPlaying}
+                    setIsPlaying={setIsPlaying}
+                    playbackSpeed={playbackSpeed}
+                    setPlaybackSpeed={setPlaybackSpeed}
+                    onRefreshAudit={() => {
+                      if (pipelineData?.metadata?.total_floors && pipelineData.metadata.total_floors > 3) {
+                        runHighRiseAudit();
+                      } else {
+                        runSampleAudit();
+                      }
+                    }}
+                  />
                 )}
                 {activeTab === 'optimization' && (
                   <OptimizationPanel

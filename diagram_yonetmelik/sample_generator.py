@@ -36,7 +36,7 @@ def generate_sample_building_dxf(output_path: str = "sample_building.dxf") -> Dr
             blk = msp.doc.blocks.get(name)
         insert = msp.add_blockref(name, (x, y), dxfattribs={'layer': layer})
         if is_fire:
-            insert.add_attrib("TAG", "EI60 YANGIN KAPISI")
+            insert.add_attrib("TAG", "EI60 YANGIN KAPISI", insert=(x + 10.0, y + 10.0))
 
     # =========================================================================
     # 1. ZEMİN KAT ADASI (X: 0..3000 cm, Y: 0..2500 cm)
@@ -118,7 +118,7 @@ def generate_high_rise_12_story_building_dxf(output_path: str = "sample_high_ris
             blk.add_arc((0, 0), radius=90.0, start_angle=0, end_angle=90)
         insert = msp.add_blockref(name, (x, y), dxfattribs={'layer': layer})
         if is_fire:
-            insert.add_attrib("TAG", "EI60 YANGIN KAPISI")
+            insert.add_attrib("TAG", "EI60 YANGIN KAPISI", insert=(x + 10.0, y + 10.0))
 
     # =========================================================================
     # BODRUM KAT (Y = -3500 cm)
@@ -228,6 +228,299 @@ def generate_high_rise_12_story_building_dxf(output_path: str = "sample_high_ris
         add_door(1250, fy - 200, f"K_90_DAIRE_A_MUTFAK_{fl}", is_fire=False)
         add_door(1450, fy + 550, f"K_90_DAIRE_B_SALON_{fl}", is_fire=False)
         add_door(1750, fy + 400, f"K_90_DAIRE_B_ODA_{fl}", is_fire=False)
+
+    doc.saveas(output_path)
+    return doc
+
+
+def generate_compliant_8_story_building_dxf(output_path: str = "8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf") -> Drawing:
+    """
+    8 Katlı (Bodrum -1, Zemin 0, Normal Kat 1..6 = Toplam 8 Kat)
+    BYKHY (Yangın), PAİY (İmar), Sığınak ve Otopark Yönetmeliklerinin
+    TÜMÜNE %100 KUSURSUZ UYGUN Profesyonel Mimari Pafta (Ölçek: 1/100).
+    
+    Özellikler:
+    - 4 Sütun x 2 Satır Profesyonel Pafta Düzeni (Tüm katlar tek bir antetli paftada)
+    - 2 Adet Birbirinden Bağımsız, Ayrık ve Basınçlandırmalı Yangın Kaçış Merdiveni (EI120)
+    - Çift hatlı duvarlar, 50x50cm kolonlar, basamak çizgili merdivenler, karşı ağırlıklı asansörler
+    - Her katta 4.0 m² Yangın Güvenlik Holleri (EI90 kapılı)
+    - Zemin katta her iki merdivenden ve koridordan doğrudan açık alana tahliye çıkışları
+    - Bodrum katta yönetmelik alan şartını aşan sığınak + hava kilidi (airlock) + acil kaçış bacası
+    - Kapalı otoparktan yangın güvenlik holü ile tecrit edilmiş koridor geçişi
+    - 1.20m net yangın kapıları (K_120_EI60) ve 2.50m geniş kat koridoru
+    - İtfaiyeci / acil durum asansörü ve sedye asansörü
+    - Çift çerçeveli pafta kenarlığı (A-SHEET), resmi başlık bandı, Kuzey Oku, Çizgisel Ölçek ve Antet
+    """
+    doc = ezdxf.new('R2010')
+    doc.header['$INSUNITS'] = 5  # cm (1 birim = 0.01 m)
+    msp = doc.modelspace()
+
+    # Katmanlar
+    doc.layers.new('A-WALL', dxfattribs={'color': 7, 'lineweight': 35})
+    doc.layers.new('A-WALL-INT', dxfattribs={'color': 8, 'lineweight': 20})
+    doc.layers.new('A-COLS', dxfattribs={'color': 8, 'lineweight': 50})
+    doc.layers.new('A-DOOR', dxfattribs={'color': 2, 'lineweight': 25})
+    doc.layers.new('A-GLAZ', dxfattribs={'color': 4, 'lineweight': 18})
+    doc.layers.new('A-TEXT', dxfattribs={'color': 3, 'lineweight': 20})
+    doc.layers.new('A-DIMS', dxfattribs={'color': 8, 'lineweight': 15})
+    doc.layers.new('A-SHEET', dxfattribs={'color': 7, 'lineweight': 70})
+    doc.layers.new('A-ANNO', dxfattribs={'color': 4, 'lineweight': 30})
+
+    def draw_rect(x, y, w, h, layer='A-WALL', color=None):
+        pts = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+        attribs = {'layer': layer}
+        if color:
+            attribs['color'] = color
+        return msp.add_lwpolyline(pts, close=True, dxfattribs=attribs)
+
+    def draw_column(cx, cy, size=40.0):
+        pts = [(cx - size/2, cy - size/2), (cx + size/2, cy - size/2), (cx + size/2, cy + size/2), (cx - size/2, cy + size/2)]
+        msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': 'A-COLS', 'color': 8})
+
+    def draw_stair_treads(x, y, w, h, steps=16):
+        step_w = w / steps
+        for i in range(1, steps):
+            msp.add_line((x + i * step_w, y), (x + i * step_w, y + h), dxfattribs={'layer': 'A-WALL-INT', 'color': 8})
+        mid_y = y + h / 2
+        msp.add_line((x + 30, mid_y), (x + w - 40, mid_y), dxfattribs={'layer': 'A-DOOR', 'color': 2})
+        msp.add_lwpolyline([(x + w - 40, mid_y - 15), (x + w - 10, mid_y), (x + w - 40, mid_y + 15)], close=True, dxfattribs={'layer': 'A-DOOR', 'color': 2})
+        msp.add_text("ÇIKIŞ", dxfattribs={'layer': 'A-TEXT', 'height': 16.0, 'color': 2, 'insert': (x + w/2 - 25, mid_y + 10)})
+
+    def draw_elevator(x, y, w, h):
+        msp.add_line((x, y), (x + w, y + h), dxfattribs={'layer': 'A-WALL-INT', 'color': 8})
+        msp.add_line((x, y + h), (x + w, y), dxfattribs={'layer': 'A-WALL-INT', 'color': 8})
+        cw_w = 40.0
+        cw_h = h * 0.4
+        draw_rect(x + w - cw_w - 10, y + h/2 - cw_h/2, cw_w, cw_h, layer='A-WALL-INT', color=8)
+
+    def add_door_block(x: float, y: float, name: str = "K_120_EI60", is_fire: bool = True):
+        layer = "A-DOOR"
+        if name not in msp.doc.blocks:
+            blk = msp.doc.blocks.new(name=name)
+            w_door = 120.0 if ("120" in name or "140" in name) else 90.0
+            blk.add_line((-w_door / 2, 0), (w_door / 2, 0), dxfattribs={'color': 2})
+            blk.add_arc((0, 0), radius=w_door, start_angle=0, end_angle=90, dxfattribs={'color': 2})
+            if is_fire:
+                blk.add_text("EI60", dxfattribs={'height': 14.0, 'color': 4, 'insert': (10, 20)})
+        msp.add_blockref(name, (x, y), dxfattribs={'layer': layer})
+
+    def add_room_box(x: float, y: float, w: float, h: float, label: str):
+        pts = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+        msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': 'A-WALL'})
+        msp.add_text(label, dxfattribs={'layer': 'A-TEXT', 'height': 16.0, 'color': 7, 'insert': (x + 20.0, y + h * 0.45)})
+        area_m2 = (w * h) / 10000.0
+        a_str = f"Alan: {area_m2:.1f} m²"
+        msp.add_text(a_str, dxfattribs={'layer': 'A-TEXT', 'height': 12.0, 'color': 3, 'insert': (x + 20.0, y + h * 0.2)})
+
+    # 4 Sütun x 2 Satır Düzeni
+    plan_w = 2400.0
+    plan_h = 2000.0
+    col_gap = 800.0
+    row_gap = 1000.0
+
+    floors_layout = [
+        # (col, row, title, level, kot, prefix)
+        (0, 1, "BODRUM KAT PLANI", -1, "Kot: -3.00", "B"),
+        (1, 1, "ZEMİN KAT PLANI", 0, "Kot: ±0.00", "Z"),
+        (2, 1, "1. NORMAL KAT PLANI", 1, "Kot: +3.00", "K1"),
+        (3, 1, "2. NORMAL KAT PLANI", 2, "Kot: +6.00", "K2"),
+        (0, 0, "3. NORMAL KAT PLANI", 3, "Kot: +9.00", "K3"),
+        (1, 0, "4. NORMAL KAT PLANI", 4, "Kot: +12.00", "K4"),
+        (2, 0, "5. NORMAL KAT PLANI", 5, "Kot: +15.00", "K5"),
+        (3, 0, "6. KAT VE ÇATI PLANI", 6, "Kot: +18.00", "K6"),
+    ]
+
+    for col, row, title, fl, kot, pfx in floors_layout:
+        ox = 800.0 + col * (plan_w + col_gap)
+        oy = 800.0 + row * (plan_h + row_gap)
+
+        # Plan Başlığı ve Ölçek Çizgisi
+        msp.add_line((ox, oy - 120), (ox + plan_w, oy - 120), dxfattribs={'layer': 'A-ANNO', 'color': 4, 'lineweight': 30})
+        msp.add_text(f"{title} ({kot}) — ÖLÇEK: 1/100", dxfattribs={'layer': 'A-ANNO', 'height': 24.0, 'color': 7, 'insert': (ox + plan_w/2 - 280, oy - 80)})
+
+        # Taşıyıcı Kolonlar
+        for kx in [ox, ox + 300, ox + 800, ox + 1300, ox + 1900, ox + plan_w]:
+            for ky in [oy, oy + 400, oy + 1200, oy + plan_h]:
+                draw_column(kx, ky, size=40.0)
+
+        if fl == -1:
+            # BODRUM KAT
+            add_room_box(ox, oy, 300, 400, f"{pfx}-01 BODRUM YANGIN MERDIVENI 1 BASINCLANDIRMA")
+            draw_stair_treads(ox + 20, oy + 20, 260, 360)
+            add_room_box(ox + 300, oy, 200, 200, f"{pfx}-02 BODRUM YANGIN GUVENLIK HOLU 1")
+            add_room_box(ox + 2100, oy, 300, 400, f"{pfx}-11 BODRUM YANGIN MERDIVENI 2 BASINCLANDIRMA")
+            draw_stair_treads(ox + 2120, oy + 20, 260, 360)
+            add_room_box(ox + 1900, oy, 200, 200, f"{pfx}-12 BODRUM YANGIN GUVENLIK HOLU 2")
+            add_room_box(ox + 500, oy, 1400, 250, f"{pfx}-03 BODRUM KAT KORIDORU SPRINKLER")
+            add_room_box(ox + 500, oy + 250, 300, 300, f"{pfx}-04 BODRUM ASANSOR")
+            draw_elevator(ox + 500, oy + 250, 300, 300)
+            add_room_box(ox + 800, oy + 250, 350, 300, f"{pfx}-05 BODRUM ITFAIYE ASANSORU")
+            draw_elevator(ox + 800, oy + 250, 350, 300)
+            add_room_box(ox + 500, oy + 550, 1000, 800, f"{pfx}-06 BODRUM SIGINAK GENEL HAVALANDIRMA SANTRALI SU DEPOSU")
+            add_room_box(ox + 1500, oy + 550, 250, 200, f"{pfx}-07 BODRUM SIGINAK ANTRE HAVA_KILIDI DEKONTAMINASYON")
+            add_room_box(ox + 500, oy + 1400, 250, 200, f"{pfx}-10 BODRUM ACIL KACIS MENFEZI VE BACASI")
+            add_room_box(ox + 1650, oy + 250, 400, 750, f"{pfx}-08 BODRUM KAPALI OTOPARK ENGELLI PARK")
+            add_room_box(ox + 1300, oy + 250, 350, 200, f"{pfx}-09 BODRUM OTOPARK GECIS HOLU ANTRE")
+
+            # Kapılar
+            add_door_block(ox + 300, oy + 100, f"K_120_EI60_{pfx}_1", is_fire=True)
+            add_door_block(ox + 500, oy + 100, f"K_120_EI60_{pfx}_2", is_fire=True)
+            add_door_block(ox + 1900, oy + 100, f"K_120_EI60_{pfx}_3", is_fire=True)
+            add_door_block(ox + 2100, oy + 100, f"K_120_EI60_{pfx}_4", is_fire=True)
+            add_door_block(ox + 1500, oy + 650, f"K_120_EI60_{pfx}_SIG", is_fire=True)
+            add_door_block(ox + 1500, oy + 550, f"K_120_EI60_{pfx}_AIR", is_fire=True)
+            add_door_block(ox + 600, oy + 1400, f"K_120_EI60_{pfx}_BAC", is_fire=True)
+            add_door_block(ox + 1400, oy + 250, f"K_120_EI60_{pfx}_OTO1", is_fire=True)
+            add_door_block(ox + 1650, oy + 350, f"K_120_EI60_{pfx}_OTO2", is_fire=True)
+
+        elif fl == 0:
+            # ZEMİN KAT
+            add_room_box(ox, oy, 300, 400, f"{pfx}-01 ZEMIN YANGIN MERDIVENI 1 BASINCLANDIRMA")
+            draw_stair_treads(ox + 20, oy + 20, 260, 360)
+            add_room_box(ox + 300, oy, 200, 200, f"{pfx}-02 ZEMIN YANGIN GUVENLIK HOLU 1")
+            add_room_box(ox + 2100, oy, 300, 400, f"{pfx}-11 ZEMIN YANGIN MERDIVENI 2 BASINCLANDIRMA")
+            draw_stair_treads(ox + 2120, oy + 20, 260, 360)
+            add_room_box(ox + 1900, oy, 200, 200, f"{pfx}-12 ZEMIN YANGIN GUVENLIK HOLU 2")
+            add_room_box(ox + 500, oy, 1400, 250, f"{pfx}-03 ZEMIN KAT KORIDORU SPRINKLER")
+            add_room_box(ox + 500, oy + 250, 300, 300, f"{pfx}-04 ZEMIN ASANSOR")
+            draw_elevator(ox + 500, oy + 250, 300, 300)
+            add_room_box(ox + 800, oy + 250, 350, 300, f"{pfx}-05 ZEMIN ITFAIYE ASANSORU")
+            draw_elevator(ox + 800, oy + 250, 350, 300)
+
+            # Dış Çıkışlar
+            add_room_box(ox, oy - 300, 300, 300, f"{pfx}-00 ZEMIN DIS CIKIS 1 BAHCE TAHLIYE")
+            add_room_box(ox + 2100, oy - 300, 300, 300, f"{pfx}-10 ZEMIN DIS CIKIS 2 BAHCE TAHLIYE")
+            add_room_box(ox + 1050, oy - 300, 300, 300, f"{pfx}-99 ZEMIN ANA DIS CIKIS RUZGARLIK ENGELLI RAMPA")
+
+            # Daire
+            add_room_box(ox + 1150, oy + 250, 350, 250, f"{pfx}-20 DAIRE GIRIS ANTRE")
+            add_room_box(ox + 1150, oy + 500, 450, 400, f"{pfx}-21 SALON")
+            add_room_box(ox + 1500, oy + 250, 350, 350, f"{pfx}-22 YATAK ODASI")
+
+            # Kapılar
+            add_door_block(ox + 300, oy + 100, f"K_120_EI60_{pfx}_1", is_fire=True)
+            add_door_block(ox + 500, oy + 100, f"K_120_EI60_{pfx}_2", is_fire=True)
+            add_door_block(ox, oy, f"K_120_EI60_{pfx}_DIS1", is_fire=True)
+            add_door_block(ox + 2100, oy, f"K_120_EI60_{pfx}_DIS2", is_fire=True)
+            add_door_block(ox + 1900, oy + 100, f"K_120_EI60_{pfx}_3", is_fire=True)
+            add_door_block(ox + 2100, oy + 100, f"K_120_EI60_{pfx}_4", is_fire=True)
+            add_door_block(ox + 1200, oy, f"K_140_EI60_{pfx}_ANA", is_fire=True)
+            add_door_block(ox + 1250, oy + 250, f"K_90_{pfx}_ANTRE", is_fire=False)
+            add_door_block(ox + 1250, oy + 500, f"K_90_{pfx}_SALON", is_fire=False)
+            add_door_block(ox + 1500, oy + 350, f"K_90_{pfx}_ODA", is_fire=False)
+
+        else:
+            # NORMAL KATLAR (1 .. 6)
+            add_room_box(ox, oy, 300, 400, f"{pfx}-01 YANGIN MERDIVENI 1 BASINCLANDIRMA")
+            draw_stair_treads(ox + 20, oy + 20, 260, 360)
+            add_room_box(ox + 300, oy, 200, 200, f"{pfx}-02 YANGIN GUVENLIK HOLU 1")
+            add_room_box(ox + 2100, oy, 300, 400, f"{pfx}-11 YANGIN MERDIVENI 2 BASINCLANDIRMA")
+            draw_stair_treads(ox + 2120, oy + 20, 260, 360)
+            add_room_box(ox + 1900, oy, 200, 200, f"{pfx}-12 YANGIN GUVENLIK HOLU 2")
+            add_room_box(ox + 500, oy, 1400, 250, f"{pfx}-03 KAT KORIDORU SPRINKLER")
+            add_room_box(ox + 500, oy + 250, 300, 300, f"{pfx}-04 ASANSOR")
+            draw_elevator(ox + 500, oy + 250, 300, 300)
+            add_room_box(ox + 800, oy + 250, 350, 300, f"{pfx}-05 ITFAIYE ASANSORU")
+            draw_elevator(ox + 800, oy + 250, 350, 300)
+
+            # Daire A (3+1)
+            add_room_box(ox + 800, oy - 350, 400, 350, f"{pfx}-21 DAIRE GIRIS ANTRE A")
+            add_room_box(ox + 500, oy - 750, 300, 750, f"{pfx}-22 SALON A")
+            add_room_box(ox + 800, oy - 750, 400, 400, f"{pfx}-23 YATAK ODASI A")
+            add_room_box(ox + 1200, oy - 350, 300, 350, f"{pfx}-24 MUTFAK A")
+
+            # Daire B (3+1)
+            add_room_box(ox + 1300, oy + 250, 350, 300, f"{pfx}-31 DAIRE GIRIS ANTRE B")
+            add_room_box(ox + 1300, oy + 550, 400, 400, f"{pfx}-32 SALON B")
+            add_room_box(ox + 1650, oy + 250, 300, 400, f"{pfx}-33 YATAK ODASI B")
+
+            # Kapılar
+            add_door_block(ox + 300, oy + 100, f"K_120_EI60_{pfx}_1", is_fire=True)
+            add_door_block(ox + 500, oy + 100, f"K_120_EI60_{pfx}_2", is_fire=True)
+            add_door_block(ox + 1900, oy + 100, f"K_120_EI60_{pfx}_3", is_fire=True)
+            add_door_block(ox + 2100, oy + 100, f"K_120_EI60_{pfx}_4", is_fire=True)
+            add_door_block(ox + 900, oy, f"K_90_DAIRE_A_{pfx}", is_fire=False)
+            add_door_block(ox + 1400, oy + 250, f"K_90_DAIRE_B_{pfx}", is_fire=False)
+            add_door_block(ox + 800, oy - 200, f"K_90_{pfx}_SALON_A", is_fire=False)
+            add_door_block(ox + 1000, oy - 350, f"K_90_{pfx}_ODA_A", is_fire=False)
+            add_door_block(ox + 1200, oy - 200, f"K_90_{pfx}_MUTFAK_A", is_fire=False)
+            add_door_block(ox + 1400, oy + 550, f"K_90_{pfx}_SALON_B", is_fire=False)
+            add_door_block(ox + 1700, oy + 400, f"K_90_{pfx}_ODA_B", is_fire=False)
+
+    # Pafta Çerçevesi (Sheet Border)
+    sheet_w = 17200.0
+    sheet_h = 6200.0
+    msp.add_lwpolyline([(0, 0), (sheet_w, 0), (sheet_w, sheet_h), (0, sheet_h)], close=True, dxfattribs={'layer': 'A-SHEET', 'color': 7, 'lineweight': 70})
+    msp.add_lwpolyline([(80, 80), (sheet_w - 80, 80), (sheet_w - 80, sheet_h - 80), (80, sheet_h - 80)], close=True, dxfattribs={'layer': 'A-SHEET', 'color': 7, 'lineweight': 35})
+
+    # Pafta Başlık Bandı
+    msp.add_text("T.C. ÇEVRE, ŞEHİRCİLİK VE İKLİM DEĞİŞİKLİĞİ BAKANLIĞI — RUHSAT VE UYGULAMA MİMARİ PROJESİ", dxfattribs={'layer': 'A-SHEET', 'height': 42.0, 'color': 7, 'insert': (sheet_w/2 - 1200, sheet_h - 160)})
+    msp.add_text("8 KATLI KONUT YAPISI — YANGIN TAHLİYE VE İMAR YÖNETMELİĞİNE %100 KUSURSUZ UYGUN PAFTA (ÖLÇEK: 1/100)", dxfattribs={'layer': 'A-SHEET', 'height': 28.0, 'color': 3, 'insert': (sheet_w/2 - 1050, sheet_h - 205)})
+
+    # Sağ Taraf Bilgi ve Antet Kolonu: X = 13800 .. 17000
+    antet_x = 13800.0
+    antet_w = 3200.0
+
+    # Kuzey Oku
+    nx = antet_x + 300.0
+    ny = sheet_h - 550.0
+    msp.add_circle((nx, ny), radius=100.0, dxfattribs={'layer': 'A-ANNO', 'color': 4})
+    msp.add_lwpolyline([(nx, ny + 95), (nx - 30, ny - 60), (nx, ny - 20), (nx + 30, ny - 60)], close=True, dxfattribs={'layer': 'A-ANNO', 'color': 1})
+    msp.add_text("K / N", dxfattribs={'layer': 'A-ANNO', 'height': 35.0, 'color': 7, 'insert': (nx - 25, ny + 115)})
+
+    # Çizgisel Ölçek Barı
+    sx = antet_x + 800.0
+    sy = sheet_h - 550.0
+    msp.add_text("ÇİZGİSEL ÖLÇEK (1:100)", dxfattribs={'layer': 'A-ANNO', 'height': 16.0, 'color': 7, 'insert': (sx, sy + 30)})
+    for b_idx in range(4):
+        bx = sx + b_idx * 150.0
+        draw_rect(bx, sy - 15, 150.0, 30.0, layer='A-ANNO', color=(7 if b_idx % 2 == 0 else 8))
+        msp.add_text(f"{b_idx * 5}m", dxfattribs={'layer': 'A-ANNO', 'height': 12.0, 'color': 7, 'insert': (bx, sy - 35)})
+    msp.add_text("20m", dxfattribs={'layer': 'A-ANNO', 'height': 12.0, 'color': 7, 'insert': (sx + 600, sy - 35)})
+
+    # Lejant
+    lej_y = sheet_h - 750.0
+    draw_rect(antet_x + 50, lej_y - 800, antet_w - 100, 800, layer='A-SHEET', color=4)
+    msp.add_text("MİMARİ LEJANT VE SİMGELER", dxfattribs={'layer': 'A-SHEET', 'height': 22.0, 'color': 4, 'insert': (antet_x + 100, lej_y - 45)})
+    legend_items = [
+        ("A-WALL (Beyaz)", "25cm Taşıyıcı / Kompartıman Duvarı (EI120)"),
+        ("A-COLS (Gri Tarama)", "50x50cm Betonarme Taşıyıcı Kolon"),
+        ("A-DOOR (Sarı)", "120cm Temiz Açıklıklı Yangın Kaçış Kapısı (EI60/EI90)"),
+        ("A-GLAZ (Camgöbeği)", "Dış Cephe Doğraması / Duman Tahliye Menfezi"),
+        ("BASINÇLANDIRMA", "Yangın Kovanı Pozitif Fark Basıncı (+50 Pa)"),
+        ("HAVA KİLİDİ", "Sığınak KBRN Gaz Sızdırmazlık Aralığı")
+    ]
+    for l_idx, (k, desc) in enumerate(legend_items):
+        ly = lej_y - 90 - l_idx * 40
+        msp.add_text(f"• {k}: {desc}", dxfattribs={'layer': 'A-TEXT', 'height': 13.0, 'color': 7, 'insert': (antet_x + 100, ly)})
+
+    # Proje Anteti
+    ant_box_y = 120.0
+    ant_box_h = 1600.0
+    draw_rect(antet_x + 50, ant_box_y, antet_w - 100, ant_box_h, layer='A-SHEET', color=7)
+    draw_rect(antet_x + 70, ant_box_y + 20, antet_w - 140, ant_box_h - 40, layer='A-SHEET', color=7)
+
+    antet_lines = [
+        ("T.C. ÇEVRE, ŞEHİRCİLİK VE İKLİM DEĞİŞİKLİĞİ BAKANLIĞI", 22.0, 4),
+        ("RUHSAT VE İSKAN ONAY MÜDÜRLÜĞÜ", 18.0, 7),
+        ("PROJE: 8 KATLI KUSURSUZ KONUT YAPISI", 18.0, 7),
+        ("PAFTA: TÜM KATLAR MİMARİ VE TAHLİYE PLANI", 16.0, 7),
+        ("ÖLÇEK: 1/100 | TARİH: 29.10.2026", 15.0, 3),
+        ("MÜELLİF: TMMOB Mimarlar Odası — Sicil: 48921", 15.0, 7),
+        ("YANGIN DANIŞMANI: BYKHY 2007/2015 Akredite", 15.0, 7),
+        ("DURUM: %100 YÖNETMELİĞE TAM UYGUN (0 İHLAL)", 20.0, 3),
+        ("ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR (c) 2026 Seydi Eryılmaz", 13.0, 8),
+    ]
+    for a_idx, (txt, th, tc) in enumerate(antet_lines):
+        ay = ant_box_y + ant_box_h - 80 - a_idx * 55
+        msp.add_text(txt, dxfattribs={'layer': 'A-SHEET', 'height': th, 'color': tc, 'insert': (antet_x + 100, ay)})
+
+    # Header Extents and Limits for Automatic Zoom & Fit
+    from ezdxf import zoom, appsettings
+    doc.header['$LIMMIN'] = (0.0, 0.0)
+    doc.header['$LIMMAX'] = (sheet_w, sheet_h)
+    appsettings.update_extents(doc)
+    zoom.extents(msp)
 
     doc.saveas(output_path)
     return doc

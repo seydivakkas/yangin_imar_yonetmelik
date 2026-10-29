@@ -125,12 +125,13 @@ class Building3DEvacuationSimulator:
             spillback_sec[(v, u)] = 0.0
 
         current_t = 0.0
-        evacuated_count = 0
+        evacuated_float = 0.0
         time_series: List[Tuple[float, int]] = [(0.0, 0)]
 
         # 4. Zaman Adımlı Dinamik Simülasyon Döngüsü (dt = 0.5s)
         while current_t < self.max_t:
-            remaining_in_building = sum([occ for n, occ in occupancy.items() if n not in exit_nodes])
+            # Sadece çıkışa erişimi olan düğümlerdeki kalan insanları takip et
+            remaining_in_building = sum([occ for n, occ in occupancy.items() if n not in exit_nodes and n in next_hop])
             if remaining_in_building <= 0.1:
                 break
 
@@ -168,11 +169,11 @@ class Building3DEvacuationSimulator:
             for (u, v), flow in flows_this_step.items():
                 occupancy[u] = max(0.0, occupancy[u] - flow)
                 if v in exit_nodes:
-                    evacuated_count += int(flow)
+                    evacuated_float += flow
                 else:
                     occupancy[v] += flow
 
-            time_series.append((round(current_t, 1), evacuated_count))
+            time_series.append((round(current_t, 1), int(round(evacuated_float))))
 
         # 5. İki Bölgeli Duman (Two-Zone Smoke) ve ASET Durumları
         smoke_states: Dict[int, SmokeZoneState] = {}
@@ -207,7 +208,7 @@ class Building3DEvacuationSimulator:
             if wait_p_sec > 5.0 or spillback_sec[(u, v)] > 2.0:
                 score = (wait_p_sec * 0.4) + (spillback_sec[(u, v)] * 2.5) + (max_queues[(u, v)] * 1.5)
                 is_crit = (score >= 45.0 or spillback_sec[(u, v)] >= 6.0)
-                pos = G_3d.nodes[u].get("pos_2d") or G_3d.nodes[u].get("global_dxf_pos")
+                pos = G_3d.nodes[u].get("global_dxf_pos") or G_3d.nodes[u].get("pos_2d")
 
                 bottlenecks.append(EdgeBottleneckRecord(
                     edge=(u, v),
@@ -231,7 +232,7 @@ class Building3DEvacuationSimulator:
             is_compliance_achieved=(current_t <= self.target_threshold and crit_count == 0),
             bottlenecks_ranked=bottlenecks,
             critical_bottleneck_count=crit_count,
-            total_persons_evacuated=evacuated_count,
+            total_persons_evacuated=int(round(evacuated_float)),
             smoke_zone_states=smoke_states,
             time_series_evacuated=time_series
         )
