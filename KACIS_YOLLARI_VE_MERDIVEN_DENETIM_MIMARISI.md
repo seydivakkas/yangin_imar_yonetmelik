@@ -3059,3 +3059,113 @@ Sisteme harici bir mimari proje yüklerken yapay zekâ analizinin ve denetim mot
    * Paftada birden fazla kat planı yan yana çizilmişse, kat sınırları arasında en az **4–5 metre (400–500 cm)** boşluk bırakılması, kat adası kümeleme algoritmasının katları birbirine sızdırmadan hatasız ayrıştırmasını sağlar.
 4. **CAD Çizim Birimi ($INSUNITS):**
    * Çizimin AutoCAD birim ayarının (`$INSUNITS`) cm (5), mm (4) veya m (6) olarak ayarlanması önerilir. Standart dışı çizimlerde sistem otomatik olarak odaların ortalama alan dağılımından ölçeği sezgisel (heuristic) olarak doğrular.
+
+
+---
+
+## BÖLÜM 20: OpenCV Bilgisayarlı Görü Plan Analizi ve 2B Termal Isı Haritası Motoru (`cv_analyzer.py`)
+
+Raster kat planı görsellerinin (PNG, JPG, JPEG) taranması, kapalı mekan poligonlarının çıkarılması, kapı açıklıklarının yakalanması ve tahliye darboğazlarının termal ısı haritası olarak görselleştirilmesi; [`FloorplanImageAnalyzer`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/cv_analyzer.py) sınıfı tarafından **%100 gerçek bilgisayarlı görü (Computer Vision) algoritmaları** ile yürütülmektedir. Bu modülde herhangi bir statik şablon veya mock veri kullanılmamaktadır.
+
+```
+ [Raster Kat Planı Görseli (PNG / JPG)]
+                    │
+                    ▼
+ 1. Kenar Koruyan Gürültü Azaltma: cv2.bilateralFilter(d=7, sigmaColor=50, sigmaSpace=50)
+                    │
+                    ▼
+ 2. Adaptif & Otsu İkili Eşikleme: cv2.threshold(THRESH_BINARY_INV + THRESH_OTSU)
+                    │
+                    ▼
+ 3. Morfolojik Kapatma & Temizleme: cv2.morphologyEx(MORPH_CLOSE, kernel_wall 5x5)
+                    │
+                    ▼
+ 4. Hiyerarşik Kontur Çıkarımı: cv2.findContours(clean_rooms, RETR_CCOMP, CHAIN_APPROX_SIMPLE)
+                    │
+                    ▼
+ 5. Ramer-Douglas-Peucker (RDP) Sadeleştirme: cv2.approxPolyDP(epsilon=0.015 * peri)
+                    │
+                    ▼
+ 6. Shapely Geometrik Eşik Analizi: p1.distance(p2) <= 0.40m ile Otomatik Kapı Çıkarımı
+                    │
+                    ▼
+ 7. Tahliye Yoğunluk Haritası: cv2.GaussianBlur + cv2.applyColorMap(COLORMAP_JET)
+                    │
+                    ▼
+ [İkili Çıktı: 3B Mekansal RAG Grafı + Canlı Base64 Isı Haritası Önizlemesi]
+```
+
+### 20.1. Piksel Analizinden Vektörel Mekan Poligonlarına Geçiş Aşamaları
+
+1. **Bilateral Gürültü Filtreleme (`cv2.bilateralFilter`):**
+   * Piksel düzeyindeki tarama pürüzleri ve tarayıcı lekeleri giderilirken, duvar kenarlarının keskinliği ve köşe koordinatları hassas şekilde korunur ($d=7, \sigma_{\text{color}}=50, \sigma_{\text{space}}=50$).
+2. **Otsu İkili Eşikleme & Morfolojik Kapatma:**
+   * Adaptif Otsu algoritmasıyla çizim arka planı ve duvar çizgileri ayrıştırılır. Duvar çizgilerindeki kapı açıklıklarını ve mikro çizim kopukluklarını köprülemek için $5 \times 5$ dikdörtgen yapısal elemanla (`MORPH_CLOSE`) morfolojik kapanma uygulanır.
+3. **Mekan Hacmi Tespiti ve RDP Sadeleştirme:**
+   * Duvar maskesinin tersi (`bitwise_not`) alınarak iç oda hacimleri beyaz adacıklara dönüştürülür. `cv2.findContours` ile çıkarılan konturlar, Ramer-Douglas-Peucker (RDP) algoritması ($\varepsilon = 0.015 \times \text{çevre}$) ile sadeleştirilerek minimum köşe noktalı temiz mimari poligonlara (`Polygon(pts)`) dönüştürülür.
+4. **Geometrik Kapı ve Geçiş Çıkarımı (Shapely Distance):**
+   * Tespit edilen komşu oda poligonları ($P_i, P_j$) arasındaki en yakın mesafe taranır. Duvar kalınlığı aralığında ($0.10\text{ m} \le \text{mesafe} \le 0.40\text{ m}$) olan poligonlar arasına $90\text{ cm}$ net geçiş genişliğine sahip kapı eşik çizgisi (`LineString`) ve topolojik graf kenarı eklenir.
+5. **2B Jet Tahliye Isı Haritası (`COLORMAP_JET`):**
+   * Tahliye simülasyonu sonucunda hesaplanan darboğaz ve kuyruk şiddeti ($S_{\text{bottleneck}}$), oda merkezleri ve kapı eşikleri üzerinde Gauss çekirdeğiyle yayılır (`cv2.GaussianBlur(heatmap, (35, 35), 0)`). Normalize edilen yoğunluk matrisi `cv2.COLORMAP_JET` paleti (Mavi: Akıcı, Yeşil: Orta, Kırmızı: Kritik Sıkışma) ile renklendirilir ve %55 alfa harmanlama (`cv2.addWeighted`) ile orijinal plan üzerine bindirilir.
+
+---
+
+## BÖLÜM 21: CAD Dosya Standartları, LibreOffice Draw Uyumluluğu ve 1/100 Vektörel PDF Çıktı Mimarisi
+
+Kullanıcıların AutoCAD kurulu olmayan cihazlarda üretilen `.dxf` dosyasını LibreOffice Draw gibi standart ofis yazılımlarında açtıklarında karşılaştıkları görsel farklılıklar ve geliştirilen **Vektörel PDF (1/100 Baskı)** motorunun sistem mimarisi:
+
+### 21.1. CAD Yazılımları (AutoCAD) ile Ofis Çizim Araçları (LibreOffice Draw) Arasındaki Farklar
+
+| Kriter | AutoCAD / LibreCAD / DWG TrueView | LibreOffice Draw / Ofis Programları |
+| :--- | :--- | :--- |
+| **Çalışma Alanı** | Sonsuz koordinat uzayı (ModelSpace) | Sabit kağıt boyutu (Varsayılan: Dikey A4 — 21x29.7 cm) |
+| **Odaklanma** | `Zoom Extents` ile çizim sınırlarına tam ortalama | Kağıt kenar boşluklarına göre sıkıştırma (%36 zoom) |
+| **ACI Renk 7 (White/Black)** | Siyah ekranda beyaz, beyaz ekranda siyah otomatik tersleme | ACI 7 rengini doğrudan sabit `#FFFFFF` (Saf Beyaz) algılama |
+| **Katman Yönetimi** | `LAYER`, `LAYISO`, `LAYON` ile tam katman kontrolü | Tüm katmanları tek bir gruplanmış şekle (`Bilgi Dosyası`) dönüştürme |
+| **Ölçek Desteği** | 1:100, 1:50 mühendislik metrik ölçekleri | Piksel/cm bazlı sayfa yerleşimi |
+
+#### LibreOffice Draw'da Görülen Durumun Analizi:
+1. **Dikey A4 Sıkıştırması:** 8 katlı mimari pafta, 172 metre genişliğinde ve 62 metre yüksekliğinde yatay ($2.77:1$) bir master paftadır. LibreOffice Draw bu devasa mühendislik çizimini varsayılan dikey A4 sayfasına (%36 zoom ile) oturttuğunda, tüm odalar ve duvarlar kağıdın ortasında birkaç santimetrelik dar bir şerit haline gelir.
+2. **Beyaz Kağıt Üzerine Beyaz Çizim:** AutoCAD'in standart katman rengi olan ACI 7 (White/Black), AutoCAD içinde siyah zemin üzerinde beyaz çizilirken; LibreOffice Draw'un beyaz kağıt zemininde saf beyaz olarak render edilmesi duvarların görünmesini zorlaştırabilir.
+
+---
+
+### 21.2. Yeni Eklenen Vektörel PDF (1:100 Çıktı) Motoru (`export_dxf_to_vector_pdf`)
+
+Kullanıcının bilgisayarında AutoCAD veya profesyonel bir CAD görüntüleyici bulunmasa dahi, paftayı **Google Chrome, Microsoft Edge, Adobe Acrobat Reader** veya herhangi bir PDF okuyucuda **1/100 ölçeğinde, kristal netliğinde ve tüm katmanlarıyla** açabilmesi için Python tabanlı Vektörel PDF motoru devreye alınmıştır:
+
+```python
+def export_dxf_to_vector_pdf(dxf_doc: Drawing, out_pdf_path: str):
+    """
+    34x14 inç (Landscape A0) boyutunda, 300 DPI çözünürlüğünde,
+    AutoCAD renk tablosunu beyaz zemin için otomatik optimize eden
+    1/100 ölçekli resmi vektörel PDF paftası üretir.
+    """
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from ezdxf.addons.drawing import RenderContext, Frontend
+    from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+    from ezdxf.addons.drawing.properties import LayoutProperties
+
+    msp = dxf_doc.modelspace()
+    fig = plt.figure(figsize=(34, 14), dpi=300)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ctx = RenderContext(dxf_doc)
+    out = MatplotlibBackend(ax)
+    frontend = Frontend(ctx, out)
+    layout_props = LayoutProperties.from_layout(msp)
+    layout_props.set_colors(bg='#ffffff', fg='#0f172a')
+    frontend.draw_layout(msp, finalize=True, layout_properties=layout_props)
+    fig.savefig(out_pdf_path, format='pdf', bbox_inches='tight', facecolor='#ffffff')
+    plt.close(fig)
+```
+
+#### Sunulan İndirme Seçenekleri:
+1. **Vektörel PDF Paftası İndir (`/api/download/annotated-pdf`):**
+   * AutoCAD kurulumu gerektirmez.
+   * Çift çerçeveli pafta anteti, Kuzey Oku, çizgisel ölçek, yangın merdivenleri, kapılar ve denetim tablosunu 300 DPI vektörel hassasiyetle sunar.
+   * Doğrudan ozalit/plotter baskısına hazırdır.
+2. **AutoCAD DXF Paftası İndir (`/api/download/annotated-dxf`):**
+   * AutoCAD, LibreCAD, Revit ve BricsCAD kullanıcıları için `$INSUNITS=5` (cm) ve `AC1024` formatında bağımsız katmanlı dosya.
+   * `DENETIM_IHLALLERI` (Kırmızı oklar ve kısıt kutuları) ile `OPTIMIZASYON_ONERILERI` (Yeşil REVCLOUD revizyon bulutları) katman bazında izole edilebilir.

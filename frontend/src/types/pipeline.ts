@@ -237,10 +237,15 @@ export interface DiagramYonetmelikPipelineOutput {
   dxf_annotated_path?: string;
   regulatory_official_report?: string;
   cv_image_analysis?: {
-    image_shape: [number, number];
-    detected_rooms_count: number;
-    detected_doors_count: number;
-    heatmap_generated: boolean;
+    is_image_mode?: boolean;
+    image_shape?: [number, number];
+    detected_rooms_count?: number | string;
+    detected_doors_count?: number | string;
+    heatmap_created?: boolean;
+    heatmap_generated?: boolean;
+    debug_vis_base64?: string | null;
+    heatmap_base64?: string | null;
+    description?: string;
   };
 }
 

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import ezdxf
+import networkx as nx
 
 from diagram_yonetmelik.schemas import (
     PipelineConfig,
@@ -433,6 +434,43 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
         }
     }
 
+    # -------------------------------------------------------------
+    # OPENCV GÖRÜ İŞLEME ANALİZ BİLGİSİ
+    # -------------------------------------------------------------
+    import base64
+    import cv2
+    cv_info: Dict[str, Any] = {}
+    if getattr(output, "cv_debug_vis", None) is not None:
+        _, buf_dbg = cv2.imencode(".png", output.cv_debug_vis)
+        dbg_b64 = f"data:image/png;base64,{base64.b64encode(buf_dbg).decode('utf-8')}"
+
+        heat_b64 = None
+        if getattr(output, "cv_heatmap_vis", None) is not None:
+            _, buf_heat = cv2.imencode(".png", output.cv_heatmap_vis)
+            heat_b64 = f"data:image/png;base64,{base64.b64encode(buf_heat).decode('utf-8')}"
+
+        cv_info = {
+            "is_image_mode": True,
+            "detected_rooms_count": f"{len(nodes_data)} Kontur",
+            "detected_doors_count": f"{len(edges_data)} Geçiş",
+            "heatmap_created": True,
+            "heatmap_generated": True,
+            "debug_vis_base64": dbg_b64,
+            "heatmap_base64": heat_b64,
+            "description": "OpenCV Bilateral Filtreleme, Otsu Eşikleme ve Morfolojik Kapı Tespiti ile görsel üzerinden çıkarılan gerçek mimari model."
+        }
+    else:
+        cv_info = {
+            "is_image_mode": False,
+            "detected_rooms_count": f"{len(nodes_data)} Mahal (CAD)",
+            "detected_doors_count": f"{len(edges_data)} Geçit (CAD)",
+            "heatmap_created": False,
+            "heatmap_generated": False,
+            "debug_vis_base64": None,
+            "heatmap_base64": None,
+            "description": "Vektörel CAD/DXF modeli aktif. Raster plan analizi için yukarıdan PNG/JPG kat planı görseli yükleyebilirsiniz."
+        }
+
     return {
         "metadata": {
             "title": f"Daire Dağılımı: {', '.join(f'{k} ({v} adet)' for k, v in output.building_program.apartment_types_breakdown.items())}" if output.building_program.apartment_types_breakdown else "Çok Katlı Konut Yapısı",
@@ -464,6 +502,7 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
         "optimization": opt_dict,
         "counterfactual_optimization": opt_dict,
         "dxf_export_info": dxf_export_info,
+        "cv_image_analysis": cv_info,
         "report_markdown": output.official_markdown_report,
         "evidence_json": output.grounded_evidence_json
     }
@@ -512,6 +551,89 @@ def audit_compliant_8_story():
     generate_compliant_8_story_building_dxf(temp_dxf)
     doc = ezdxf.readfile(temp_dxf)
     output = pipeline.run_full_pipeline(doc)
+    data = serialize_building_3d_result(output)
+    CACHED_RESULT["last"] = output
+    return JSONResponse(content=data)
+
+
+def export_dxf_to_vector_pdf(dxf_doc: Drawing, out_pdf_path: str):
+    """
+    DXF çizimini AutoCAD gerektirmeden tam ölçekli ve yüksek çözünürlüklü
+    vektörel PDF formatına dönüştürür.
+    """
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from ezdxf.addons.drawing import RenderContext, Frontend
+    from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+    from ezdxf.addons.drawing.properties import LayoutProperties
+
+    msp = dxf_doc.modelspace()
+    fig = plt.figure(figsize=(34, 14), dpi=300)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ctx = RenderContext(dxf_doc)
+    out = MatplotlibBackend(ax)
+    frontend = Frontend(ctx, out)
+    layout_props = LayoutProperties.from_layout(msp)
+    layout_props.set_colors(bg='#ffffff', fg='#0f172a')
+    frontend.draw_layout(msp, finalize=True, layout_properties=layout_props)
+    fig.savefig(out_pdf_path, format='pdf', bbox_inches='tight', facecolor='#ffffff')
+    plt.close(fig)
+
+
+@app.get("/api/download/compliant-8-story-pdf")
+def download_compliant_8_story_pdf():
+    """
+    Kullanıcının AutoCAD olmaksızın tarayıcıda veya Acrobat Reader'da
+    doğrudan açıp 1/100 ölçeğinde inceleyebileceği vektörel PDF paftası indirir.
+    """
+    temp_dxf = os.path.join(tempfile.gettempdir(), "8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf")
+    generate_compliant_8_story_building_dxf(temp_dxf)
+    doc = ezdxf.readfile(temp_dxf)
+    out_pdf = os.path.join(tempfile.gettempdir(), "8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.pdf")
+    export_dxf_to_vector_pdf(doc, out_pdf)
+    return FileResponse(
+        out_pdf,
+        filename="8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.pdf",
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.pdf"'}
+    )
+
+
+@app.get("/api/download/annotated-pdf")
+def download_annotated_pdf():
+    if "last" not in CACHED_RESULT:
+        raise HTTPException(status_code=404, detail="Henüz denetlenmiş bir pafta bulunmuyor.")
+    output: DiagramYonetmelikPipelineOutput = CACHED_RESULT["last"]
+    
+    total_fl = output.building_3d_result.total_floors
+    viols_count = sum(len(rep.violations) for rep in output.diagnostic_reports)
+    if total_fl >= 12 or viols_count > 100:
+        base_name = "12_KATLI_YUKSEK_YAPI_DENETLENMIS_IHLALLI_PAFTA"
+    elif viols_count == 0:
+        base_name = "8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA"
+    else:
+        base_name = f"DENETLENMIS_MIMARI_PAFTA_{total_fl}_KATLI"
+
+    out_pdf = os.path.join(tempfile.gettempdir(), f"{base_name}.pdf")
+    export_dxf_to_vector_pdf(output.annotated_dxf_document, out_pdf)
+    return FileResponse(
+        out_pdf,
+        filename=f"{base_name}.pdf",
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{base_name}.pdf"'}
+    )
+
+
+@app.post("/api/audit/sample-image")
+def audit_sample_image():
+    """
+    OpenCV test örneğini (sample_floorplan.png) oluşturur ve
+    Bilateral + Otsu + Morfolojik Kapı ve 2B Jet Isı Haritası analizini yürütür.
+    """
+    temp_img = os.path.join(tempfile.gettempdir(), "sample_floorplan.png")
+    generate_sample_floorplan_image(temp_img)
+    output = pipeline.run_image_pipeline(temp_img)
     data = serialize_building_3d_result(output)
     CACHED_RESULT["last"] = output
     return JSONResponse(content=data)

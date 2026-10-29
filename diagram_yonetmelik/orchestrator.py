@@ -243,7 +243,22 @@ class DiagramYonetmelikPipeline:
         """
         rooms, doors, debug_vis = self.cv_analyzer.analyze_image_file(image_path, floor_level=floor_level)
         dummy_dxf = ezdxf.new('R2010')
-        return self.run_from_rooms_and_doors(rooms, doors, dummy_dxf)
+        output = self.run_from_rooms_and_doors(rooms, doors, dummy_dxf)
+
+        # Darboğaz koordinatlarını termal ısı haritasına dönüştür
+        bottlenecks_for_heat = []
+        if output.baseline_evacuation_report and output.baseline_evacuation_report.bottlenecks_ranked:
+            for b in output.baseline_evacuation_report.bottlenecks_ranked:
+                bottlenecks_for_heat.append({
+                    "spatial_coords": b.spatial_coords,
+                    "severity_score": b.severity_score
+                })
+        heat_vis = self.cv_analyzer.render_evacuation_heatmap(debug_vis, bottlenecks_for_heat)
+
+        output.cv_debug_vis = debug_vis
+        output.cv_heatmap_vis = heat_vis
+        output.cv_image_path = image_path
+        return output
 
     def run_from_rooms_and_doors(
         self,

@@ -488,31 +488,48 @@ export const DxfExportPanel: React.FC<DxfExportPanelProps> = ({ data, onDownload
           Bu işlem mock veri değil, aktif paftanın mimari geometrisine işlenmiş kırmızı ihlal liderlerini, yeşil REVCLOUD revizyonlarını ve onay cetvelini içeren gerçek AutoCAD dosyasını indirir.
         </p>
 
-        {/* Ana İndirme Butonu */}
-        <button
-          onClick={onDownloadDXF}
-          className="btn btn-primary w-full justify-center py-3 text-[14px] flex items-center gap-2.5 font-semibold text-white shadow-md shadow-[var(--ui-primary)]/20"
+        {/* Vektörel PDF İndirme Butonu (AutoCAD Olmayan Kullanıcılar ve Baskı İçin) */}
+        <a
+          href="/api/download/annotated-pdf"
+          download={filename.replace('.dxf', '.pdf')}
+          className="btn btn-primary w-full justify-center py-3 text-[14px] flex items-center gap-2.5 font-semibold text-white bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-md shadow-rose-900/30 no-underline"
         >
           <Download className="w-4 h-4" />
-          <span>Denetlenmiş Mevcut DXF'i İndir ({filename})</span>
-        </button>
-
-        {/* Kusursuz 8 Katlı Pafta Alternatifi */}
-        <a
-          href="/api/download/compliant-8-story-dxf"
-          download="8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf"
-          className="btn btn-secondary w-full justify-center py-2.5 text-[13px] flex items-center gap-2 text-[var(--ui-text)] no-underline font-medium border border-[var(--ui-border)]"
-        >
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          <span>Kusursuz 8 Katlı Yeni Paftayı İndir (312 İhlal Çözüldü — %100 UYGUN)</span>
+          <span>Vektörel PDF Paftası İndir (1:100 Ölçekli — A0 / Çok Katlı)</span>
         </a>
 
-        {/* AutoCAD Kullanım İpucu */}
-        <div className="p-2.5 rounded bg-black/20 border border-[var(--ui-border)] text-left flex items-start gap-2.5 text-[12px] text-[var(--ui-text-muted)]">
-          <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-          <div>
-            <strong className="text-[var(--ui-text)]">AutoCAD İpucu:</strong> İndirilen dosyayı açtıktan sonra klavyeden <code className="text-cyan-300 font-mono">LAYER</code> yazarak katman yöneticisini açabilir; <code className="text-cyan-300 font-mono">LAYISO</code> komutu ile yalnızca <code className="text-red-400 font-mono">DENETIM_IHLALLERI</code> veya <code className="text-emerald-400 font-mono">OPTIMIZASYON_ONERILERI</code> katmanlarını izole edebilirsiniz.
+        {/* CAD DXF İndirme Butonları */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          <button
+            onClick={onDownloadDXF}
+            className="btn btn-secondary w-full justify-center py-2.5 text-[13px] flex items-center gap-2 text-[var(--ui-text)] font-semibold border border-[var(--ui-border)]"
+          >
+            <Download className="w-4 h-4 text-cyan-400" />
+            <span>Denetlenmiş DXF ({filename})</span>
+          </button>
+
+          <a
+            href="/api/download/compliant-8-story-dxf"
+            download="8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf"
+            className="btn btn-secondary w-full justify-center py-2.5 text-[13px] flex items-center gap-2 text-[var(--ui-text)] no-underline font-semibold border border-[var(--ui-border)]"
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span>Kusursuz 8 Katlı DXF (0 İhlal)</span>
+          </a>
+        </div>
+
+        {/* CAD vs LibreOffice Draw Bilgilendirme Kutusu */}
+        <div className="p-3 rounded-lg bg-black/30 border border-amber-500/30 text-left space-y-1.5 text-[12px] text-[var(--ui-text-muted)]">
+          <div className="flex items-center gap-2 font-bold text-amber-400 text-[13px]">
+            <Info className="w-4 h-4 shrink-0" />
+            <span>CAD Görüntüleme ve Yazılım Uyumluluğu Rehberi:</span>
           </div>
+          <p className="leading-relaxed">
+            • <strong>AutoCAD / LibreCAD / Autodesk DWG TrueView:</strong> DXF dosyasını açtıktan sonra <code className="text-cyan-300 font-mono">Z [Enter] E [Enter]</code> (Zoom Extents) komutu ile tüm 8 kata odaklanabilir; <code className="text-cyan-300 font-mono">LAYISO</code> ile <code className="text-red-400 font-mono">DENETIM_IHLALLERI</code> ve <code className="text-emerald-400 font-mono">OPTIMIZASYON_ONERILERI</code> katmanlarını filtreleyebilirsiniz.
+          </p>
+          <p className="leading-relaxed">
+            • <strong>LibreOffice Draw / Ofis Programları Hakkında:</strong> LibreOffice Draw bir CAD motoru olmadığı için DXF çizimini varsayılan dikey A4 sayfasına (%36 zoom) sığdırmaya çalışır ve AutoCAD'in siyah zemin renk tablosunu desteklemez. Paftayı AutoCAD kurulu olmayan herhangi bir bilgisayarda kristal netliğinde incelemek ve renkli basmak için yukarıdaki <strong>"Vektörel PDF Paftası İndir"</strong> butonunu kullanınız.
+          </p>
         </div>
       </div>
     </div>

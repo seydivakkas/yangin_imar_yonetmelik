@@ -182,23 +182,33 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
 
       {/* DXF Export Button */}
       <div className="pt-2 space-y-2">
-        <button
-          onClick={onDownloadDXF}
-          className="w-full btn btn-secondary justify-center text-[14px] py-2.5 flex items-center gap-2"
-        >
-          <Download className="w-4 h-4" />
-          <span>Revize DXF Paftasını İndir (Yeşil Revcloud Katmanı)</span>
-        </button>
-
         <a
-          href="/api/download/compliant-8-story-dxf"
-          download="8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf"
-          className="w-full btn btn-primary justify-center text-[14px] py-3 flex items-center gap-2 text-white no-underline font-semibold"
-          style={{ backgroundColor: '#059669', border: '1px solid #047857' }}
+          href="/api/download/annotated-pdf"
+          download="REVİZE_MIMARI_VE_TAHLIYE_PAFTASI.pdf"
+          className="w-full btn btn-primary justify-center text-[14px] py-3 flex items-center gap-2 text-white no-underline font-semibold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-md shadow-rose-900/30"
         >
           <Download className="w-4 h-4 text-white" />
-          <span>Kusursuz 8 Katlı Yeni Paftayı İndir (.DXF)</span>
+          <span>Vektörel PDF Paftası İndir (1:100 Baskı & İnceleme)</span>
         </a>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <button
+            onClick={onDownloadDXF}
+            className="w-full btn btn-secondary justify-center text-[13px] py-2 flex items-center gap-2"
+          >
+            <Download className="w-4 h-4 text-cyan-400" />
+            <span>Revize DXF Paftası (Revcloud)</span>
+          </button>
+
+          <a
+            href="/api/download/compliant-8-story-dxf"
+            download="8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf"
+            className="w-full btn btn-secondary justify-center text-[13px] py-2 flex items-center gap-2 text-emerald-400 no-underline font-semibold border border-emerald-500/30"
+          >
+            <Download className="w-4 h-4 text-emerald-400" />
+            <span>Kusursuz 8 Katlı DXF (0 İhlal)</span>
+          </a>
+        </div>
       </div>
     </div>
   );

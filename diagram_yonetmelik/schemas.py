@@ -289,3 +289,6 @@ class DiagramYonetmelikPipelineOutput:
     grounded_evidence_json: dict
     execution_metrics: Dict[str, float]
     dxf_output_path: Optional[str] = None
+    cv_debug_vis: Optional[Any] = None
+    cv_heatmap_vis: Optional[Any] = None
+    cv_image_path: Optional[str] = None
