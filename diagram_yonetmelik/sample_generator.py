@@ -256,14 +256,14 @@ def generate_compliant_8_story_building_dxf(output_path: str = "8_KATLI_KUSURSUZ
     msp = doc.modelspace()
 
     # Katmanlar
-    doc.layers.new('A-WALL', dxfattribs={'color': 7, 'lineweight': 35})
+    doc.layers.new('A-WALL', dxfattribs={'color': 8, 'lineweight': 35})
     doc.layers.new('A-WALL-INT', dxfattribs={'color': 8, 'lineweight': 20})
     doc.layers.new('A-COLS', dxfattribs={'color': 8, 'lineweight': 50})
     doc.layers.new('A-DOOR', dxfattribs={'color': 2, 'lineweight': 25})
     doc.layers.new('A-GLAZ', dxfattribs={'color': 4, 'lineweight': 18})
     doc.layers.new('A-TEXT', dxfattribs={'color': 3, 'lineweight': 20})
     doc.layers.new('A-DIMS', dxfattribs={'color': 8, 'lineweight': 15})
-    doc.layers.new('A-SHEET', dxfattribs={'color': 7, 'lineweight': 70})
+    doc.layers.new('A-SHEET', dxfattribs={'color': 4, 'lineweight': 70})
     doc.layers.new('A-ANNO', dxfattribs={'color': 4, 'lineweight': 30})
 
     def draw_rect(x, y, w, h, layer='A-WALL', color=None):
@@ -307,7 +307,7 @@ def generate_compliant_8_story_building_dxf(output_path: str = "8_KATLI_KUSURSUZ
     def add_room_box(x: float, y: float, w: float, h: float, label: str):
         pts = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
         msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': 'A-WALL'})
-        msp.add_text(label, dxfattribs={'layer': 'A-TEXT', 'height': 16.0, 'color': 7, 'insert': (x + 20.0, y + h * 0.45)})
+        msp.add_text(label, dxfattribs={'layer': 'A-TEXT', 'height': 16.0, 'color': 4, 'insert': (x + 20.0, y + h * 0.45)})
         area_m2 = (w * h) / 10000.0
         a_str = f"Alan: {area_m2:.1f} m²"
         msp.add_text(a_str, dxfattribs={'layer': 'A-TEXT', 'height': 12.0, 'color': 3, 'insert': (x + 20.0, y + h * 0.2)})
@@ -336,7 +336,7 @@ def generate_compliant_8_story_building_dxf(output_path: str = "8_KATLI_KUSURSUZ
 
         # Plan Başlığı ve Ölçek Çizgisi
         msp.add_line((ox, oy - 120), (ox + plan_w, oy - 120), dxfattribs={'layer': 'A-ANNO', 'color': 4, 'lineweight': 30})
-        msp.add_text(f"{title} ({kot}) — ÖLÇEK: 1/100", dxfattribs={'layer': 'A-ANNO', 'height': 24.0, 'color': 7, 'insert': (ox + plan_w/2 - 280, oy - 80)})
+        msp.add_text(f"{title} ({kot}) — ÖLÇEK: 1/100", dxfattribs={'layer': 'A-ANNO', 'height': 24.0, 'color': 4, 'insert': (ox + plan_w/2 - 280, oy - 80)})
 
         # Taşıyıcı Kolonlar
         for kx in [ox, ox + 300, ox + 800, ox + 1300, ox + 1900, ox + plan_w]:
@@ -450,11 +450,11 @@ def generate_compliant_8_story_building_dxf(output_path: str = "8_KATLI_KUSURSUZ
     # Pafta Çerçevesi (Sheet Border)
     sheet_w = 17200.0
     sheet_h = 6200.0
-    msp.add_lwpolyline([(0, 0), (sheet_w, 0), (sheet_w, sheet_h), (0, sheet_h)], close=True, dxfattribs={'layer': 'A-SHEET', 'color': 7, 'lineweight': 70})
-    msp.add_lwpolyline([(80, 80), (sheet_w - 80, 80), (sheet_w - 80, sheet_h - 80), (80, sheet_h - 80)], close=True, dxfattribs={'layer': 'A-SHEET', 'color': 7, 'lineweight': 35})
+    msp.add_lwpolyline([(0, 0), (sheet_w, 0), (sheet_w, sheet_h), (0, sheet_h)], close=True, dxfattribs={'layer': 'A-SHEET', 'color': 4, 'lineweight': 70})
+    msp.add_lwpolyline([(80, 80), (sheet_w - 80, 80), (sheet_w - 80, sheet_h - 80), (80, sheet_h - 80)], close=True, dxfattribs={'layer': 'A-SHEET', 'color': 8, 'lineweight': 35})
 
     # Pafta Başlık Bandı
-    msp.add_text("T.C. ÇEVRE, ŞEHİRCİLİK VE İKLİM DEĞİŞİKLİĞİ BAKANLIĞI — RUHSAT VE UYGULAMA MİMARİ PROJESİ", dxfattribs={'layer': 'A-SHEET', 'height': 42.0, 'color': 7, 'insert': (sheet_w/2 - 1200, sheet_h - 160)})
+    msp.add_text("T.C. ÇEVRE, ŞEHİRCİLİK VE İKLİM DEĞİŞİKLİĞİ BAKANLIĞI — RUHSAT VE UYGULAMA MİMARİ PROJESİ", dxfattribs={'layer': 'A-SHEET', 'height': 42.0, 'color': 4, 'insert': (sheet_w/2 - 1200, sheet_h - 160)})
     msp.add_text("8 KATLI KONUT YAPISI — YANGIN TAHLİYE VE İMAR YÖNETMELİĞİNE %100 KUSURSUZ UYGUN PAFTA (ÖLÇEK: 1/100)", dxfattribs={'layer': 'A-SHEET', 'height': 28.0, 'color': 3, 'insert': (sheet_w/2 - 1050, sheet_h - 205)})
 
     # Sağ Taraf Bilgi ve Antet Kolonu: X = 13800 .. 17000
@@ -466,25 +466,25 @@ def generate_compliant_8_story_building_dxf(output_path: str = "8_KATLI_KUSURSUZ
     ny = sheet_h - 550.0
     msp.add_circle((nx, ny), radius=100.0, dxfattribs={'layer': 'A-ANNO', 'color': 4})
     msp.add_lwpolyline([(nx, ny + 95), (nx - 30, ny - 60), (nx, ny - 20), (nx + 30, ny - 60)], close=True, dxfattribs={'layer': 'A-ANNO', 'color': 1})
-    msp.add_text("K / N", dxfattribs={'layer': 'A-ANNO', 'height': 35.0, 'color': 7, 'insert': (nx - 25, ny + 115)})
+    msp.add_text("K / N", dxfattribs={'layer': 'A-ANNO', 'height': 35.0, 'color': 4, 'insert': (nx - 25, ny + 115)})
 
     # Çizgisel Ölçek Barı
     sx = antet_x + 800.0
     sy = sheet_h - 550.0
-    msp.add_text("ÇİZGİSEL ÖLÇEK (1:100)", dxfattribs={'layer': 'A-ANNO', 'height': 16.0, 'color': 7, 'insert': (sx, sy + 30)})
+    msp.add_text("ÇİZGİSEL ÖLÇEK (1:100)", dxfattribs={'layer': 'A-ANNO', 'height': 16.0, 'color': 4, 'insert': (sx, sy + 30)})
     for b_idx in range(4):
         bx = sx + b_idx * 150.0
-        draw_rect(bx, sy - 15, 150.0, 30.0, layer='A-ANNO', color=(7 if b_idx % 2 == 0 else 8))
-        msp.add_text(f"{b_idx * 5}m", dxfattribs={'layer': 'A-ANNO', 'height': 12.0, 'color': 7, 'insert': (bx, sy - 35)})
-    msp.add_text("20m", dxfattribs={'layer': 'A-ANNO', 'height': 12.0, 'color': 7, 'insert': (sx + 600, sy - 35)})
+        draw_rect(bx, sy - 15, 150.0, 30.0, layer='A-ANNO', color=(4 if b_idx % 2 == 0 else 8))
+        msp.add_text(f"{b_idx * 5}m", dxfattribs={'layer': 'A-ANNO', 'height': 12.0, 'color': 8, 'insert': (bx, sy - 35)})
+    msp.add_text("20m", dxfattribs={'layer': 'A-ANNO', 'height': 12.0, 'color': 8, 'insert': (sx + 600, sy - 35)})
 
     # Lejant
     lej_y = sheet_h - 750.0
     draw_rect(antet_x + 50, lej_y - 800, antet_w - 100, 800, layer='A-SHEET', color=4)
     msp.add_text("MİMARİ LEJANT VE SİMGELER", dxfattribs={'layer': 'A-SHEET', 'height': 22.0, 'color': 4, 'insert': (antet_x + 100, lej_y - 45)})
     legend_items = [
-        ("A-WALL (Beyaz)", "25cm Taşıyıcı / Kompartıman Duvarı (EI120)"),
-        ("A-COLS (Gri Tarama)", "50x50cm Betonarme Taşıyıcı Kolon"),
+        ("A-WALL (Gri)", "25cm Taşıyıcı / Kompartıman Duvarı (EI120)"),
+        ("A-COLS (Koyu Gri)", "50x50cm Betonarme Taşıyıcı Kolon"),
         ("A-DOOR (Sarı)", "120cm Temiz Açıklıklı Yangın Kaçış Kapısı (EI60/EI90)"),
         ("A-GLAZ (Camgöbeği)", "Dış Cephe Doğraması / Duman Tahliye Menfezi"),
         ("BASINÇLANDIRMA", "Yangın Kovanı Pozitif Fark Basıncı (+50 Pa)"),
@@ -492,22 +492,22 @@ def generate_compliant_8_story_building_dxf(output_path: str = "8_KATLI_KUSURSUZ
     ]
     for l_idx, (k, desc) in enumerate(legend_items):
         ly = lej_y - 90 - l_idx * 40
-        msp.add_text(f"• {k}: {desc}", dxfattribs={'layer': 'A-TEXT', 'height': 13.0, 'color': 7, 'insert': (antet_x + 100, ly)})
+        msp.add_text(f"• {k}: {desc}", dxfattribs={'layer': 'A-TEXT', 'height': 13.0, 'color': 8, 'insert': (antet_x + 100, ly)})
 
     # Proje Anteti
     ant_box_y = 120.0
     ant_box_h = 1600.0
-    draw_rect(antet_x + 50, ant_box_y, antet_w - 100, ant_box_h, layer='A-SHEET', color=7)
-    draw_rect(antet_x + 70, ant_box_y + 20, antet_w - 140, ant_box_h - 40, layer='A-SHEET', color=7)
+    draw_rect(antet_x + 50, ant_box_y, antet_w - 100, ant_box_h, layer='A-SHEET', color=4)
+    draw_rect(antet_x + 70, ant_box_y + 20, antet_w - 140, ant_box_h - 40, layer='A-SHEET', color=8)
 
     antet_lines = [
         ("T.C. ÇEVRE, ŞEHİRCİLİK VE İKLİM DEĞİŞİKLİĞİ BAKANLIĞI", 22.0, 4),
-        ("RUHSAT VE İSKAN ONAY MÜDÜRLÜĞÜ", 18.0, 7),
-        ("PROJE: 8 KATLI KUSURSUZ KONUT YAPISI", 18.0, 7),
-        ("PAFTA: TÜM KATLAR MİMARİ VE TAHLİYE PLANI", 16.0, 7),
+        ("RUHSAT VE İSKAN ONAY MÜDÜRLÜĞÜ", 18.0, 8),
+        ("PROJE: 8 KATLI KUSURSUZ KONUT YAPISI", 18.0, 8),
+        ("PAFTA: TÜM KATLAR MİMARİ VE TAHLİYE PLANI", 16.0, 8),
         ("ÖLÇEK: 1/100 | TARİH: 29.10.2026", 15.0, 3),
-        ("MÜELLİF: TMMOB Mimarlar Odası — Sicil: 48921", 15.0, 7),
-        ("YANGIN DANIŞMANI: BYKHY 2007/2015 Akredite", 15.0, 7),
+        ("MÜELLİF: TMMOB Mimarlar Odası — Sicil: 48921", 15.0, 8),
+        ("YANGIN DANIŞMANI: BYKHY 2007/2015 Akredite", 15.0, 8),
         ("DURUM: %100 YÖNETMELİĞE TAM UYGUN (0 İHLAL)", 20.0, 3),
         ("ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR (c) 2026 Seydi Eryılmaz", 13.0, 8),
     ]

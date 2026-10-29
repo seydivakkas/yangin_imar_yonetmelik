@@ -3298,3 +3298,62 @@ DiagramYönetmelik mimari motoru, harici yazılımların (AutoCAD, Revit, ArchiC
 | **Vektör PDF Çıktısı** | ezdxf + Matplotlib | $\mathcal{O}(N_{\text{entities}})$ | $\mathcal{O}(N_{\text{entities}})$ | Headless Agg motoru, 300 DPI optimize çizgi dizisi |
 
 Bu ölçeklenebilirlik sayesinde sistem, tek katlı bir konuttan **120 katlı karma kullanımlı gökdelenlere** kadar binlerce bağımsız bölümü 1 saniyenin altında denetleme kapasitesine sahiptir.
+
+
+---
+
+## BÖLÜM 27: 3B SFPE Hidrolik Darboğaz & Termal Akış Motoru (ThreeScene.tsx & EvacuationPanel.tsx)
+
+SFPE (Society of Fire Protection Engineers) standartlarına dayalı hidrolik kaçış simülasyonunda, kapılardaki yoğunluk ve geri-tıkanma (spillback) olgusu yalnızca 2B grafiklerle değil, WebGL 3B uzayında da gerçek zamanlı bir **Termal Akış (Thermal Flow) ve Darboğaz Isı Haritası** motoruyla görselleştirilir.
+
+`
+       [SFPE CTM Simülasyon Verisi]
+                    │
+       ┌────────────┴────────────┐
+       ▼                         ▼
+ [peak_queue_length]   [total_waiting_time_s]
+       │                         │
+       └────────────┬────────────┘
+                    ▼
+     [Üç Kademeli Hidrolik Eşik]
+       ├── Kritik Darboğaz (Kuyruk ≥ 8 Kişi, Geri-Tıkanma) ──► Kırmızı Termal Çekirdek (0xEF4444)
+       ├── Yoğun Akış      (Kuyruk 3-7 Kişi, Yavaşlama)   ──► Kehribar Halka (0xF59E0B)
+       └── Akıcı Geçiş     (Kuyruk < 3 Kişi, Serbest Hız) ──► Zümrüt Yeşil Halka (0x10B981)
+                    │
+                    ▼
+     [Üç Katmanlı 3B WebGL Render Mimarisi]
+       ├── 1. Zemin Radyal Isı Haritası Diski (THREE.CircleGeometry + Radial Canvas Gradient)
+       ├── 2. Rezonans Şok Dalgası Halkası   (THREE.RingGeometry + Sinüs Dalga Titreşimi)
+       └── 3. Havada Asılı 3B HUD Billboard (THREE.Sprite + Y=2.45m Cam Kartuşu)
+`
+
+### 27.1 Zemin Radyal Isı Haritası Diski (THREE.CircleGeometry)
+Kapı açıklığı eşiğinde zemine ( = 0.022	ext{ m}$) yerleştirilen dairesel termal disk, kızılötesi termal kamera (Jet Colormap) gradyanı ile render edilir:
+- **Kritik Darboğaz:** Merkezde %92 opak kırmızı çekirdek (#EF4444), dışa doğru turuncu ve camgöbeği halkalarla sönümlenir.
+- **Yoğun Akış:** Merkezde %88 opak parlak kehribar çekirdek (#F59E0B), dışa doğru sarı ve yeşil geçişi.
+- **Akıcı / Serbest Akış:** Merkezde zümrüt yeşili çekirdek (#10B981), dışa doğru neon camgöbeği (#06B6D4) serbest akış gradyanı.
+
+### 27.2 Rezonans Şok Dalgası Halkaları (Dynamic Shockwave Ripple)
+
+equestAnimationFrame animasyon döngüsünde çalışan hidrolik titreşim motoru, kapıdaki kalabalık baskısını görselleştirmek için dışa doğru genişleyen şok dalgaları üretir:
+	ext{Ölçek}(t) = 1.0 + 0.22 	imes \sin(\omega \cdot t)
+	ext{Opaklık}(t) = \left(0.45 + 0.35 	imes \sin(\omega \cdot t)ight) 	imes I_{	ext{sim}}(t)
+Burada frekans sabiti $\omega$, darboğazın ciddiyetine göre ölçeklenir (Kritik için $\omega = 5.5	ext{ rad/s}$, Orta için $\omega = 4.0	ext{ rad/s}$, Akıcı için $\omega = 2.5	ext{ rad/s}$). Simülasyon yoğunluk çarpanı {	ext{sim}}(t)$ ise tahliyenin en yoğun olduğu  = 15..45	ext{ saniye}$ aralığında zirveye çıkar.
+
+### 27.3 Havada Asılı 3B HUD Billboard Bilgi Kartı (THREE.Sprite)
+Kapı lentosunun hemen üstünde ( = 2.45	ext{ m}$) süzülen ve kameranın açısı ne olursa olsun daima kullanıcıya dönük kalan 3B HUD kartuşu:
+- **Kritik Durum:** ⚠️ KRİTİK DARBOĞAZ: {Kuyruk} KİŞİ — Bekleme: {Süre} sn · Geri-Tıkanma (Spillback)
+- **Yoğun Durum:** ⚡ YOĞUN AKIŞ: {Kuyruk} KİŞİ — Bekleme: {Süre} sn · Kapasite: {Kapasite} p/s
+- **Serbest Durum:** 💧 AKICI AKIŞ: {Kapasite} p/s — Kapasite: {Kapasite} p/s · Hız: 1.19 m/s
+depthTest: false bayrağı ile çalışan kartuşlar, duvarların arkasında kalsa dahi kristal netliğinde okunabilir.
+
+### 27.4 Kullanıcı Arayüzü & Kameranın Uçuş Animasyonu (Click-to-Focus)
+- **Zaman Çizelgesi Düğmesi:** TimelineControls.tsx üzerindeki **'Darboğaz'** butonu tıklandığında showBottlenecks durumu tetiklenir; tüm katlardaki yangın kapıları ve tahliye koridorlarında termal akış halkaları eşzamanlı parıldamaya başlar.
+- **Tahliye Paneli & Canlı Odak:** EvacuationPanel.tsx içerisindeki darboğaz tablosunda yer alan **'3B Sahneye Odaklan'** düğmesine tıklandığında, 3B kamera kuadratik bezier yumuşatmasıyla (camera.lerp) ilgili kapının koordinatlarına yumuşak bir iniş yapar.
+
+### 27.5 CAD Katman Kontrast ve LibreOffice Draw Uyumluluk Mührü
+AutoCAD'in siyah arka planında beyaz görünen ACI 7 rengi, LibreOffice Draw veya yazıcı önizlemesinde beyaz sayfaya beyaz mürekkep olarak basılabilmektedir. DiagramYönetmelik motoru bu uyuşmazlığı gidermek için:
+- Taşıyıcı ve bölme duvarlarını **ACI 8 (Koyu Gri)** veya **ACI 250 (Kömür Siyahı)** katmanına,
+- Pafta dış çerçevesini ve antet kutularını **ACI 4 (Camgöbeği)** ve **ACI 8** katmanlarına,
+- Mahal isimlerini **ACI 4** ve **ACI 3 (Zümrüt Yeşil)** katmanlarına sabitlemiştir.
+Böylece pafta hem AutoCAD'in karanlık çalışma alanında hem de LibreOffice Draw ve PDF çıktılarında sıfır kayıp ve yüksek kontrastla görüntülenir.

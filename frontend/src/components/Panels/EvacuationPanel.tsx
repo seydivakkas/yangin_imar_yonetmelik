@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Clock, Flame, Users, AlertOctagon, TrendingDown, Layers, Play, Pause, RotateCcw, AlertTriangle, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Activity, Clock, Flame, Users, AlertOctagon, TrendingDown, Layers, Play, Pause, RotateCcw, AlertTriangle, ShieldCheck, RefreshCw, Eye, Zap, Shield } from 'lucide-react';
 import { DiagramYonetmelikPipelineOutput } from '../../types/pipeline';
 
 interface EvacuationPanelProps {
@@ -11,6 +11,7 @@ interface EvacuationPanelProps {
   playbackSpeed?: number;
   setPlaybackSpeed?: (s: number) => void;
   onRefreshAudit?: () => void;
+  onSelectElement?: (element: any) => void;
 }
 
 export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
@@ -22,6 +23,7 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
   playbackSpeed = 1,
   setPlaybackSpeed,
   onRefreshAudit,
+  onSelectElement,
 }) => {
   const evac = data?.evacuation || data?.evacuation_report;
   const program = data?.program;
@@ -302,6 +304,40 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
         </p>
       </div>
 
+      {/* SFPE Hidrolik Termal Akış Lejantı */}
+      <div className="card p-3 bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] space-y-2">
+        <div className="flex items-center justify-between text-[12px] font-bold">
+          <span className="flex items-center gap-1.5 text-[var(--ui-text)]">
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            3B SFPE Hidrolik Termal Akış & Kuyruk Skalası
+          </span>
+          <span className="text-[11px] text-[var(--ui-text-muted)] font-mono">Simülasyonda Canlı</span>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-[11px]">
+          <div className="p-2 rounded bg-red-950/40 border border-red-500/40 flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+            <div>
+              <div className="font-bold text-red-400">Kritik Darboğaz</div>
+              <div className="text-[10px] text-zinc-400">Kuyruk ≥ 8 · Geri-Tıkanma</div>
+            </div>
+          </div>
+          <div className="p-2 rounded bg-amber-950/40 border border-amber-500/40 flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+            <div>
+              <div className="font-bold text-amber-400">Yoğun Akış</div>
+              <div className="text-[10px] text-zinc-400">Kuyruk 3-7 · Yavaşlama</div>
+            </div>
+          </div>
+          <div className="p-2 rounded bg-emerald-950/40 border border-emerald-500/40 flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+            <div>
+              <div className="font-bold text-emerald-400">Akıcı Geçiş</div>
+              <div className="text-[10px] text-zinc-400">Kuyruk &lt; 3 · v=1.19 m/s</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Bottlenecks Table */}
       <div className="card p-4 space-y-3">
         <h5 className="font-bold text-[var(--ui-text)] text-[15px] flex items-center gap-2">
@@ -324,17 +360,42 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
             const flowCap = b.flow_capacity_pers_s ?? 1.17;
             const isSpill = b.is_spillback_trigger || (b.spillback_sec && b.spillback_sec > 0);
 
+            const handleFocusDoor = () => {
+              if (onSelectElement) {
+                onSelectElement({
+                  id: b.door_id || `door_${b.edge ? b.edge.join('_') : i}`,
+                  type: 'door',
+                  details: {
+                    name: doorName,
+                    queue: queueLen,
+                    waitTime: waitTime,
+                    flowCap: flowCap,
+                    isSpillback: isSpill,
+                    coords: b.spatial_coords || null,
+                  }
+                });
+              }
+            };
+
             return (
               <div key={i} className="p-3 rounded-md bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] flex items-center justify-between gap-3">
-                <div>
+                <div className="space-y-1">
                   <div className="font-mono text-[var(--ui-text)] text-[14px] font-bold flex items-center gap-2">
                     <span>{doorName}</span>
                     {isSpill && (
                       <span className="badge badge-danger text-[10px] py-0 px-1.5 font-sans">Geri-Tıkanma</span>
                     )}
                   </div>
-                  <div className="text-[13px] text-[var(--ui-text-muted)] mt-0.5">
-                    Akış Kapasitesi: <span className="text-[var(--ui-text)]">{flowCap} kişi/s</span>
+                  <div className="text-[13px] text-[var(--ui-text-muted)] flex items-center gap-3">
+                    <span>Akış: <span className="text-[var(--ui-text)] font-semibold">{flowCap} kişi/s</span></span>
+                    <span>·</span>
+                    <button
+                      onClick={handleFocusDoor}
+                      className="text-[11px] text-[var(--ui-primary)] hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                    >
+                      <Eye className="w-3 h-3" />
+                      3B Sahneye Odaklan
+                    </button>
                   </div>
                 </div>
                 <div className="text-right">

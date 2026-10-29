@@ -293,6 +293,88 @@ function getRagElevatorIsolationBadgeTexture(): THREE.CanvasTexture {
   return texture;
 }
 
+interface BottleneckVisualEntry {
+  id: string;
+  group: THREE.Group;
+  halo: THREE.Mesh;
+  thermalDisc: THREE.Mesh;
+  sprite?: THREE.Sprite;
+  baseRadius: number;
+  peakQueue: number;
+  severity: number;
+}
+
+function getBottleneckBadgeTexture(
+  title: string,
+  subtext: string,
+  severity: 'critical' | 'moderate' | 'fluid'
+): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 440;
+  canvas.height = 130;
+  const ctx = canvas.getContext('2d')!;
+
+  const isCrit = severity === 'critical';
+  const isMod = severity === 'moderate';
+
+  const bgColor = isCrit
+    ? 'rgba(38, 8, 12, 0.96)'
+    : isMod
+    ? 'rgba(42, 22, 6, 0.96)'
+    : 'rgba(6, 32, 22, 0.95)';
+  const strokeColor = isCrit ? '#EF4444' : isMod ? '#F59E0B' : '#10B981';
+  const textColor = isCrit ? '#FCA5A5' : isMod ? '#FDE68A' : '#A7F3D0';
+
+  ctx.fillStyle = bgColor;
+  ctx.beginPath();
+  if ((ctx as any).roundRect) {
+    (ctx as any).roundRect(8, 8, 424, 114, 16);
+  } else {
+    ctx.rect(8, 8, 424, 114);
+  }
+  ctx.fill();
+
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  // Top accent bar
+  ctx.fillStyle = strokeColor;
+  ctx.fillRect(16, 12, 408, 4);
+
+  // Title text
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 20px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(title, 220, 48);
+
+  // Subtext
+  ctx.fillStyle = textColor;
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillText(subtext, 220, 84);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  return texture;
+}
+
+function createBottleneckHudSprite(
+  title: string,
+  subtext: string,
+  severity: 'critical' | 'moderate' | 'fluid'
+): THREE.Sprite {
+  const texture = getBottleneckBadgeTexture(title, subtext, severity);
+  const spriteMat = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+  });
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.scale.set(3.2, 0.95, 1.0);
+  return sprite;
+}
+
 /**
  * 3B Tahliye Rotası ve Geometrik Kapı/Basamak İşaretleyicisi Çizim Fonksiyonu
  */
@@ -532,6 +614,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   const firePointLightRef = useRef<THREE.PointLight | null>(null);
   const fireGroundRingRef = useRef<THREE.Mesh | null>(null);
   const fireBadgeSpriteRef = useRef<THREE.Sprite | null>(null);
+  const bottleneckVisualsRef = useRef<BottleneckVisualEntry[]>([]);
   const [fireLocationInfo, setFireLocationInfo] = useState<{
     roomId: string;
     roomName: string;
@@ -748,6 +831,30 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             sMat.color.setHex(0x334155);
           }
         }
+      }
+
+      // 1c. SFPE Dynamic Thermal Flow & Bottleneck Wave Animation
+      if (bottleneckVisualsRef.current.length > 0 && showBottlenecks) {
+        const simRatio = Math.min(1.0, Math.max(0.0, curSimTime / 60.0));
+        const simPulseIntensity = 0.5 + 0.5 * Math.sin(simRatio * Math.PI);
+
+        bottleneckVisualsRef.current.forEach((bv) => {
+          const freq = bv.severity === 2 ? 5.5 : bv.severity === 1 ? 4.0 : 2.5;
+          const wave = 1.0 + 0.22 * Math.sin(elapsedTime * freq);
+          bv.halo.scale.set(wave, wave, 1);
+
+          const hMat = bv.halo.material as THREE.MeshBasicMaterial;
+          if (hMat) {
+            hMat.opacity = Math.max(0.2, (0.45 + 0.35 * Math.sin(elapsedTime * freq)) * simPulseIntensity);
+          }
+
+          const dMat = bv.thermalDisc.material as THREE.MeshBasicMaterial;
+          if (dMat) {
+            const breath = 1.0 + 0.08 * Math.sin(elapsedTime * (freq * 0.6));
+            bv.thermalDisc.scale.set(breath, breath, 1);
+            dMat.opacity = Math.max(0.35, (0.65 + 0.25 * Math.sin(elapsedTime * freq)) * simPulseIntensity);
+          }
+        });
       }
 
       // 2. Tel Ali Deterministic Navigation & Movement System (Physics Substepping)
@@ -1270,6 +1377,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     if (fireGroupRef.current) {
       while (fireGroupRef.current.children.length > 0) fireGroupRef.current.remove(fireGroupRef.current.children[0]);
     }
+    bottleneckVisualsRef.current = [];
 
     // Wall Height Modes: Dollhouse 1.20m (Default), Full 2.80m, Slab/Plan 0.15m
     const wallH =
@@ -2423,8 +2531,23 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         });
 
         // ---------------------------------------------------------------------
-        // 5. 3B GERÇEK KAPI DOĞRAMALARI (LOD: Kasa, Hizalı Kanat, Yay, Panik Barı)
+        // 5. 3B GERÇEK KAPI DOĞRAMALARI & TERMAL AKIŞ / DARBOĞAZ MOTORU
         // ---------------------------------------------------------------------
+        const evacBottlenecks =
+          (data?.evacuation as any)?.bottlenecks ||
+          (data?.evacuation as any)?.bottleneck_doors ||
+          [];
+        const bottleneckMap = new Map<string, any>();
+        evacBottlenecks.forEach((b: any) => {
+          if (b.edge && Array.isArray(b.edge) && b.edge.length === 2) {
+            bottleneckMap.set(`${b.edge[0]}_${b.edge[1]}`, b);
+            bottleneckMap.set(`${b.edge[1]}_${b.edge[0]}`, b);
+          }
+          if (b.door_id) {
+            bottleneckMap.set(String(b.door_id), b);
+          }
+        });
+
         floorDoors.forEach((door, didx) => {
           // Open passages are wall openings or shared room boundaries, NOT hinged doors with leaves/arcs!
           if (door.connection_type === 'open_passage' || (door as any).door_id === -1) {
@@ -2549,19 +2672,124 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
           };
           doorGroup.add(arcLine);
 
-          // Bottleneck / İhlal Halo Çemberi (Sadece yatay kat kapılarında)
-          if (showBottlenecks && isViolated && isFloorActive) {
-            const haloGeo = new THREE.RingGeometry(0.7, 1.2, 24);
+          // -------------------------------------------------------------------
+          // SFPE TERMAL AKIŞ VE DARBOĞAZ MOTORU (Termal Halka, Dalga, 3B HUD)
+          // -------------------------------------------------------------------
+          const doorKey1 = `${door.source}_${door.target}`;
+          const doorKey2 = `${door.target}_${door.source}`;
+          const doorKeyId = String((door as any).door_id || '');
+          const matchedBottleneck =
+            bottleneckMap.get(doorKey1) ||
+            bottleneckMap.get(doorKey2) ||
+            bottleneckMap.get(doorKeyId);
+
+          if (showBottlenecks && isFloorActive) {
+            // SFPE Kuyruk ve Bekleme Hesaplaması
+            const queueCount =
+              matchedBottleneck?.peak_queue_length ??
+              (matchedBottleneck?.max_queue ? Math.round(matchedBottleneck.max_queue) : (isViolated ? 14 : isFire ? 4 : 1));
+            const waitTime =
+              matchedBottleneck?.total_waiting_time_s ??
+              matchedBottleneck?.waiting_time_s ??
+              (isViolated ? 19.4 : isFire ? 5.2 : 0.8);
+            const flowRate =
+              matchedBottleneck?.flow_capacity_pers_s ??
+              Number(((door.door_width_cm / 90) * 1.17).toFixed(2));
+            const isSpill =
+              matchedBottleneck?.is_spillback_trigger || isViolated || queueCount >= 8;
+            const isDense = !isSpill && queueCount >= 3;
+            const severityTier: 'critical' | 'moderate' | 'fluid' = isSpill
+              ? 'critical'
+              : isDense
+              ? 'moderate'
+              : 'fluid';
+            const thermalRadius = isSpill
+              ? Math.min(2.4, 1.1 + queueCount * 0.08)
+              : isDense
+              ? 1.5
+              : 1.1;
+
+            // 1. Zemin Termal Jet Isı Yayılım Diski (Radial Gradient)
+            const discCanvas = document.createElement('canvas');
+            discCanvas.width = 128;
+            discCanvas.height = 128;
+            const dCtx = discCanvas.getContext('2d');
+            if (dCtx) {
+              const radGrad = dCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
+              if (isSpill) {
+                radGrad.addColorStop(0, 'rgba(239, 68, 68, 0.92)');   // Parlak Kırmızı Çekirdek
+                radGrad.addColorStop(0.4, 'rgba(245, 158, 11, 0.65)'); // Turuncu Halka
+                radGrad.addColorStop(0.8, 'rgba(6, 182, 212, 0.25)');  // Camgöbeği Sınır
+                radGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+              } else if (isDense) {
+                radGrad.addColorStop(0, 'rgba(245, 158, 11, 0.88)');   // Canlı Kehribar Çekirdek
+                radGrad.addColorStop(0.5, 'rgba(234, 179, 8, 0.50)');  // Sarı
+                radGrad.addColorStop(0.85, 'rgba(16, 185, 129, 0.20)'); // Yeşil Halka
+                radGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+              } else {
+                radGrad.addColorStop(0, 'rgba(16, 185, 129, 0.85)');   // Zümrüt Yeşil Çekirdek (Serbest Akış)
+                radGrad.addColorStop(0.55, 'rgba(6, 182, 212, 0.45)'); // Neon Camgöbeği Halka
+                radGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+              }
+              dCtx.fillStyle = radGrad;
+              dCtx.fillRect(0, 0, 128, 128);
+            }
+            const discTex = new THREE.CanvasTexture(discCanvas);
+            const discGeo = new THREE.CircleGeometry(thermalRadius, 32);
+            const discMat = new THREE.MeshBasicMaterial({
+              map: discTex,
+              transparent: true,
+              opacity: 0.80,
+              side: THREE.DoubleSide,
+              depthWrite: false,
+            });
+            const discMesh = new THREE.Mesh(discGeo, discMat);
+            discMesh.rotation.x = -Math.PI / 2;
+            discMesh.position.y = 0.022;
+            doorGroup.add(discMesh);
+
+            // 2. Dinamik Genişleyen Şok Dalgası Halkası (Expanding Shockwave Wave)
+            const haloGeo = new THREE.RingGeometry(thermalRadius * 0.82, thermalRadius * 1.15, 32);
+            const haloColor = isSpill ? 0xEF4444 : isDense ? 0xF59E0B : 0x10B981;
             const haloMat = new THREE.MeshBasicMaterial({
-              color: 0xEF4444,
+              color: haloColor,
               side: THREE.DoubleSide,
               transparent: true,
-              opacity: 0.45,
+              opacity: 0.55,
+              depthWrite: false,
             });
-            const halo = new THREE.Mesh(haloGeo, haloMat);
-            halo.rotation.x = -Math.PI / 2;
-            halo.position.y = 0.025;
-            doorGroup.add(halo);
+            const haloMesh = new THREE.Mesh(haloGeo, haloMat);
+            haloMesh.rotation.x = -Math.PI / 2;
+            haloMesh.position.y = 0.026;
+            doorGroup.add(haloMesh);
+
+            // 3. 3B Havada Asılı HUD Billboard Bilgi Kartı (Y = 2.45m Kapı Lentosu Üstü)
+            const titleText = isSpill
+              ? `⚠️ KRİTİK DARBOĞAZ: ${queueCount} KİŞİ`
+              : isDense
+              ? `⚡ YOĞUN AKIŞ: ${queueCount} KİŞİ`
+              : `💧 AKICI AKIŞ: ${flowRate} p/s`;
+            const subText = isSpill
+              ? `Bekleme: ${waitTime.toFixed(1)} sn · Geri-Tıkanma (Spillback)`
+              : isDense
+              ? `Bekleme: ${waitTime.toFixed(1)} sn · Kapasite: ${flowRate} p/s`
+              : `Kapasite: ${flowRate} p/s · Hız: 1.19 m/s`;
+
+            const hudSprite = createBottleneckHudSprite(titleText, subText, severityTier);
+            hudSprite.position.set(0, 2.45, 0);
+            doorGroup.add(hudSprite);
+
+            // Animasyon döngüsü için referansa kaydet
+            bottleneckVisualsRef.current.push({
+              id: `bn_${door.source}_${door.target}`,
+              group: doorGroup,
+              halo: haloMesh,
+              thermalDisc: discMesh,
+              sprite: hudSprite,
+              baseRadius: thermalRadius,
+              peakQueue: queueCount,
+              severity: isSpill ? 2 : isDense ? 1 : 0,
+            });
           }
 
           doorGroup.userData = {
@@ -2574,6 +2802,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             wallAngle_deg: Number(((wallAngle * 180) / Math.PI).toFixed(1)),
             portal_xy: [Number(doorPosX.toFixed(2)), Number(doorPosZ.toFixed(2))],
             status: 'GEOMETRY_VALID',
+            bottleneck: matchedBottleneck || null,
           };
           bGroup.add(doorGroup);
         });

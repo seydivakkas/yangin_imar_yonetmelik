@@ -522,6 +522,7 @@ export const App: React.FC = () => {
                     setIsPlaying={setIsPlaying}
                     playbackSpeed={playbackSpeed}
                     setPlaybackSpeed={setPlaybackSpeed}
+                    onSelectElement={(el) => setSelectedElement(el)}
                     onRefreshAudit={() => {
                       if (pipelineData?.metadata?.total_floors && pipelineData.metadata.total_floors > 3) {
                         runHighRiseAudit();

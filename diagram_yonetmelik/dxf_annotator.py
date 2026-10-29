@@ -225,7 +225,7 @@ class DXFAuditTableAnnotator:
         if "DENETIM_OZET_TABLOSU" not in layers:
             layers.new("DENETIM_OZET_TABLOSU", dxfattribs={"color": 4, "lineweight": 35})         # ACI 4: Camgöbeği
         if "DENETIM_OZET_TABLOSU_METIN" not in layers:
-            layers.new("DENETIM_OZET_TABLOSU_METIN", dxfattribs={"color": 7})                     # ACI 7: Beyaz
+            layers.new("DENETIM_OZET_TABLOSU_METIN", dxfattribs={"color": 8})                     # ACI 8: Koyu Gri / Kontrastlı Siyah
         if "DENETIM_ONAY_DAMGASI" not in layers:
             layers.new("DENETIM_ONAY_DAMGASI", dxfattribs={"color": 3, "lineweight": 50})         # ACI 3: Yeşil
 
