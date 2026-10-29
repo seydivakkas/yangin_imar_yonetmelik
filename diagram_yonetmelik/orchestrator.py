@@ -253,7 +253,7 @@ class DiagramYonetmelikPipeline:
                     "spatial_coords": b.spatial_coords,
                     "severity_score": b.severity_score
                 })
-        heat_vis = self.cv_analyzer.render_evacuation_heatmap(debug_vis, bottlenecks_for_heat)
+        heat_vis = self.cv_analyzer.render_evacuation_heatmap(debug_vis, bottlenecks_for_heat, doors=doors, rooms=rooms)
 
         output.cv_debug_vis = debug_vis
         output.cv_heatmap_vis = heat_vis

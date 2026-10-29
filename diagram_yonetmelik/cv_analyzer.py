@@ -43,9 +43,12 @@ class FloorplanImageAnalyzer:
         # 2. Adaptif / Otsu İkili Eşikleme (Duvarlar Beyaz, Arka Plan Siyah)
         _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-        # 3. Morfolojik Kapatma (Duvar çizgilerindeki mikro boşlukları kapat)
-        kernel_wall = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-        closed_walls = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_wall)
+        # 3. Morfolojik Kapatma & Kapı Boşluklarını Köprüleme (Directional Door Gap Bridging)
+        door_k_size = int(max(25, min(85, self.ppm * 1.5)))  # ~1.50m mimari kapı eşiği
+        k_h = cv2.getStructuringElement(cv2.MORPH_RECT, (door_k_size, 5))
+        k_v = cv2.getStructuringElement(cv2.MORPH_RECT, (5, door_k_size))
+        closed_h = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, k_h)
+        closed_walls = cv2.morphologyEx(closed_h, cv2.MORPH_CLOSE, k_v)
 
         # 4. Odaları Bulmak İçin Duvarların Tersini Al (Oda hacimleri beyaz olsun)
         rooms_mask = cv2.bitwise_not(closed_walls)
@@ -181,7 +184,9 @@ class FloorplanImageAnalyzer:
     def render_evacuation_heatmap(
         self,
         base_image: np.ndarray,
-        bottlenecks: List[Dict[str, Any]]
+        bottlenecks: List[Dict[str, Any]],
+        doors: Optional[List[Any]] = None,
+        rooms: Optional[List[Any]] = None
     ) -> np.ndarray:
         """
         Tahliye darboğaz ve kuyruk skorlarını 2B plan üzerine termal ısı haritası olarak bindirir.
@@ -189,22 +194,46 @@ class FloorplanImageAnalyzer:
         h, w = base_image.shape[:2]
         heatmap = np.zeros((h, w), dtype=np.float32)
 
+        # 1. Oda Merkezleri (Tahliye Kaynak Yükü)
+        if rooms:
+            for r in rooms:
+                pt = getattr(r, "global_dxf_pos", None)
+                if pt:
+                    rx = int(pt[0] * self.ppm)
+                    ry = int(h - pt[1] * self.ppm)
+                    if 0 <= rx < w and 0 <= ry < h:
+                        cv2.circle(heatmap, (rx, ry), int(self.ppm * 0.9), 75.0, -1)
+
+        # 2. Kapı Eşikleri (Geçiş ve Tahliye Akışı)
+        if doors:
+            for d in doors:
+                pt = getattr(d, "global_portal_xy", None)
+                if pt:
+                    dx = int(pt[0] * self.ppm)
+                    dy = int(h - pt[1] * self.ppm)
+                    if 0 <= dx < w and 0 <= dy < h:
+                        cv2.circle(heatmap, (dx, dy), int(self.ppm * 0.7), 160.0, -1)
+
+        # 3. Kritik Darboğazlar ve Kuyruk Noktaları (Yüksek Sıcaklık)
         for b in bottlenecks:
             coords = b.get("spatial_coords")
             if coords:
                 cx = int(coords[0] * self.ppm)
                 cy = int(h - coords[1] * self.ppm)
-                score = float(b.get("severity_score", 30.0))
-                radius = int(max(15, min(80, score * 1.5)))
-                cv2.circle(heatmap, (cx, cy), radius, score, -1)
+                score = float(b.get("severity_score", 50.0))
+                radius = int(max(20, min(90, score * 1.5)))
+                if 0 <= cx < w and 0 <= cy < h:
+                    cv2.circle(heatmap, (cx, cy), radius, max(200.0, score * 2.5), -1)
 
-        heatmap = cv2.GaussianBlur(heatmap, (35, 35), 0)
-        norm_heat = cv2.normalize(heatmap, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-        color_heat = cv2.applyColorMap(norm_heat, cv2.COLORMAP_JET)
+        if np.max(heatmap) > 0:
+            heatmap = cv2.GaussianBlur(heatmap, (45, 45), 0)
+            norm_heat = cv2.normalize(heatmap, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+            color_heat = cv2.applyColorMap(norm_heat, cv2.COLORMAP_JET)
 
-        # Alfa Harmanlama (Orijinal plan ile birleştir)
-        mask = (norm_heat > 20).astype(np.uint8)
-        alpha = 0.55
-        result = base_image.copy()
-        result[mask > 0] = cv2.addWeighted(base_image, 1 - alpha, color_heat, alpha, 0)[mask > 0]
-        return result
+            # Alfa Harmanlama (Orijinal plan ile birleştir)
+            mask = (norm_heat > 15).astype(np.uint8)
+            alpha = 0.52
+            result = base_image.copy()
+            result[mask > 0] = cv2.addWeighted(base_image, 1 - alpha, color_heat, alpha, 0)[mask > 0]
+            return result
+        return base_image.copy()
