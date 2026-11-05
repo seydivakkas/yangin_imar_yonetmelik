@@ -212,7 +212,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Load 8-Story Fully Compliant Pafta (312 İhlali Sıfırlayan Kusursuz Model)
+  // 8 katlı örnek paftayı yükle
   const runCompliant8StoryAudit = async () => {
     setIsLoading(true);
     setLoadingAction('compliant_8');

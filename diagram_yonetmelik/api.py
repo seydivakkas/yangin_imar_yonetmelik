@@ -120,6 +120,7 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
             "new_val": step.new_metric_value,
             "cost": step.cost_index,
             "benefit_score": round(step.marginal_benefit_score, 1),
+            "delta_evacuation_time_s": step.evacuation_time_delta_sec,
             "description": step.description_tr,
             "floor_level": step.floor_level,
             "spatial_coords": step.spatial_coords
@@ -151,23 +152,23 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
             "layer_h": s.smoke_layer_height_m,
             "soot_density": s.soot_density,
             "is_tenable": s.is_tenable,
+            "is_protected_zone": s.is_protected_zone,
             "aset_sec": s.aset_sec,
             "rset_sec": s.rset_sec
         }
 
-    aset_values = [s.aset_sec for s in output.baseline_evacuation_report.smoke_zone_states.values() if s.aset_sec > 0]
-    min_aset = min(aset_values) if aset_values else 62.0
     total_evac_time = output.baseline_evacuation_report.total_evacuation_time_sec
     total_occ = output.baseline_evacuation_report.total_persons or output.building_program.estimated_occupancy_persons or (output.building_3d_result.total_rooms * 3)
-    safety_margin = round(min_aset - total_evac_time, 1)
 
     evacuation_dict = {
         "total_occupants": total_occ,
         "total_evacuation_time_s": total_evac_time,
         "baseline_time_sec": total_evac_time,
         "target_threshold_sec": output.baseline_evacuation_report.target_threshold_sec,
-        "critical_aset_sec": round(min_aset, 1),
-        "safety_margin_s": safety_margin,
+        "critical_aset_sec": output.baseline_evacuation_report.critical_aset_sec,
+        "safety_margin_s": output.baseline_evacuation_report.aset_margin_sec,
+        "aset_compliant": output.baseline_evacuation_report.aset_compliant,
+        "fire_origin_node": output.baseline_evacuation_report.fire_origin_node,
         "critical_count": output.baseline_evacuation_report.critical_bottleneck_count,
         "is_compliant": output.baseline_evacuation_report.is_compliance_achieved,
         "total_persons_evacuated": output.baseline_evacuation_report.total_persons_evacuated,
@@ -188,6 +189,7 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
         "time_saved_s": output.counterfactual_optimization.time_savings_sec,
         "savings_sec": output.counterfactual_optimization.time_savings_sec,
         "remodeling_cost": output.counterfactual_optimization.total_remodeling_cost,
+        "pruned_redundant_steps": output.counterfactual_optimization.pruned_redundant_steps,
         "steps": interventions_data,
         "applied_interventions": interventions_data
     }
@@ -196,9 +198,11 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
     # SPMINER MAKRO-DÜĞÜM VE BİLEŞEN KÜMELERİ (DİNAMİK KEŞİF)
     # -------------------------------------------------------------
     spminer_macro_nodes = []
+    spminer_compression_ratio = 0.0
     motifs = getattr(output, "discovered_apartment_motifs", [])
     try:
         coarsened = ArchitecturalGraphCoarsener.coarsen_building_graph(G, motifs)
+        spminer_compression_ratio = round(coarsened.compression_ratio, 4)
         floor_apt_counters: Dict[int, int] = {}
         for mid, rec in sorted(coarsened.macro_node_registry.items(), key=lambda item: (item[1].floor_level, item[0])):
             fl = rec.floor_level
@@ -365,13 +369,12 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
         except Exception:
             pass
 
-    pending = len(output.pruned_candidates)
-    is_compliant = not violations_data and not pending
+    is_compliant = not violations_data
     total_fl = len(floors_in_g)
     active_pafta_name = f"{total_fl} Katlı Mimari Model"
     dxf_filename = f"DENETLENMIS_MIMARI_PAFTA_{total_fl}_KATLI.dxf"
-    status = "IHLAL_VAR" if violations_data else ("INCELEME_BEKLIYOR" if pending else "UYGUN")
-    stamp = f"Kaydedilen ihlal: {len(violations_data)} · VF2 ile doğrulanmayan aday: {pending}"
+    status = "IHLAL_VAR" if violations_data else "UYGUN"
+    stamp = f"Kaydedilen ihlal: {len(violations_data)}"
 
     dxf_layers_info = [
         {
@@ -526,8 +529,7 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
         "counterfactual_optimization": opt_dict,
         "dxf_export_info": dxf_export_info,
         "cv_image_analysis": cv_info,
-        "pruned_candidates": [{"anchor": c.anchor_node_id, "energy": c.gnn_energy, "review_status": c.review_status}
-                              for c in output.pruned_candidates],
+        "spminer_compression_ratio": spminer_compression_ratio,
         "report_markdown": output.official_markdown_report,
         "evidence_json": output.grounded_evidence_json
     }
@@ -739,12 +741,7 @@ def download_annotated_dxf():
     
     total_fl = output.building_3d_result.total_floors
     viols_count = sum(len(rep.violations) for rep in output.diagnostic_reports)
-    if total_fl >= 12 or viols_count > 100:
-        filename = "12_KATLI_YUKSEK_YAPI_DENETLENMIS_IHLALLI_PAFTA.dxf"
-    elif viols_count == 0:
-        filename = "8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf"
-    else:
-        filename = f"DENETLENMIS_MIMARI_PAFTA_{total_fl}_KATLI.dxf"
+    filename = f"DENETLENMIS_MIMARI_PAFTA_{total_fl}_KATLI.dxf"
 
     out_dxf_path = os.path.join(tempfile.gettempdir(), filename)
     output.annotated_dxf_document.saveas(out_dxf_path)
@@ -873,6 +870,39 @@ def get_occupancy_profiles():
     return JSONResponse(content={"profiles": profiles_dict})
 
 
+def _measurements_from_graph(G: nx.Graph) -> Dict[str, Any]:
+    """Kontrol listesi için 3B RAG grafından hesaplanabilen ölçümler (en elverişsiz değerler)."""
+    result: Dict[str, Any] = {}
+    nodes = dict(G.nodes(data=True))
+    floors = {d.get("floor_level", 0) for d in nodes.values() if d.get("floor_level", 0) >= 0}
+    stairs = [n for n, d in nodes.items() if d.get("room_type") == "yangin_merdiveni"]
+    if floors:
+        result["stairs_count"] = min(sum(1 for n in stairs if nodes[n].get("floor_level", 0) == fl) for fl in floors)
+
+    escape_types = {"yangin_holu", "yangin_merdiveni", "dis_cikis"}
+    door_widths = [
+        float(d["door_width_cm"]) for u, v, d in G.edges(data=True)
+        if d.get("door_width_cm") is not None and not d.get("is_vertical", False)
+        and {nodes[u].get("room_type"), nodes[v].get("room_type")} & escape_types
+    ]
+    if door_widths:
+        result["door_width_cm"] = min(door_widths)
+
+    hall_areas = [float(d.get("area_m2", 0.0)) for d in nodes.values() if d.get("room_type") == "yangin_holu"]
+    if hall_areas:
+        result["safety_hall_area_m2"] = min(hall_areas)
+    result["has_safety_hall"] = bool(hall_areas)
+
+    if stairs:
+        usable = nx.subgraph_view(G, filter_edge=lambda u, v: G[u][v].get("usable_in_fire", True))
+        distances = nx.multi_source_dijkstra_path_length(usable, stairs, weight="distance_m")
+        rooms = [distances[n] for n, d in nodes.items() if n in distances
+                 and d.get("room_type") in ("salon", "oda", "mutfak", "banyo_wc", "daire_antresi")]
+        if rooms:
+            result["travel_distance_m"] = round(max(rooms), 1)
+    return result
+
+
 @app.post("/api/audit/checklist")
 def audit_building_checklist(payload: Dict[str, Any]):
     """
@@ -891,46 +921,14 @@ def audit_building_checklist(payload: Dict[str, Any]):
     area_m2 = float(payload.get("floor_area_m2", 650.0))
     user_measured = payload.get("measured_data", {})
 
-    measured = {
-        "stairs_count": 2 if floors >= 8 or b_height >= 21.5 else 1,
-        "dead_end_m": 12.4,
-        "travel_distance_m": 24.8,
-        "corridor_width_cm": 120.0,
-        "corridor_height_cm": 220.0,
-        "door_width_cm": 95.0,
-        "stair_flight_width_cm": 125.0,
-        "stair_riser_cm": 16.5,
-        "stair_tread_cm": 28.5,
-        "headroom_cm": 215.0,
-        "landing_steps": 16,
-        "has_spiral_stairs": False,
-        "has_balanced_stairs": False,
-        "fire_wall_minutes": 120,
-        "fire_door_minutes": 90,
-        "has_safety_hall": True,
-        "safety_hall_area_m2": 3.4,
-        "has_pressurization": True if b_height >= 21.5 else False,
-        "has_banned_equipment_in_shaft": False,
-        "stairs_distance_ratio": 0.38,
-        "direct_exterior_exit_ratio": 0.50,
-        "ground_floor_exit_distance_m": 9.2,
-        "doors_unlocked_and_outward": True,
-        "has_horizontal_compartment": True if occ_type == BuildingOccupancyType.HEALTHCARE else False
-    }
-
+    # Yalnızca yüklü modelden gerçekten hesaplanabilen değerler ölçüm sayılır.
+    measured: Dict[str, Any] = {}
     if "last" in CACHED_RESULT:
         last_out: DiagramYonetmelikPipelineOutput = CACHED_RESULT["last"]
         b_3d = last_out.building_3d_result
         floors = b_3d.total_floors
         b_height = float(floors * 3.0)
-
-        stair_nodes = [n for n, d in b_3d.G_3d.nodes(data=True) if d.get("room_type") == "yangin_merdiveni"]
-        stair_count_per_floor = max(1, len(stair_nodes) // max(1, floors))
-        measured["stairs_count"] = stair_count_per_floor
-
-        door_widths = [d.get("door_width_cm", 90.0) for u, v, d in b_3d.G_3d.edges(data=True)]
-        if door_widths:
-            measured["door_width_cm"] = float(sum(door_widths) / len(door_widths))
+        measured.update(_measurements_from_graph(b_3d.G_3d))
 
         if last_out.building_program and last_out.building_program.total_residential_area_m2:
             area_m2 = float(last_out.building_program.total_residential_area_m2 / max(1, floors))
@@ -958,6 +956,7 @@ def audit_building_checklist(payload: Dict[str, Any]):
                 "target_value_str": it.target_value_str,
                 "actual_value_str": it.actual_value_str,
                 "is_compliant": it.is_compliant,
+                "status": it.status,
                 "severity": it.severity,
                 "design_remedy_tr": it.design_remedy_tr,
                 "details": it.details
@@ -975,6 +974,8 @@ def audit_building_checklist(payload: Dict[str, Any]):
         "total_checks": report.total_checks,
         "passed_checks": report.passed_checks,
         "failed_checks": report.failed_checks,
+        "measured_checks": report.measured_checks,
+        "unmeasured_checks": report.unmeasured_checks,
         "compliance_score_percent": report.compliance_score_percent,
         "categories": serialized_categories,
         "critical_violations": [

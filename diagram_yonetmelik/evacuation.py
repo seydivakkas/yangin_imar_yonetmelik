@@ -13,6 +13,10 @@ from diagram_yonetmelik.schemas import (
 )
 
 
+# Duman modeli bu bölgelerin yangın kapılarıyla korunduğunu varsayar; ayrı bir duman sızıntısı hesabı yoktur.
+SMOKE_PROTECTED_ZONES = ("yangin_holu", "yangin_merdiveni", "dis_cikis")
+
+
 class Building3DEvacuationSimulator:
     """
     SFPE hidrolik kalabalık akışı ve BYKHY standartlarına dayalı
@@ -30,8 +34,12 @@ class Building3DEvacuationSimulator:
         max_density_persons_per_m2: float = 3.5,
         target_evacuation_threshold_sec: float = 65.0,
         horizontal_walking_speed_mps: float = 1.19,  # SFPE serbest akış, koridor
-        stair_walking_speed_mps: float = 0.85        # SFPE serbest akış, 7.5"/10" basamak
+        stair_walking_speed_mps: float = 0.85,       # SFPE serbest akış, 7.5"/10" basamak
+        ceiling_height_m: float = 2.80,
+        critical_smoke_height_m: float = 1.80
     ):
+        self.ceiling_h = ceiling_height_m
+        self.critical_smoke_h = critical_smoke_height_m
         self.walk_horiz = horizontal_walking_speed_mps
         self.walk_stair = stair_walking_speed_mps
         self.dt = time_step_sec
@@ -145,6 +153,13 @@ class Building3DEvacuationSimulator:
         trapped_float = sum(occupancy[n] for n in unreachable_occupied)
         total_persons_float = sum(occupancy.values())
 
+        # Yangın başlangıcı verilmediyse tahliye başlamadan en kalabalık (eşitlikte en büyük) oda seçilir.
+        fire_n = fire_origin_node
+        if fire_n is None and G_3d.number_of_nodes() > 0:
+            occupied = [n for n, occ in occupancy.items() if occ > 0.0 and G_3d.nodes[n].get("room_type") not in SMOKE_PROTECTED_ZONES]
+            fire_n = max(occupied or list(G_3d.nodes()), key=lambda n: (occupancy[n], float(G_3d.nodes[n].get("area_m2", 0.0)), str(n)))
+        last_occupied: Dict[Any, float] = {n: 0.0 for n in G_3d.nodes()}
+
         current_t = 0.0
         evacuated_float = 0.0
         time_series: List[Tuple[float, int]] = [(0.0, 0)]
@@ -221,6 +236,9 @@ class Building3DEvacuationSimulator:
                 transit_seq += 1
 
             time_series.append((round(current_t, 1), int(round(evacuated_float))))
+            for n, occ in occupancy.items():
+                if occ > 0.01 or inbound_persons.get(n, 0.0) > 0.01:
+                    last_occupied[n] = current_t
 
         has_exit = bool(exit_nodes)
         trapped_persons = int(round(trapped_float))
@@ -230,10 +248,12 @@ class Building3DEvacuationSimulator:
 
         # 5. İki Bölgeli Duman (Two-Zone Smoke) ve ASET Durumları
         smoke_states: Dict[int, SmokeZoneState] = {}
-        fire_n = fire_origin_node or (exit_nodes[0] if exit_nodes else list(G_3d.nodes())[0])
+        for n in unreachable_occupied:
+            last_occupied[n] = self.max_t
+        critical_aset: Optional[float] = None
+        aset_margin: Optional[float] = None
 
         for n, d in G_3d.nodes(data=True):
-            h_ceil = 2.80
             # Yangın odasından olan topolojik uzaklığa göre duman tabakası alçalma hızı
             try:
                 d_fire = nx.shortest_path_length(G_3d, source=fire_n, target=n, weight="distance_m")
@@ -241,19 +261,26 @@ class Building3DEvacuationSimulator:
                 d_fire = 20.0
 
             alpha = max(0.05, 0.35 / (1.0 + 0.1 * d_fire))
-            layer_h = max(0.50, h_ceil - alpha * math.sqrt(max(1.0, reported_t)))
-            tenable = (layer_h >= 2.00)
-            aset = ((h_ceil - 2.00) / max(1e-4, alpha)) ** 2
-            rset = reported_t
+            rset = last_occupied[n]
+            layer_h = max(0.50, self.ceiling_h - alpha * math.sqrt(max(1.0, rset)))
+            aset = ((self.ceiling_h - self.critical_smoke_h) / max(1e-4, alpha)) ** 2
+            is_protected = d.get("room_type") in SMOKE_PROTECTED_ZONES
+
+            if not is_protected and rset > 0.0 and (aset_margin is None or aset - rset < aset_margin):
+                aset_margin = aset - rset
+                critical_aset = aset
 
             smoke_states[n] = SmokeZoneState(
                 node_id=n,
                 smoke_layer_height_m=round(layer_h, 2),
-                soot_density=round(min(1.0, 1.0 - (layer_h / h_ceil)), 2),
-                is_tenable=tenable,
+                soot_density=round(min(1.0, 1.0 - (layer_h / self.ceiling_h)), 2),
+                is_tenable=is_protected or layer_h >= self.critical_smoke_h,
                 aset_sec=round(aset, 1),
-                rset_sec=round(rset, 1)
+                rset_sec=round(rset, 1),
+                is_protected_zone=is_protected
             )
+
+        aset_compliant = aset_margin is None or aset_margin >= 0.0
 
         # 6. Darboğazları Sırala
         bottlenecks: List[EdgeBottleneckRecord] = []
@@ -282,7 +309,7 @@ class Building3DEvacuationSimulator:
         return BuildingEvacuationReport(
             total_evacuation_time_sec=round(reported_t, 1),
             target_threshold_sec=self.target_threshold,
-            is_compliance_achieved=(evacuation_completed and reported_t <= self.target_threshold and crit_count == 0),
+            is_compliance_achieved=(evacuation_completed and aset_compliant and reported_t <= self.target_threshold and crit_count == 0),
             bottlenecks_ranked=bottlenecks,
             critical_bottleneck_count=crit_count,
             total_persons_evacuated=int(round(evacuated_float)),
@@ -292,15 +319,19 @@ class Building3DEvacuationSimulator:
             trapped_persons=trapped_persons,
             unreachable_occupied_nodes=unreachable_occupied,
             has_exit=has_exit,
-            evacuation_completed=evacuation_completed
+            evacuation_completed=evacuation_completed,
+            fire_origin_node=fire_n,
+            critical_aset_sec=None if critical_aset is None else round(critical_aset, 1),
+            aset_margin_sec=None if aset_margin is None else round(aset_margin, 1),
+            aset_compliant=aset_compliant
         )
 
 
 class CounterfactualEvacuationOptimizer:
     """
     Karşı-Olgusal (Counterfactual) Tasarım İyileştirme Motoru.
-    Geri-basınç kök neden izleme, marjinal fayda/maliyet rollout'u ve
-    geriye dönük budama (Backward Redundancy Pruning) ile minimum maliyetli tadilat reçetesi üretir.
+    En çok geri-basınç üreten geçişi açgözlü biçimde iyileştirir, ardından sonucu kötüleştirmeden
+    çıkarılabilen adımları geriye dönük budamayla eler. Sonuç iyi bir reçetedir; en ucuz olduğu garanti edilmez.
     """
     def __init__(
         self,
@@ -335,10 +366,8 @@ class CounterfactualEvacuationOptimizer:
                 optimized_building_graph=G_current
             )
 
-        steps: List[DesignInterventionStep] = []
-        total_cost = 0.0
-
-        for it in range(1, self.max_iter + 1):
+        plan: List[Dict[str, Any]] = []
+        for _ in range(self.max_iter):
             rep = self.sim.simulate_evacuation(G_current)
             # Kapı genişletmek, çıkışa yolu olmayan kişileri kurtaramaz; reçete önerilmez.
             if rep.trapped_persons > 0 or not rep.has_exit:
@@ -348,56 +377,27 @@ class CounterfactualEvacuationOptimizer:
             if not rep.bottlenecks_ranked:
                 break
 
-            # En kritik darboğazı ele al
             top_bn = rep.bottlenecks_ranked[0]
             u, v = top_bn.edge
-            ed = G_current[u][v]
-            is_vert = ed.get("is_vertical", False)
+            width = float(G_current[u][v].get("door_width_cm", 90.0))
+            item = {"kind": "door" if width < 159.9 else "area", "edge": (u, v), "bottleneck": top_bn}
+            plan.append(item)
+            self._apply_plan_item(G_current, item, step_id=len(plan))
 
-            # Müdahale türünü belirle: Kapı genişletme (+15-20cm) veya Şaft genişletme
-            orig_w = float(ed.get("door_width_cm", 90.0))
-            new_w = min(160.0, orig_w + (20.0 if not is_vert else 30.0))
-            delta_w = new_w - orig_w
+        # Geriye Dönük Fazlalık Budaması: çıkarıldığında sonucu kötüleştirmeyen adımlar elenir.
+        full_rep = self.sim.simulate_evacuation(self._replay(G_3d, plan)[0])
+        pruned_count = 0
+        for index in range(len(plan) - 1, -1, -1):
+            remaining = plan[:index] + plan[index + 1:]
+            trial = self.sim.simulate_evacuation(self._replay(G_3d, remaining)[0])
+            if (trial.total_evacuation_time_sec <= full_rep.total_evacuation_time_sec
+                    and trial.critical_bottleneck_count <= full_rep.critical_bottleneck_count
+                    and trial.is_compliance_achieved >= full_rep.is_compliance_achieved):
+                plan = remaining
+                pruned_count += 1
 
-            if delta_w <= 0.1:
-                # Kapı zaten maksimumda ise hedef mekanın alanını genişlet
-                orig_a = float(G_current.nodes[v].get("area_m2", 5.0))
-                new_a = orig_a + 2.5
-                cost = (new_a - orig_a) * self.c_area
-                G_current.nodes[v]["area_m2"] = new_a
-                step = DesignInterventionStep(
-                    step_id=it,
-                    action_type="HOLDING_AREA_EXPAND",
-                    target_element=v,
-                    original_metric_value=orig_w,
-                    new_metric_value=new_a,
-                    cost_index=cost,
-                    marginal_benefit_score=40.0 / max(1.0, cost),
-                    description_tr=f"{G_current.nodes[v].get('room_type', 'Hol')} alanı {orig_a:.1f} m²'den {new_a:.1f} m²'ye büyütüldü.",
-                    floor_level=G_current.nodes[v].get("floor_level", 0),
-                    spatial_coords=top_bn.spatial_coords
-                )
-            else:
-                cost = delta_w * (self.c_shaft if is_vert else self.c_door)
-                G_current[u][v]["door_width_cm"] = new_w
-                step = DesignInterventionStep(
-                    step_id=it,
-                    action_type="SHAFT_COLUMN_WIDEN" if is_vert else "DOOR_WIDEN",
-                    target_element=(u, v),
-                    original_metric_value=orig_w,
-                    new_metric_value=new_w,
-                    cost_index=cost,
-                    marginal_benefit_score=(50.0 + delta_w) / max(1.0, cost),
-                    description_tr=f"{top_bn.source_room_type} -> {top_bn.target_room_type} geçiş genişliği {orig_w:.0f} cm'den {new_w:.0f} cm'ye çıkarıldı.",
-                    floor_level=top_bn.floor_level,
-                    spatial_coords=top_bn.spatial_coords
-                )
-
-            total_cost += cost
-            steps.append(step)
-
-        # Geriye Dönük Fazlalık Budaması (Backward Redundancy Pruning)
-        # Erken yapılmış bir revizyon sonradan gereksiz kalmışsa geri al
+        G_current, steps = self._replay(G_3d, plan, measure_delta=True)
+        total_cost = sum(step.cost_index for step in steps)
         final_rep = self.sim.simulate_evacuation(G_current)
 
         return CounterfactualOptimizationResult(
@@ -409,5 +409,62 @@ class CounterfactualEvacuationOptimizer:
             total_remodeling_cost=round(total_cost, 1),
             intervention_steps=steps,
             optimized_building_graph=G_current,
-            baseline_trapped_persons=baseline_report.trapped_persons
+            baseline_trapped_persons=baseline_report.trapped_persons,
+            pruned_redundant_steps=pruned_count
         )
+
+    def _apply_plan_item(self, G: nx.Graph, item: Dict[str, Any], step_id: int) -> DesignInterventionStep:
+        u, v = item["edge"]
+        bottleneck = item["bottleneck"]
+        edge = G[u][v]
+        is_vert = edge.get("is_vertical", False)
+        width = float(edge.get("door_width_cm", 90.0))
+
+        if item["kind"] == "door":
+            new_width = min(160.0, width + (30.0 if is_vert else 20.0))
+            delta = new_width - width
+            cost = delta * (self.c_shaft if is_vert else self.c_door)
+            edge["door_width_cm"] = new_width
+            return DesignInterventionStep(
+                step_id=step_id,
+                action_type="SHAFT_COLUMN_WIDEN" if is_vert else "DOOR_WIDEN",
+                target_element=(u, v),
+                original_metric_value=width,
+                new_metric_value=new_width,
+                cost_index=cost,
+                marginal_benefit_score=(50.0 + delta) / max(1.0, cost),
+                description_tr=f"{bottleneck.source_room_type} -> {bottleneck.target_room_type} geçiş genişliği {width:.0f} cm'den {new_width:.0f} cm'ye çıkarıldı.",
+                floor_level=bottleneck.floor_level,
+                spatial_coords=bottleneck.spatial_coords
+            )
+
+        area = float(G.nodes[v].get("area_m2", 5.0))
+        new_area = area + 2.5
+        cost = (new_area - area) * self.c_area
+        G.nodes[v]["area_m2"] = new_area
+        return DesignInterventionStep(
+            step_id=step_id,
+            action_type="HOLDING_AREA_EXPAND",
+            target_element=v,
+            original_metric_value=area,
+            new_metric_value=new_area,
+            cost_index=cost,
+            marginal_benefit_score=40.0 / max(1.0, cost),
+            description_tr=f"{G.nodes[v].get('room_type', 'Hol')} alanı {area:.1f} m²'den {new_area:.1f} m²'ye büyütüldü.",
+            floor_level=G.nodes[v].get("floor_level", 0),
+            spatial_coords=bottleneck.spatial_coords
+        )
+
+    def _replay(self, G_base: nx.Graph, plan: List[Dict[str, Any]], measure_delta: bool = False) -> Tuple[nx.Graph, List[DesignInterventionStep]]:
+        """Planı özgün grafa baştan uygular; istenirse her adımın ölçülen süre etkisini kaydeder."""
+        G = copy.deepcopy(G_base)
+        steps: List[DesignInterventionStep] = []
+        previous = self.sim.simulate_evacuation(G).total_evacuation_time_sec if measure_delta else None
+        for index, item in enumerate(plan, start=1):
+            step = self._apply_plan_item(G, item, step_id=index)
+            if measure_delta:
+                current = self.sim.simulate_evacuation(G).total_evacuation_time_sec
+                step.evacuation_time_delta_sec = round(current - previous, 1)
+                previous = current
+            steps.append(step)
+        return G, steps

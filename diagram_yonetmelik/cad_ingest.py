@@ -30,7 +30,7 @@ class TurkishArchitecturalLabelClassifier:
         ("engelli_otopark",  ["engelli otopark", "engelli arac"]),
         ("otopark_rampasi",  ["otopark rampa", "giris rampasi", "kapali otopark rampasi"]),
         ("kapali_otopark",   ["kapali otopark", "otopark", "bodrum otopark", "arac park"]),
-        ("kat_koridoru",     ["kat hol", "kat koridor", "ortak hol", "sirkulasyon", "ana koridor", "merdiven hol", "galeri", "asansor hol"]),
+        ("kat_koridoru",     ["kat hol", "kat koridor", "ortak hol", "sirkulasyon", "ana koridor", "merdiven hol", "galeri", "asansor hol", "bodrum koridor", "bodrum hol"]),
         ("yangin_asansoru",  ["itfaiye asansor", "itfaiyeci asansor", "acil durum asansor", "yangin asansor"]),
         ("asansor",          ["asansor"]),
         ("daire_antresi",    ["daire giris", "antre", "giris hol", "gecis hol", "hol", "koridor"]),

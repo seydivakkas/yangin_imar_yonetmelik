@@ -215,8 +215,7 @@ class DXFAuditTableAnnotator:
         rooms: List[RoomPolygonInput],
         doors: List[DoorGeometryInput],
         unit_scale_to_meters: float = 0.01,
-        project_title: str = "Çok Katlı Konut Yapısı",
-        pruned_count: int = 0
+        project_title: str = "Çok Katlı Konut Yapısı"
     ) -> Drawing:
         msp = dxf_doc.modelspace()
         scale = unit_scale_to_meters
@@ -296,7 +295,7 @@ class DXFAuditTableAnnotator:
         # 2. MEVZUAT ONAY DAMGASI KUTUSU (Compliance Stamp)
         # -------------------------------------------------------------
         stamp_h = 60.0
-        stamp_color = (2 if pruned_count else 3) if is_compliant else 1
+        stamp_color = 3 if is_compliant else 1
         stamp_layer = "DENETIM_ONAY_DAMGASI"
         msp.add_lwpolyline([
             (x_tab, cur_y),
@@ -314,7 +313,7 @@ class DXFAuditTableAnnotator:
         ], close=True, dxfattribs={"layer": stamp_layer, "color": stamp_color, "lineweight": 25})
 
         if is_compliant:
-            stamp_text = f"Uygulanan denetimlerde ihlal kaydedilmedi. VF2 ile doğrulanmayan aday: {pruned_count}"
+            stamp_text = "Uygulanan denetimlerde ihlal kaydedilmedi."
         else:
             stamp_text = (
                 f"{{\\C1\\b[ DİKKAT: {len(all_violations)} ADET MEVZUAT İHLALİ TESPİT EDİLDİ ]}}\\P"

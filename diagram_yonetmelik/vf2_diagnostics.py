@@ -35,17 +35,13 @@ class ExplainableVF2Analyzer:
         min_fire_hall_area_m2: float = 3.0,
         max_fire_hall_area_m2: float = 6.0,
         max_escape_distance_m: float = 30.0,
-        gnn_model: Optional[Any] = None,
-        energy_threshold: float = float("inf"),
-        enable_hybrid_pruning: bool = False
+        gnn_model: Optional[Any] = None
     ):
         self.min_w = min_door_width_cm
         self.min_fh_area = min_fire_hall_area_m2
         self.max_fh_area = max_fire_hall_area_m2
         self.max_dist = max_escape_distance_m
         self.gnn = gnn_model
-        self.energy_threshold = energy_threshold
-        self.enable_hybrid_pruning = enable_hybrid_pruning
 
     def build_standard_fire_core_query(self, include_exit: bool = True) -> nx.Graph:
         """
@@ -80,7 +76,7 @@ class ExplainableVF2Analyzer:
             query_anchor = list(query_pattern.nodes())[0]
 
         # -------------------------------------------------------------
-        # NÖRAL ÖN ELEME: Order Embedding İhlal Enerjisi (NeuroMatch)
+        # YALNIZCA ÖLÇÜM: GNN enerjisi kaydedilir, adayı hiçbir zaman elemez
         # -------------------------------------------------------------
         gnn_energy_val: Optional[float] = None
         if self.gnn is not None:
@@ -100,18 +96,6 @@ class ExplainableVF2Analyzer:
                     gnn_energy_val = float(e.squeeze().item())
             except Exception:
                 gnn_energy_val = None
-
-        if self.enable_hybrid_pruning and gnn_energy_val is not None and gnn_energy_val > self.energy_threshold:
-            return CandidateDiagnosticReport(
-                anchor_node_id=anchor_node_id,
-                target_subgraph_nodes=list(target_subgraph.nodes()),
-                is_fully_compliant=None,
-                diagnostic_stage_reached=None,
-                review_status="pruned_unverified",
-                violations=[],
-                summary_message="GNN tarafından elendi, VF2 ile doğrulanmadı",
-                gnn_energy=gnn_energy_val
-            )
 
         # -------------------------------------------------------------
         # 0. TAM MONOMORFİZM DENETİMİ (%100 UYGUNLUK)

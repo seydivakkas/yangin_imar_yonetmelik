@@ -1,8 +1,5 @@
 import copy
-import hashlib
-import json
-import math
-from pathlib import Path
+import logging
 import time
 from typing import Dict, List, Tuple, Optional, Any
 import ezdxf
@@ -57,21 +54,16 @@ class DiagramYonetmelikPipeline:
         self.cad_parser = DXFFloorplanParser()
         self.cv_analyzer = FloorplanImageAnalyzer()
         self.rag_3d_builder = MultiFloor3DRAGBuilder()
-        self.gnn = SpatialOrderGNN()
-        loaded = self.config.gnn_model_weights_path and self.gnn.load_weights(self.config.gnn_model_weights_path)
-        tau, self.pruning_status = self._calibrated_threshold(loaded)
-        self.gnn.eval()
+        self.gnn = self._load_optional_gnn()
         self.spminer = ArchitecturalSPMiner(
             gnn_model=self.gnn,
             min_support=self.config.spminer_min_support,
-            use_neural_clustering=self.config.spminer_use_neural_clustering,
+            use_neural_clustering=self.config.spminer_use_neural_clustering and self.gnn is not None,
             neural_similarity_threshold=self.config.spminer_neural_similarity_threshold
         )
         self.vf2_analyzer = ExplainableVF2Analyzer(
             max_escape_distance_m=self.config.max_escape_route_distance_m,
-            gnn_model=self.gnn,
-            energy_threshold=tau,
-            enable_hybrid_pruning=self.pruning_status == "enabled"
+            gnn_model=self.gnn if self.config.record_gnn_energy else None
         )
         self.basement_auditor = BasementComplianceAuditor()
         self.multi_floor_auditor = MultiFloorComprehensiveAuditor(
@@ -90,42 +82,28 @@ class DiagramYonetmelikPipeline:
             llm_endpoint=self.config.local_llm_endpoint
         )
 
-    def _calibrated_threshold(self, loaded):
-        if self.config.enable_hybrid_pruning is not True:
-            return math.inf, "disabled_by_config"
-        try:
-            calibration = json.loads(Path(self.config.gnn_calibration_path).read_text(encoding="utf8"))
-            if not loaded:
-                return math.inf, "weights_unavailable"
-            digest = hashlib.sha256(Path(self.config.gnn_model_weights_path).read_bytes()).hexdigest()
-            if (digest != calibration["model_version"] or calibration["k_hops"] != self.config.k_hops_gnn
-                    or calibration["max_escape_distance_m"] != self.config.max_escape_route_distance_m):
-                return math.inf, "calibration_mismatch"
-            tau = calibration["tau"]
-            if type(tau) not in (float, int) or not math.isfinite(tau) or tau < 0:
-                return math.inf, "invalid_calibration"
-            return tau, "enabled"
-        except FileNotFoundError:
-            return math.inf, "missing_calibration"
-        except (OSError, ValueError, TypeError, KeyError):
-            return math.inf, "invalid_calibration"
+    def _load_optional_gnn(self) -> Optional[SpatialOrderGNN]:
+        """GNN yalnızca istenirse yüklenir; uygunluk kararı buna bağlı değildir."""
+        if not (self.config.spminer_use_neural_clustering or self.config.record_gnn_energy):
+            return None
+        gnn = SpatialOrderGNN()
+        path = self.config.gnn_model_weights_path
+        if path and gnn.load_weights(path):
+            return gnn.eval()
+        logging.getLogger(__name__).warning("GNN ağırlıkları yüklenemedi (%s); GNN özellikleri devre dışı.", path)
+        return None
 
     def _review_fire_candidates(self, graph, metrics):
         start = time.perf_counter()
-        verified, diagnostics, pruned = [], [], []
+        verified, diagnostics = [], []
         for query, target, anchor in fire_candidates(graph, self.vf2_analyzer, self.config.k_hops_gnn):
             report = self.vf2_analyzer.explain_candidate(query, target, anchor)
-            if report.review_status == "pruned_unverified":
-                pruned.append(report)
-            elif report.is_fully_compliant:
+            if report.is_fully_compliant:
                 verified.append(anchor)
             else:
                 diagnostics.append(report)
-        metrics.update(stage4_gnn_vf2_sec=time.perf_counter() - start,
-                       vf2_candidates=len(verified) + len(diagnostics), pruned_candidates=len(pruned),
-                       gnn_hybrid_pruning_enabled=self.vf2_analyzer.enable_hybrid_pruning,
-                       pruning_status=self.pruning_status)
-        return verified, diagnostics, pruned
+        metrics.update(stage4_vf2_sec=time.perf_counter() - start, vf2_candidates=len(verified) + len(diagnostics))
+        return verified, diagnostics
 
     def run_full_pipeline(
         self,
@@ -163,8 +141,8 @@ class DiagramYonetmelikPipeline:
         # -------------------------------------------------------------
         # AŞAMA 4: GNN + VF2 YANGIN KAÇIŞ DENETİMİ
         # -------------------------------------------------------------
-        verified_cores, diagnostic_reports, pruned = self._review_fire_candidates(G_3d, metrics)
-        metrics["spminer_neural_clustering_enabled"] = 1.0 if self.config.spminer_use_neural_clustering else 0.0
+        verified_cores, diagnostic_reports = self._review_fire_candidates(G_3d, metrics)
+        metrics["spminer_neural_clustering_enabled"] = 1.0 if self.spminer.use_neural_clustering else 0.0
 
         # -------------------------------------------------------------
         # AŞAMA 5: HER KAT İÇİN VE BİNA GENELİ KAPSAMLI MEVZUAT DENETİMİ
@@ -217,7 +195,7 @@ class DiagramYonetmelikPipeline:
         annotated_doc = self.violation_annotator.annotate_violations_on_dxf(annotated_doc, diagnostic_reports, rooms, scale)
         annotated_doc = self.opt_annotator.annotate_optimizations_on_dxf(annotated_doc, opt_result, scale)
         annotated_doc = self.table_annotator.annotate_audit_table_on_dxf(
-            annotated_doc, diagnostic_reports, opt_result, rooms, doors, scale, project_title=self.config.project_title, pruned_count=len(pruned)
+            annotated_doc, diagnostic_reports, opt_result, rooms, doors, scale, project_title=self.config.project_title
         )
 
         if output_annotated_dxf_path:
@@ -233,7 +211,7 @@ class DiagramYonetmelikPipeline:
             diagnostic_reports=diagnostic_reports,
             program=program,
             opt_result=opt_result,
-            unit_scale=scale, pruned_candidates=pruned
+            unit_scale=scale
         )
         metrics["stage9_regulatory_rag_sec"] = round(time.perf_counter() - t0, 3)
 
@@ -246,7 +224,6 @@ class DiagramYonetmelikPipeline:
             discovered_apartment_motifs=motifs,
             building_program=program,
             verified_escape_cores=verified_cores,
-            pruned_candidates=pruned,
             diagnostic_reports=diagnostic_reports,
             baseline_evacuation_report=baseline_evac,
             counterfactual_optimization=opt_result,
@@ -299,7 +276,7 @@ class DiagramYonetmelikPipeline:
         motifs, program = self.spminer.discover_frequent_modules(G_3d)
 
         metrics = {}
-        verified_cores, diagnostics, pruned = self._review_fire_candidates(G_3d, metrics)
+        verified_cores, diagnostics = self._review_fire_candidates(G_3d, metrics)
 
         basement_viols = self.basement_auditor.audit_basement_graph(G_3d, program)
         if basement_viols:
@@ -319,7 +296,7 @@ class DiagramYonetmelikPipeline:
             diagnostic_reports=diagnostics,
             program=program,
             opt_result=opt_res,
-            unit_scale=scale, pruned_candidates=pruned
+            unit_scale=scale
         )
 
         # DXF Anotasyonları ve Denetim Tablosu
@@ -327,7 +304,7 @@ class DiagramYonetmelikPipeline:
         annotated_doc = self.violation_annotator.annotate_violations_on_dxf(annotated_doc, diagnostics, rooms, scale)
         annotated_doc = self.opt_annotator.annotate_optimizations_on_dxf(annotated_doc, opt_res, scale)
         annotated_doc = self.table_annotator.annotate_audit_table_on_dxf(
-            annotated_doc, diagnostics, opt_res, rooms, doors, scale, project_title=self.config.project_title, pruned_count=len(pruned)
+            annotated_doc, diagnostics, opt_res, rooms, doors, scale, project_title=self.config.project_title
         )
 
         return DiagramYonetmelikPipelineOutput(
@@ -337,7 +314,6 @@ class DiagramYonetmelikPipeline:
             discovered_apartment_motifs=motifs,
             building_program=program,
             verified_escape_cores=verified_cores,
-            pruned_candidates=pruned,
             diagnostic_reports=diagnostics,
             baseline_evacuation_report=baseline_evac,
             counterfactual_optimization=opt_res,

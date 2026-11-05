@@ -98,7 +98,6 @@ class CandidateDiagnosticReport:
     partial_node_mapping: Dict[int, int] = field(default_factory=dict)
     summary_message: str = ""
     gnn_energy: Optional[float] = None
-    review_status: str = "reviewed"
 
 
 # =====================================================================
@@ -180,6 +179,7 @@ class SmokeZoneState:
     is_tenable: bool                # Hayatta kalınabilir mi (Z_layer >= 2.00m)
     aset_sec: float                 # Available Safe Egress Time (sn)
     rset_sec: float                 # Required Safe Egress Time (sn)
+    is_protected_zone: bool = False
 
 
 @dataclass
@@ -197,6 +197,10 @@ class BuildingEvacuationReport:
     unreachable_occupied_nodes: List[int] = field(default_factory=list)
     has_exit: bool = True
     evacuation_completed: bool = True  # Herkes simülasyon süresi içinde çıkışa ulaştı mı?
+    fire_origin_node: Optional[Any] = None
+    critical_aset_sec: Optional[float] = None  # En dar güvenlik payına sahip bölgenin ASET değeri
+    aset_margin_sec: Optional[float] = None    # min(ASET - bölgenin son doluluk zamanı)
+    aset_compliant: bool = True
 
 
 @dataclass
@@ -211,6 +215,7 @@ class DesignInterventionStep:
     description_tr: str
     floor_level: int = 0
     spatial_coords: Optional[Tuple[float, float]] = None
+    evacuation_time_delta_sec: Optional[float] = None
 
 
 @dataclass
@@ -224,6 +229,7 @@ class CounterfactualOptimizationResult:
     intervention_steps: List[DesignInterventionStep]
     optimized_building_graph: nx.Graph
     baseline_trapped_persons: int = 0
+    pruned_redundant_steps: int = 0
 
 
 # =====================================================================
@@ -271,9 +277,9 @@ class RetrievedLegalEvidence:
 class PipelineConfig:
     project_title: str = "DiagramYönetmelik - Çok Katlı Mekânsal Denetim ve 3D Tahliye Motoru"
     k_hops_gnn: int = 2
-    gnn_calibration_path: str = "data/gnn_calibration.json"
-    enable_hybrid_pruning: bool = False
-    spminer_use_neural_clustering: bool = True
+    # GNN uygunluk kararına katılmaz. Bu seçenekler yalnızca keşif ve ölçüm içindir.
+    spminer_use_neural_clustering: bool = False
+    record_gnn_energy: bool = False
     spminer_neural_similarity_threshold: float = 0.80
     gnn_model_weights_path: Optional[str] = "data/spatial_order_gnn.pt"
     spminer_min_support: int = 2
@@ -307,4 +313,3 @@ class DiagramYonetmelikPipelineOutput:
     cv_debug_vis: Optional[Any] = None
     cv_heatmap_vis: Optional[Any] = None
     cv_image_path: Optional[str] = None
-    pruned_candidates: List[CandidateDiagnosticReport] = field(default_factory=list)

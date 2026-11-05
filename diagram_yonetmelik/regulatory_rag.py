@@ -438,8 +438,7 @@ class LocalMimarLLMReportGenerator:
         diagnostic_reports: List[CandidateDiagnosticReport],
         program: BuildingProgramSummary,
         opt_result: CounterfactualOptimizationResult,
-        unit_scale: float = 0.01,
-        pruned_candidates: Optional[List[CandidateDiagnosticReport]] = None
+        unit_scale: float = 0.01
     ) -> Tuple[str, dict]:
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -514,11 +513,6 @@ class LocalMimarLLMReportGenerator:
                     f"1. **[{step.action_type}]** (Kat {step.floor_level}): {step.description_tr} "
                     f"*(Maliyet: {step.cost_index:.1f}, Fayda Skoru: {step.marginal_benefit_score:.1f})*"
                 )
-
-        if pruned_candidates:
-            md_lines.append("## GNN tarafından elendi, VF2 ile doğrulanmadı")
-            for candidate in pruned_candidates:
-                md_lines.append(f"- Aday {candidate.anchor_node_id} · enerji {candidate.gnn_energy:.5g}")
 
         report_markdown = "\n".join(md_lines)
         return report_markdown, evidence_bundle

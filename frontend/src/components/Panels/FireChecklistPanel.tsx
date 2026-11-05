@@ -31,6 +31,8 @@ interface FireChecklistPanelProps {
   onSelectChecklistItem?: (item: ChecklistVerificationItem) => void;
 }
 
+const isUnmeasured = (item: ChecklistVerificationItem) => item.status === 'olculmedi';
+
 const OCCUPANCY_OPTIONS: {
   key: BuildingOccupancyClass;
   title: string;
@@ -192,7 +194,7 @@ export const FireChecklistPanel: React.FC<FireChecklistPanelProps> = ({
       `Sprinkler Sistemi: ${report.sprinkler_enabled ? 'MEVCUT (Avantajlı Eşikler)' : 'YOK'}`,
       `Yapı Yüksekliği: ${report.building_height_m} m | Toplam Kat: ${report.total_floors} Kat`,
       `Yüksek Bina Statüsü: ${report.is_high_rise ? 'EVET (Yapı Yüksekliği >= 21.50m)' : 'HAYIR'}`,
-      `Genel Uyum Skoru: %${report.compliance_score_percent} (${report.passed_checks}/${report.total_checks} Kriter Sağlandı)`,
+      `Ölçülen Maddelerde Uyum: %${report.compliance_score_percent} (${report.passed_checks}/${report.measured_checks ?? report.total_checks} Sağlandı, ${report.unmeasured_checks ?? 0} Madde Ölçülmedi)`,
       `Kritik / Majör Kusur Sayısı: ${report.critical_violations.length}`,
       `--------------------------------------------------------------------------------`,
       ``,
@@ -202,10 +204,10 @@ export const FireChecklistPanel: React.FC<FireChecklistPanelProps> = ({
       const meta = CATEGORY_META[catKey];
       lines.push(`[${meta?.title || catKey}]`);
       items.forEach((it) => {
-        const mark = it.is_compliant ? '[ ✓ SAĞLANDI ]' : '[ ✗ İHLAL ]';
+        const mark = isUnmeasured(it) ? '[ ? ÖLÇÜLMEDİ ]' : it.is_compliant ? '[ ✓ SAĞLANDI ]' : '[ ✗ İHLAL ]';
         lines.push(`  ${mark} ${it.title_tr} (${it.legal_basis})`);
         lines.push(`       Hedef: ${it.target_value_str} | Ölçülen: ${it.actual_value_str}`);
-        if (!it.is_compliant) {
+        if (!it.is_compliant && !isUnmeasured(it)) {
           lines.push(`       Öneri: ${it.design_remedy_tr}`);
         }
       });
@@ -302,7 +304,7 @@ export const FireChecklistPanel: React.FC<FireChecklistPanelProps> = ({
                 }`}
               >
                 <span className="text-base leading-none">%{report.compliance_score_percent}</span>
-                <span className="text-[9px] font-normal uppercase opacity-90 mt-0.5">Uyum</span>
+                <span className="text-[9px] font-normal uppercase opacity-90 mt-0.5">Ölçülen</span>
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -316,8 +318,9 @@ export const FireChecklistPanel: React.FC<FireChecklistPanelProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-[var(--ui-text-muted)] mt-0.5">
-                  Toplam {report.total_checks} kontrol kriterinden {report.passed_checks} tanesi sağlandı,{' '}
-                  <strong className="text-[var(--ui-danger)]">{report.failed_checks} kusur</strong> tespit edildi.
+                  {report.total_checks} maddeden {report.measured_checks ?? report.total_checks} tanesi ölçüldü: {report.passed_checks} sağlandı,{' '}
+                  <strong className="text-[var(--ui-danger)]">{report.failed_checks} kusur</strong> bulundu.{' '}
+                  <strong>{report.unmeasured_checks ?? 0} madde ölçülmedi</strong> ve mimar tarafından doğrulanmalıdır.
                 </p>
               </div>
             </div>
@@ -398,7 +401,7 @@ export const FireChecklistPanel: React.FC<FireChecklistPanelProps> = ({
 
             const isCollapsed = collapsedCategories[catKey];
             const filteredItems = items.filter((it) => {
-              if (statusFilter === 'failed') return !it.is_compliant;
+              if (statusFilter === 'failed') return !it.is_compliant && !isUnmeasured(it);
               if (statusFilter === 'passed') return it.is_compliant;
               return true;
             });
@@ -407,7 +410,8 @@ export const FireChecklistPanel: React.FC<FireChecklistPanelProps> = ({
               return null;
             }
 
-            const catFailedCount = items.filter((it) => !it.is_compliant).length;
+            const catFailedCount = items.filter((it) => !it.is_compliant && !isUnmeasured(it)).length;
+            const catUnmeasuredCount = items.filter(isUnmeasured).length;
 
             return (
               <div
@@ -436,9 +440,13 @@ export const FireChecklistPanel: React.FC<FireChecklistPanelProps> = ({
                       <span className="badge badge-danger text-[10px]">
                         {catFailedCount} Kusur
                       </span>
+                    ) : catUnmeasuredCount > 0 ? (
+                      <span className="badge badge-neutral text-[10px]">
+                        {catUnmeasuredCount} Ölçülmedi
+                      </span>
                     ) : (
                       <span className="badge badge-success text-[10px]">
-                        Tam Uyum
+                        Ölçülenler Uygun
                       </span>
                     )}
                     {isCollapsed ? (
@@ -457,14 +465,16 @@ export const FireChecklistPanel: React.FC<FireChecklistPanelProps> = ({
                         key={item.item_id}
                         onClick={() => onSelectChecklistItem && onSelectChecklistItem(item)}
                         className={`p-3.5 transition-colors cursor-pointer hover:bg-[var(--ui-bg)] ${
-                          !item.is_compliant
+                          !item.is_compliant && !isUnmeasured(item)
                             ? 'bg-[var(--ui-danger-subtle)]/30'
                             : 'bg-transparent'
                         }`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-start gap-2.5 flex-1">
-                            {item.is_compliant ? (
+                            {isUnmeasured(item) ? (
+                              <span className="w-4 h-4 shrink-0 mt-0.5 text-center font-bold text-[var(--ui-text-muted)]">?</span>
+                            ) : item.is_compliant ? (
                               <CheckCircle2 className="w-4 h-4 text-[var(--ui-success)] shrink-0 mt-0.5" />
                             ) : (
                               <ShieldAlert className="w-4 h-4 text-[var(--ui-danger)] shrink-0 mt-0.5" />
@@ -477,7 +487,7 @@ export const FireChecklistPanel: React.FC<FireChecklistPanelProps> = ({
                                 <span className="badge badge-neutral text-[10px]">
                                   {item.legal_basis}
                                 </span>
-                                {!item.is_compliant && (
+                                {!item.is_compliant && !isUnmeasured(item) && (
                                   <span className="badge badge-danger text-[10px]">
                                     {item.severity}
                                   </span>
@@ -500,7 +510,7 @@ export const FireChecklistPanel: React.FC<FireChecklistPanelProps> = ({
                                 </div>
                                 <div
                                   className={`p-2 rounded border ${
-                                    item.is_compliant
+                                    item.is_compliant || isUnmeasured(item)
                                       ? 'bg-[var(--ui-bg)] border-[var(--ui-border)]'
                                       : 'bg-[var(--ui-danger-subtle)] border-[var(--ui-danger)]'
                                   }`}
@@ -510,7 +520,9 @@ export const FireChecklistPanel: React.FC<FireChecklistPanelProps> = ({
                                   </span>
                                   <span
                                     className={`font-semibold text-xs ${
-                                      item.is_compliant
+                                      isUnmeasured(item)
+                                        ? 'text-[var(--ui-text-muted)]'
+                                        : item.is_compliant
                                         ? 'text-[var(--ui-success)]'
                                         : 'text-[var(--ui-danger)]'
                                     }`}
@@ -521,7 +533,7 @@ export const FireChecklistPanel: React.FC<FireChecklistPanelProps> = ({
                               </div>
 
                               {/* Kusur Çözüm Önerisi */}
-                              {!item.is_compliant && (
+                              {!item.is_compliant && !isUnmeasured(item) && (
                                 <div className="mt-2 p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-1.5">
                                   <Sparkles className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-400" />
                                   <div>

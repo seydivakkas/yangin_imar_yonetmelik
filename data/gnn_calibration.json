@@ -1,30 +1,6 @@
 {
-  "model_version": "3bb500e3f0b6f0b577bb3413d1d2b2fba054bd2158a52fbaf9ad68f5f73e9de0",
-  "tau": 1.1130144596099854,
+  "model_version": "7b7f18833de4fe0a17142102f8df0f4bf7d2033035eded9663bb89815c8a9ac8",
+  "tau": 0.2438305914402008,
   "seed": 17,
-  "k_hops": 2,
-  "max_escape_distance_m": 30,
-  "validation": {
-    "auroc": 0.3630952380952381,
-    "positive": 14,
-    "negative": 12,
-    "positive_pruned": 0,
-    "negative_pruned": 0,
-    "positive_pruned_rate": 0.0,
-    "negative_pruned_rate": 0.0,
-    "positive_energy": {
-      "min": 0.0491863451898098,
-      "q25": 0.4297598972916603,
-      "median": 0.7544541358947754,
-      "q75": 0.9757179021835327,
-      "max": 1.1130144596099854
-    },
-    "negative_energy": {
-      "min": 0.1491665542125702,
-      "q25": 0.27002760767936707,
-      "median": 0.40766920149326324,
-      "q75": 0.5390588194131851,
-      "max": 0.9913622140884399
-    }
-  }
+  "k_hops": 3
 }

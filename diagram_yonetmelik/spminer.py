@@ -29,12 +29,15 @@ class ArchitecturalSPMiner:
         min_support: int = 2,
         max_motif_nodes: int = 8,
         energy_threshold: float = 0.20,
-        use_neural_clustering: bool = True,
+        use_neural_clustering: bool = False,
         neural_similarity_threshold: float = 0.80,
-        use_neural_growth: bool = True
+        use_neural_growth: bool = False
     ):
-        self.gnn = gnn_model or SpatialOrderGNN()
-        self.gnn.eval()
+        if (use_neural_clustering or use_neural_growth) and gnn_model is None:
+            raise ValueError("Nöral SPMiner seçenekleri için GNN modeli verilmelidir.")
+        self.gnn = gnn_model
+        if self.gnn is not None:
+            self.gnn.eval()
         self.min_support = min_support
         self.max_motif_nodes = max_motif_nodes
         self.threshold = energy_threshold
@@ -111,12 +114,11 @@ class ArchitecturalSPMiner:
                             best_neighbor = cand
                 else:
                     # Geometrik Fallback (Alan bazlı)
-                    best_area = -1.0
-                    for cand in boundary_neighbors:
-                        area = building_graph.nodes[cand].get("area_m2", 0.0)
-                        if area > best_area:
-                            best_area = area
-                            best_neighbor = cand
+                    # Deterministik seçim: en büyük alan, eşitlikte düğüm kimliği
+                    best_neighbor = max(
+                        boundary_neighbors,
+                        key=lambda cand: (building_graph.nodes[cand].get("area_m2", 0.0), str(cand))
+                    )
 
                 if best_neighbor is not None:
                     current_nodes.append(best_neighbor)
@@ -196,19 +198,19 @@ class ArchitecturalSPMiner:
         G: nx.Graph,
         motifs: List[DiscoveredArchitecturalMotif]
     ) -> BuildingProgramSummary:
-        total_apt = 0
+        # Daire sayısı motiflerden değil, doğrudan antre düğümlerinden gelir.
+        antre_nodes = [n for n, d in G.nodes(data=True) if d.get("room_type") == "daire_antresi"]
+        total_apt = len(antre_nodes)
         apt_types = {}
+        classified = set()
         for m in motifs:
             if m.root_room_type == "daire_antresi":
-                total_apt += m.support
                 t_name = f"{m.total_nodes - 1}+1 Modülü"
                 apt_types[t_name] = apt_types.get(t_name, 0) + m.support
-
-        # Eğer motif bulunamadıysa doğrudan daire antrelerini say
-        if total_apt == 0:
-            antre_nodes = [n for n, d in G.nodes(data=True) if d.get("room_type") == "daire_antresi"]
-            total_apt = len(antre_nodes)
-            apt_types["Tipik Daire"] = total_apt
+                classified.update(m.matched_anchor_nodes)
+        unclassified = sum(1 for n in antre_nodes if n not in classified)
+        if unclassified:
+            apt_types["Sınıflandırılmamış Daire"] = unclassified
 
         res_area = sum([d.get("area_m2", 0.0) for _, d in G.nodes(data=True) if d.get("room_type") in ("salon", "oda", "mutfak", "banyo_wc", "daire_antresi")])
         circ_area = sum([d.get("area_m2", 0.0) for _, d in G.nodes(data=True) if d.get("room_type") in ("kat_koridoru", "yangin_holu", "yangin_merdiveni")])
@@ -271,15 +273,18 @@ class ArchitecturalGraphCoarsener:
                 sub_G = building_graph.subgraph(sub_nodes).copy()
                 total_area = sum([building_graph.nodes[n].get("area_m2", 0.0) for n in sub_nodes])
 
-                # Daire içi en derin kaçış mesafesi (Antre -> En uzak oda)
-                dists = nx.single_source_dijkstra_path_length(sub_G, anchor, weight="distance_m")
-                max_escape = max(dists.values()) if dists else 0.0
-
                 portal_edges = []
                 for n in sub_nodes:
                     for ext in building_graph.neighbors(n):
                         if ext not in sub_nodes:
                             portal_edges.append((ext, n, building_graph[n][ext]))
+
+                # Tutucu iç mesafe: herhangi bir dış kapıdan en uzak odaya en kötü yol.
+                # Makro yol hangi kapıyı seçerse seçsin, gerçek kaçış mesafesini olduğundan kısa göstermez.
+                max_escape = 0.0
+                for source in {internal_n for _, internal_n, _ in portal_edges} or {anchor}:
+                    dists = nx.single_source_dijkstra_path_length(sub_G, source, weight="distance_m")
+                    max_escape = max(max_escape, max(dists.values(), default=0.0))
 
                 floor = building_graph.nodes[anchor].get("floor_level", 0)
                 record = MacroNodeRecord(

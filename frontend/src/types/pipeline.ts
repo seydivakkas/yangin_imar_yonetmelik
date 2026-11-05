@@ -170,7 +170,7 @@ export interface DiagramYonetmelikPipelineOutput {
   violations?: any[];
   evacuation?: any;
   optimization?: any;
-  pruned_candidates?: { anchor: number; energy: number; review_status: string }[];
+  spminer_compression_ratio?: number;
   report_markdown?: string;
   evidence_json?: any;
   dxf_export_info?: {
@@ -310,6 +310,7 @@ export type BuildingOccupancyClass =
   | 'endustri_depo';
 
 export interface ChecklistVerificationItem {
+  status?: 'sonuclandi' | 'olculmedi';
   item_id: string;
   category_id: string;
   title_tr: string;
@@ -324,6 +325,8 @@ export interface ChecklistVerificationItem {
 }
 
 export interface ComprehensiveBuildingChecklistReport {
+  measured_checks?: number;
+  unmeasured_checks?: number;
   building_occupancy: BuildingOccupancyClass;
   occupancy_title: string;
   sprinkler_enabled: boolean;

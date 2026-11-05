@@ -24,13 +24,13 @@ export const DxfExportPanel: React.FC<DxfExportPanelProps> = ({ data, onDownload
   const [activeSubTab, setActiveSubTab] = useState<'layers' | 'table_preview' | 'specs'>('layers');
 
   const dxfInfo = data?.dxf_export_info;
-  const isCompliant = dxfInfo ? dxfInfo.compliance_status === 'UYGUN' : data?.violations?.length === 0 && !data?.pruned_candidates?.length;
+  const isCompliant = dxfInfo ? dxfInfo.compliance_status === 'UYGUN' : data?.violations?.length === 0;
   const totalViolations = data?.violations?.length ?? 0;
   const totalRooms = data?.rooms_analyzed ?? data?.nodes?.length ?? 0;
   const totalDoors = data?.doors_analyzed ?? data?.edges?.length ?? 0;
   const totalFloors = data?.floors_analyzed?.length ?? data?.metadata?.total_floors ?? 1;
-  const activePaftaName = dxfInfo?.active_pafta_name || (isCompliant ? '8 Katlı Kusursuz Pafta (%100 Yönetmelik Onaylı)' : '12 Katlı Yüksek Yapı (312 İhlal Analizli)');
-  const filename = dxfInfo?.filename || (isCompliant ? '8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf' : '12_KATLI_YUKSEK_YAPI_DENETLENMIS_IHLALLI_PAFTA.dxf');
+  const activePaftaName = dxfInfo?.active_pafta_name || 'Denetlenen Pafta';
+  const filename = dxfInfo?.filename || 'DENETLENMIS_MIMARI_PAFTA.dxf';
   const totalEntities = dxfInfo?.total_entities || (totalRooms * 2 + totalDoors + 100);
 
   // Fallback Katman Bilgisi (Eğer backend yanıtında henüz yoksa güvenli hesaplama)
@@ -289,7 +289,7 @@ export const DxfExportPanel: React.FC<DxfExportPanelProps> = ({ data, onDownload
                 • Resmi İmar ve İtfaiye Başlık Bannerı (960 x 70 birim)
               </span>
               <span className="px-2 py-0.5 rounded bg-cyan-950/40 text-cyan-300 border border-cyan-800/30">
-                • Çift Çerçeveli Onay Damgası (%100 UYGUN / ŞERHLİ)
+                • Çift Çerçeveli Ön Denetim Damgası (İHLAL YOK / ŞERHLİ)
               </span>
               <span className="px-2 py-0.5 rounded bg-cyan-950/40 text-cyan-300 border border-cyan-800/30">
                 • 5 Sütunlu Cetvel + 3 Müellif Onay Anteti
@@ -346,7 +346,7 @@ export const DxfExportPanel: React.FC<DxfExportPanelProps> = ({ data, onDownload
                 : 'bg-red-950/40 border-red-500/50 text-red-300'
             }`}>
               <div className="font-bold text-[13px]">
-                {data?.pruned_candidates?.length ? 'VF2 ile doğrulanmayan adaylar var' : isCompliant
+                {isCompliant
                   ? 'Denetlenen kurallarda ihlal yok'
                   : `[ DİKKAT: ${totalViolations} ADET MEVZUAT İHLALİ TESPİT EDİLDİ ]`}
               </div>
@@ -431,9 +431,9 @@ export const DxfExportPanel: React.FC<DxfExportPanelProps> = ({ data, onDownload
                 <div className="text-gray-500 mt-1">İmza: ....................</div>
               </div>
               <div className="pl-2">
-                <div className="text-cyan-400 font-semibold">İMAR RUHSAT SERVİSİ</div>
+                <div className="text-cyan-400 font-semibold">ÖN DENETİM SONUCU</div>
                 <div className={isCompliant ? 'text-emerald-400 font-bold mt-0.5' : 'text-red-400 font-bold mt-0.5'}>
-                  {isCompliant ? 'ONAYLANDI (KUSURSUZ)' : 'ŞERHLİ (TADİLAT GEREKLİ)'}
+                  {isCompliant ? 'İHLAL KAYDEDİLMEDİ' : 'ŞERHLİ (TADİLAT GEREKLİ)'}
                 </div>
                 <div className="text-gray-500 mt-1">Telif: (c) 2026 Seydi Eryılmaz</div>
               </div>
@@ -514,7 +514,7 @@ export const DxfExportPanel: React.FC<DxfExportPanelProps> = ({ data, onDownload
             className="btn btn-secondary w-full justify-center py-2.5 text-[13px] flex items-center gap-2 text-[var(--ui-text)] no-underline font-semibold border border-[var(--ui-border)]"
           >
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>Kusursuz 8 Katlı DXF (0 İhlal)</span>
+            <span>8 Katlı Örnek DXF</span>
           </a>
         </div>
 

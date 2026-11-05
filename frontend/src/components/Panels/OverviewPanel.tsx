@@ -13,23 +13,35 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
   setActiveTab,
   onApplyOptimization,
 }) => {
+  const evac: any = data?.evacuation || data?.evacuation_report;
+  const opt: any = data?.optimization || data?.counterfactual_optimization;
   const violationsCount = data?.violations?.length ?? ((data?.basement_compliance?.length || 0) + (data?.vf2_diagnostics?.filter(v => !v.is_compliant)?.length || 0));
-  const totalOccupants = data?.program?.est_persons || data?.evacuation_report?.total_occupants || 78;
-  const originalTime = data?.evacuation?.baseline_time_sec || data?.evacuation_report?.total_evacuation_time_s || 76.5;
-  const optimizedTime = data?.optimization?.optimized_time_sec || data?.counterfactual_optimization?.optimized_evacuation_time_s || 58.0;
-  const timeSaved = (originalTime - optimizedTime).toFixed(1);
-  const aset = 62.0;
-  const totalArea = data?.program?.residential_area_m2 || data?.building_program?.total_area_m2 || 840;
-  const floorCount = data?.metadata?.total_floors || data?.building_program?.floor_count || 2;
-  const totalRooms = data?.metadata?.total_rooms || data?.rooms_analyzed || 28;
-  const totalDoors = data?.metadata?.total_doors || data?.doors_analyzed || 26;
+  const totalOccupants: number | null = evac?.total_occupants ?? null;
+  const originalTime: number | null = evac?.baseline_time_sec ?? evac?.total_evacuation_time_s ?? null;
+  const optimizedTime: number | null = opt?.optimized_time_sec ?? opt?.optimized_evacuation_time_s ?? null;
+  const timeSaved = originalTime !== null && optimizedTime !== null ? originalTime - optimizedTime : null;
+  const asetMargin: number | null = evac?.safety_margin_s ?? null;
+  const evacOk = evac?.is_compliant === true;
+  const hasProblem = !!data && (violationsCount > 0 || !evacOk);
+  const totalArea = data?.program?.residential_area_m2 ?? data?.building_program?.total_area_m2 ?? null;
+  const floorCount = data?.metadata?.total_floors ?? data?.building_program?.floor_count ?? null;
+  const totalRooms = data?.metadata?.total_rooms ?? data?.rooms_analyzed ?? null;
+  const totalDoors = data?.metadata?.total_doors ?? data?.doors_analyzed ?? null;
+  const stepCount: number = (opt?.steps || opt?.applied_interventions || []).length;
+  const headline = !data
+    ? 'Henüz denetlenmiş pafta yok'
+    : violationsCount > 0
+    ? `${violationsCount} Mevzuat İhlali Kaydedildi`
+    : evacOk
+    ? 'Uygulanan denetimlerde ihlal kaydedilmedi'
+    : 'Kural ihlali yok, tahliye denetimi geçmedi';
 
   return (
     <div className="flex flex-col gap-3.5 text-[14px] leading-relaxed text-[var(--ui-text)] w-full">
       {/* Hero Compliance Status Card */}
       <div
         className={`p-3.5 rounded-lg border transition-all ${
-          violationsCount > 0
+          hasProblem
             ? 'bg-[#2A1D22] border-[var(--ui-danger)]/50'
             : 'bg-[#182924] border-[var(--ui-success)]/50'
         }`}
@@ -38,30 +50,26 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
           <div className="flex items-start gap-3">
             <div
               className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                violationsCount > 0
+                hasProblem
                   ? 'bg-[var(--ui-danger)]/15 text-[var(--ui-danger)] border border-[var(--ui-danger)]/30'
                   : 'bg-[var(--ui-success)]/15 text-[var(--ui-success)] border border-[var(--ui-success)]/30'
               }`}
             >
-              {violationsCount > 0 ? <ShieldAlert className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
+              {hasProblem ? <ShieldAlert className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
             </div>
             <div>
-              <h3 className="text-[16px] font-bold text-[var(--ui-text)] leading-[1.45]">
-                {violationsCount > 0
-                  ? `${violationsCount} Kritik Mevzuat İhlali Tespit Edildi`
-                  : 'Bina Yangın & İmar Mevzuatına Tam Uygun'}
-              </h3>
+              <h3 className="text-[16px] font-bold text-[var(--ui-text)] leading-[1.45]">{headline}</h3>
               <p className="text-[13px] text-[var(--ui-text-muted)] mt-0.5 leading-[1.45]">
-                BYKHY 2007/2015, PAİY, Sığınak ve Otopark Yönetmeliği Nöro-Sembolik Denetim Özeti
+                Ön denetim özeti. Yalnızca uygulanan kuralları kapsar; mesleki onayın yerini tutmaz.
               </p>
             </div>
           </div>
           <div className="text-right shrink-0">
             <div className="text-2xl font-bold font-mono text-[var(--ui-primary)]">
-              {violationsCount > 0 ? '%64' : '%98'}
+              {data ? violationsCount : '—'}
             </div>
             <div className="text-[12px] text-[var(--ui-text-muted)] uppercase tracking-wide font-medium mt-0.5">
-              Güvenlik Skoru
+              Kayıtlı İhlal
             </div>
           </div>
         </div>
@@ -77,21 +85,20 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
               <Clock className="w-4 h-4 text-[var(--ui-primary)]" />
             </div>
             <div className="text-xl font-bold font-mono text-[var(--ui-text)] flex items-baseline gap-2">
-              <span>{originalTime.toFixed(1)} sn</span>
-              <span className={`text-[12px] font-sans font-medium ${originalTime <= aset ? 'text-[var(--ui-success)]' : 'text-[var(--ui-danger)]'}`}>
-                {originalTime <= aset ? `< ${aset}s ASET (Güvenli)` : `> ${aset}s ASET`}
-              </span>
+              <span>{originalTime !== null ? `${originalTime.toFixed(1)} sn` : '—'}</span>
             </div>
           </div>
-          {originalTime <= aset ? (
+          {asetMargin === null ? (
+            <p className="text-[12px] text-[var(--ui-text-muted)] mt-2 leading-[1.45]">ASET karşılaştırması için veri yok</p>
+          ) : asetMargin >= 0 ? (
             <p className="text-[12px] text-[var(--ui-success)] mt-2 flex items-center gap-1.5 leading-[1.45]">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              <span>Tahliye marjı güvenli aralıkta</span>
+              <span>En dar bölgede +{asetMargin.toFixed(1)} sn ASET payı</span>
             </p>
           ) : (
             <p className="text-[12px] text-[var(--ui-danger)] mt-2 flex items-center gap-1.5 leading-[1.45]">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              <span>{(originalTime - aset).toFixed(1)} sn tahliye açığı (Duman riski)</span>
+              <span>En dar bölgede {Math.abs(asetMargin).toFixed(1)} sn ASET açığı</span>
             </p>
           )}
         </div>
@@ -104,15 +111,16 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
               <TrendingUp className="w-4 h-4 text-[var(--ui-success)]" />
             </div>
             <div className="text-xl font-bold font-mono text-[var(--ui-success)] flex items-baseline gap-1.5">
-              <span>-{timeSaved} sn</span>
-              <span className="text-[13px] text-[var(--ui-text-muted)] font-sans font-normal">
-                ({optimizedTime.toFixed(1)}s)
-              </span>
+              <span>{timeSaved !== null ? `-${timeSaved.toFixed(1)} sn` : '—'}</span>
+              {optimizedTime !== null && (
+                <span className="text-[13px] text-[var(--ui-text-muted)] font-sans font-normal">
+                  ({optimizedTime.toFixed(1)}s)
+                </span>
+              )}
             </div>
           </div>
-          <p className="text-[12px] text-[var(--ui-success)] mt-2 flex items-center gap-1.5 leading-[1.45]">
-            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-            <span>ASET marjı güvenli aralığa ulaştı</span>
+          <p className="text-[12px] text-[var(--ui-text-muted)] mt-2 leading-[1.45]">
+            {stepCount > 0 ? `${stepCount} tadilat adımıyla hesaplandı` : 'Hesaplanmış tadilat adımı yok'}
           </p>
         </div>
 
@@ -124,11 +132,11 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
               <Layers className="w-4 h-4 text-[var(--ui-primary)]" />
             </div>
             <div className="text-xl font-bold font-mono text-[var(--ui-text)]">
-              {totalArea} m²
+              {totalArea !== null ? `${totalArea} m²` : '—'}
             </div>
           </div>
           <p className="text-[12px] text-[var(--ui-text-muted)] mt-2 leading-[1.45]">
-            {floorCount} Kat · {totalRooms} Mekan · {totalDoors} Kapı
+            {floorCount ?? '—'} Kat · {totalRooms ?? '—'} Mekan · {totalDoors ?? '—'} Kapı
           </p>
         </div>
 
@@ -136,15 +144,15 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
         <div className="card p-[12px_14px] flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between text-[var(--ui-text-muted)] text-[13px] mb-1.5">
-              <span className="font-medium">Kullanıcı Yükü (SFPE)</span>
-              <span className="badge badge-neutral text-[11px]">Kişi / Kat</span>
+              <span className="font-medium">Simülasyon Kullanıcı Yükü</span>
+              <span className="badge badge-neutral text-[11px]">Toplam</span>
             </div>
             <div className="text-xl font-bold font-mono text-[var(--ui-text)]">
-              {totalOccupants} Kişi
+              {totalOccupants !== null ? `${totalOccupants} Kişi` : '—'}
             </div>
           </div>
           <p className="text-[12px] text-[var(--ui-text-muted)] mt-2 leading-[1.45]">
-            En yoğun kat: Kat 1 (34 kişi / 2 kaçış kapısı)
+            Oda tipine göre varsayılan kişi yükü; projeye özel değildir.
           </p>
         </div>
       </div>
@@ -165,19 +173,17 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
           <div className="p-4 rounded-lg bg-[#182924] border border-[var(--ui-success)]/40 text-center space-y-2">
             <CheckCircle2 className="w-6 h-6 text-[var(--ui-success)] mx-auto" />
             <div className="text-[var(--ui-text)] font-semibold text-[14px]">
-              Tüm Mevzuata %100 Uygun - Sıfır İhlal
+              {data ? 'Uygulanan denetimlerde ihlal kaydedilmedi' : 'Bulgu için önce bir pafta denetleyin'}
             </div>
-            <p className="text-[12px] text-[var(--ui-text-muted)] max-w-md mx-auto">
-              BYKHY, PAİY, Sığınak ve Otopark yönetmelikleri kapsamında hiçbir ihlal bulunmamaktadır. Yangın kaçış güvenliği, hava kilitleri ve kompartıman sınırları tamdır.
-            </p>
+            {data && (
+              <p className="text-[12px] text-[var(--ui-text-muted)] max-w-md mx-auto">
+                Bu sonuç yalnızca sistemin denetlediği kuralları kapsar. Ölçülmeyen maddeler için Kaçış & Merdiven Listesi sekmesine bakın.
+              </p>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-2.5">
-            {(data?.violations && data.violations.length > 0 ? data.violations.slice(0, 3) : [
-              { code: 'BYKHY_M31', description: 'Yangın güvenlik holü kapısı yetersiz genişlikte (0.90m < 1.20m)', regulation: 'BYKHY M.31', remedy: 'Kapı net genişliği 1.20 m yapılmalıdır.' },
-              { code: 'OTOPARK_M6', description: 'Kapalı otoparktan yangın merdivenine doğrudan kapı bağlantısı yasaktır', regulation: 'OTOPARK M.6', remedy: 'Yangın güvenlik holü eklenmelidir.' },
-              { code: 'SIGINAK_M9', description: 'Sığınak girişinde sızdırmaz hava kilidi tespit edilemedi', regulation: 'SIĞINAK M.9', remedy: 'Çift kapılı sızdırmaz hava kilidi eklenmelidir.' }
-            ]).map((v: any, idx: number) => (
+            {(data?.violations ?? []).slice(0, 3).map((v: any, idx: number) => (
               <div key={idx} className="p-3 rounded-lg audit-card-danger flex items-start gap-2.5 mb-2.5">
                 <span className="badge badge-danger shrink-0 text-[12px] font-mono mt-0.5">
                   {v.regulation || v.code}
@@ -199,20 +205,16 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
       {/* Action Shortcut Callouts */}
       <div className="p-4 rounded-lg bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] flex items-center justify-between gap-4">
         <div>
-          <h5 className="font-bold text-[var(--ui-text)] text-[15px]">
-            {violationsCount === 0 ? 'Tasarım Mevzuata Tam Uygun' : 'Karşı-Olgusal Tasarım Optimizasyonu'}
-          </h5>
+          <h5 className="font-bold text-[var(--ui-text)] text-[15px]">Karşı-Olgusal Tasarım Optimizasyonu</h5>
           <p className="text-[13px] text-[var(--ui-text-muted)] mt-1">
-            {violationsCount === 0
-              ? 'Pafta sıfır ihlalle onaylanmıştır. İki bağımsız merdiven, holler ve sığınak eksiksizdir.'
-              : '3 adımda otomatik kapı genişletme ve hava kilidi mimari revizyonu hazır'}
+            {stepCount > 0 ? `${stepCount} hesaplanmış tadilat adımını inceleyin` : 'Bu pafta için hesaplanmış tadilat adımı yok'}
           </p>
         </div>
         <button
           onClick={onApplyOptimization}
           className="btn btn-primary text-[14px] py-2 px-4 shrink-0 flex items-center gap-2"
         >
-          <span>{violationsCount === 0 ? 'Optimizasyonu Görüntüle' : 'Uygula & İncele'}</span>
+          <span>Optimizasyonu Görüntüle</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

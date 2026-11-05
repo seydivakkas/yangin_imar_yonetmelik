@@ -26,6 +26,8 @@ from diagram_yonetmelik.spatial_rag import (
     MultiFloor3DRAGBuilder,
 )
 from diagram_yonetmelik.gnn_order import (
+    NUM_ROOM_TYPES,
+    RWPE_DIM,
     compute_rwpe,
     violation_energy,
     OrderEmbeddingLoss,
@@ -622,8 +624,8 @@ class TestSubgraphDatasetAndDataLoader:
 
         q_b, u_b, labels = split_pair_batch(batch)
         assert labels.shape[0] == 4
-        assert q_b.x.shape[1] == 17  # 10 feat + 6 rwpe + 1 anchor
-        assert u_b.x.shape[1] == 17
+        assert q_b.x.shape[1] == NUM_ROOM_TYPES + RWPE_DIM + 1  # oda tipi + rwpe + çapa
+        assert u_b.x.shape[1] == NUM_ROOM_TYPES + RWPE_DIM + 1
 
 
 class TestLearnedAIAndNeuroSymbolicDualMode:
@@ -636,7 +638,7 @@ class TestLearnedAIAndNeuroSymbolicDualMode:
         checkpoint_path = "data/spatial_order_gnn.pt"
         assert os.path.exists(checkpoint_path), "GNN model ağırlık dosyası bulunamadı!"
 
-        model = SpatialOrderGNN(node_in_dim=10, edge_in_dim=3, rwpe_dim=6, hidden_dim=64)
+        model = SpatialOrderGNN()
         loaded = model.load_weights(checkpoint_path)
         assert loaded is True, "Model ağırlıkları başarıyla yüklenmeli!"
 
@@ -661,7 +663,7 @@ class TestLearnedAIAndNeuroSymbolicDualMode:
         rag = build_sample_architectural_rag()
 
         # 1. Learned AI Mode (GNN Order Embedding)
-        gnn = SpatialOrderGNN(node_in_dim=10, edge_in_dim=3, rwpe_dim=6, hidden_dim=64)
+        gnn = SpatialOrderGNN()
         if os.path.exists("data/spatial_order_gnn.pt"):
             gnn.load_weights("data/spatial_order_gnn.pt")
 
@@ -692,89 +694,12 @@ class TestLearnedAIAndNeuroSymbolicDualMode:
         for m in motifs_det:
             assert m.clustering_method == "wl_hash"
 
-    def test_pruning_does_not_change_evacuation_regression(self, tmp_path):
-        """Tahliye simülasyonu Aşama 4 çıktısını kullanmadığı için bu bir regresyon testidir, güvenlik kanıtı değildir."""
-        from diagram_yonetmelik.orchestrator import DiagramYonetmelikPipeline
-        from diagram_yonetmelik.schemas import PipelineConfig
-
-        doc_ai = generate_sample_building_dxf(str(tmp_path / "ai.dxf"))
-        doc_det = generate_sample_building_dxf(str(tmp_path / "det.dxf"))
-
-        # Mode A: Neural AI Pruning + Neural Clustering
-        cfg_ai = PipelineConfig(
-            enable_hybrid_pruning=True,
-            spminer_use_neural_clustering=True,
-            target_evacuation_time_sec=180.0
-        )
-        orch_ai = DiagramYonetmelikPipeline(cfg_ai)
-        out_ai = orch_ai.run_full_pipeline(doc_ai)
-
-        # Mode B: Deterministic Fallback (GNN Off, 100% Exact VF2 + WL-Hash)
-        cfg_det = PipelineConfig(
-            enable_hybrid_pruning=False,
-            spminer_use_neural_clustering=False,
-            target_evacuation_time_sec=180.0
-        )
-        orch_det = DiagramYonetmelikPipeline(cfg_det)
-        out_det = orch_det.run_full_pipeline(doc_det)
-
-        # Budanan aday hiçbir zaman "doğrulandı" sayılamaz; budanmayan adayların teşhisleri birebir aynı kalmalıdır.
-        pruned_anchors = {rep.anchor_node_id for rep in out_ai.pruned_candidates}
-        assert all(rep.review_status == "pruned_unverified" for rep in out_ai.pruned_candidates)
-        assert not pruned_anchors & set(out_ai.verified_escape_cores)
-
-        # Tahliye simülatörü GNN çıktısı almaz; bu kontrol yalnızca aynı grafın kullanıldığını gösterir.
-        assert out_ai.baseline_evacuation_report.total_evacuation_time_sec == \
-               out_det.baseline_evacuation_report.total_evacuation_time_sec
-        assert out_ai.baseline_evacuation_report.is_compliance_achieved == \
-               out_det.baseline_evacuation_report.is_compliance_achieved
-        assert out_ai.baseline_evacuation_report.critical_bottleneck_count == \
-               out_det.baseline_evacuation_report.critical_bottleneck_count
-        assert set(out_ai.verified_escape_cores) == set(out_det.verified_escape_cores) - pruned_anchors
-
-        # AI modunda Stage 4 execution metric teyidi
-        assert "gnn_hybrid_pruning_enabled" in out_ai.execution_metrics
-        assert bool(out_ai.execution_metrics["gnn_hybrid_pruning_enabled"]) is True
-        assert bool(out_det.execution_metrics["gnn_hybrid_pruning_enabled"]) is False
-
-
-def test_pruned_candidates_have_no_regulatory_finding(tmp_path):
-    import json
-    from pathlib import Path
-    from diagram_yonetmelik.orchestrator import DiagramYonetmelikPipeline
-    from diagram_yonetmelik.schemas import PipelineConfig
-    config = PipelineConfig(enable_hybrid_pruning=True)
-    calibration = json.loads(Path(config.gnn_calibration_path).read_text())
-    calibration["tau"] = 0
-    path = tmp_path / "calibration.json"
-    path.write_text(json.dumps(calibration))
-    config.gnn_calibration_path = str(path)
-    out = DiagramYonetmelikPipeline(config).run_full_pipeline(generate_sample_building_dxf(str(tmp_path / "sample.dxf")))
-    assert out.pruned_candidates
-    for candidate in out.pruned_candidates:
-        assert candidate.review_status == "pruned_unverified"
-        assert candidate.violations == []
-        assert candidate.is_fully_compliant is None
-        assert candidate not in out.diagnostic_reports
-    assert out.execution_metrics["pruned_candidates"] == len(out.pruned_candidates)
-    assert "GNN tarafından elendi, VF2 ile doğrulanmadı" in out.official_markdown_report
-
-
-def test_missing_calibration_disables_pruning(tmp_path):
-    from diagram_yonetmelik.orchestrator import DiagramYonetmelikPipeline
-    from diagram_yonetmelik.schemas import PipelineConfig
-    cfg = PipelineConfig(enable_hybrid_pruning=True, gnn_calibration_path=str(tmp_path / "missing"))
-    out = DiagramYonetmelikPipeline(cfg).run_full_pipeline(generate_sample_building_dxf(str(tmp_path / "input.dxf")))
-    assert out.execution_metrics["pruning_status"] == "missing_calibration"
-    assert out.execution_metrics["vf2_candidates"] > 0
-    assert not out.pruned_candidates
-
 
 def test_cluster_members_match_representative_structure():
     from diagram_yonetmelik.sample_generator import generate_experiment_building
     from diagram_yonetmelik.spminer import ArchitecturalSPMiner
     graph = generate_experiment_building(3)
-    miner = ArchitecturalSPMiner(min_support=1, neural_similarity_threshold=-1)
+    miner = ArchitecturalSPMiner(SpatialOrderGNN(), min_support=1, use_neural_clustering=True, neural_similarity_threshold=-1)
     motifs, _ = miner.discover_frequent_modules(graph)
     assert miner.rejected_candidates > 0
     for motif in motifs:
@@ -793,7 +718,7 @@ def test_all_splits_are_building_disjoint():
         split = building_splits(seed)
         a, b, c = (set(split[k]) for k in ("train", "validation", "test"))
         assert not (a & b or b & c or a & c)
-        assert SAMPLE in c and len(a | b | c) == 31
+        assert SAMPLE in c and len(a | b | c) == 63
 
 
 def test_capacity_subtracts_boundary_layer_on_both_sides():
@@ -801,3 +726,237 @@ def test_capacity_subtracts_boundary_layer_on_both_sides():
     for vertical, layer, flow in [(False, sim.door_bl, sim.flow_horiz), (True, sim.stair_bl, sim.flow_stair)]:
         rate = sim._compute_edge_capacity_rate({"door_width_cm": 100, "is_vertical": vertical})
         assert rate == (1 - 2 * layer) * flow
+
+
+def _occupied_building(distance_m=5.0):
+    G = nx.Graph()
+    G.add_node(1, room_type="salon", area_m2=30.0, floor_level=0)
+    G.add_node(2, room_type="kat_koridoru", area_m2=20.0, floor_level=0)
+    G.add_node(3, room_type="dis_cikis", area_m2=10.0, floor_level=0)
+    G.add_edge(1, 2, door_width_cm=100.0, distance_m=distance_m)
+    G.add_edge(2, 3, door_width_cm=120.0, distance_m=distance_m)
+    return G
+
+
+class TestFireDecisionIsDeterministic:
+    def test_vf2_never_skips_a_candidate_because_of_gnn_energy(self):
+        class HighEnergyModel:
+            def __call__(self, x, *args, **kwargs):
+                return torch.full((1, 4), 100.0 if x.size(0) == 3 else 0.0)
+
+        analyzer = ExplainableVF2Analyzer(gnn_model=HighEnergyModel())
+        query = analyzer.build_standard_fire_core_query(include_exit=False)
+        target = nx.Graph()
+        target.add_node(1, room_type="yangin_holu", area_m2=5.0)
+        target.add_node(2, room_type="kat_koridoru", area_m2=20.0)
+        target.add_node(3, room_type="yangin_merdiveni", area_m2=12.0)
+        target.add_node(4, room_type="oda", area_m2=12.0)
+        target.add_edge(2, 1, door_width_cm=100.0, distance_m=5.0, is_fire_resistant=True)
+        target.add_edge(1, 3, door_width_cm=100.0, distance_m=2.0, is_fire_resistant=True)
+        target.add_edge(2, 4, door_width_cm=90.0, distance_m=3.0)
+
+        report = analyzer.explain_candidate(query, target, 1)
+        assert report.gnn_energy > 1000.0
+        assert report.is_fully_compliant is True
+
+    def test_recording_gnn_energy_does_not_change_audit_results(self, tmp_path):
+        from collections import Counter
+
+        def codes(output):
+            return Counter(v.violation_code for rep in output.diagnostic_reports for v in rep.violations)
+
+        doc = lambda name: generate_sample_building_dxf(str(tmp_path / name))
+        plain = DiagramYonetmelikPipeline(PipelineConfig())
+        measured = DiagramYonetmelikPipeline(PipelineConfig(record_gnn_energy=True))
+        assert plain.gnn is None
+        assert measured.gnn is not None
+
+        out_plain = plain.run_full_pipeline(doc("a.dxf"))
+        out_measured = measured.run_full_pipeline(doc("b.dxf"))
+        assert codes(out_plain) == codes(out_measured)
+        assert out_plain.verified_escape_cores == out_measured.verified_escape_cores
+        assert any(rep.gnn_energy is not None for rep in out_measured.diagnostic_reports)
+
+    def test_missing_gnn_weights_do_not_stop_the_audit(self, tmp_path):
+        config = PipelineConfig(spminer_use_neural_clustering=True, gnn_model_weights_path=str(tmp_path / "yok.pt"))
+        pipeline = DiagramYonetmelikPipeline(config)
+        assert pipeline.gnn is None
+        assert pipeline.spminer.use_neural_clustering is False
+        assert pipeline.run_full_pipeline(generate_sample_building_dxf(str(tmp_path / "a.dxf"))).diagnostic_reports
+
+
+class TestSmokeAndAset:
+    def test_late_clearing_zone_fails_even_with_generous_time_target(self):
+        sim = Building3DEvacuationSimulator(target_evacuation_threshold_sec=1000.0)
+        report = sim.simulate_evacuation(_occupied_building(distance_m=30.0), fire_origin_node=2)
+        assert report.evacuation_completed is True
+        assert report.aset_compliant is False
+        assert report.aset_margin_sec < 0.0
+        assert report.is_compliance_achieved is False
+
+    def test_critical_smoke_height_is_one_point_eight_meters(self):
+        sim = Building3DEvacuationSimulator()
+        report = sim.simulate_evacuation(_occupied_building(), fire_origin_node=1)
+        # Yangın odasında alpha = 0.35: ASET = ((2.80 - 1.80) / 0.35)^2
+        assert report.smoke_zone_states[1].aset_sec == pytest.approx(8.2, abs=0.05)
+
+    def test_node_zero_can_be_fire_origin(self):
+        graph = nx.relabel_nodes(_occupied_building(), {1: 0})
+        report = Building3DEvacuationSimulator().simulate_evacuation(graph, fire_origin_node=0)
+        assert report.fire_origin_node == 0
+
+    def test_default_fire_origin_is_most_occupied_room_not_exit(self):
+        report = Building3DEvacuationSimulator().simulate_evacuation(_occupied_building())
+        assert report.fire_origin_node == 1
+
+    def test_protected_zones_do_not_decide_aset(self):
+        graph = _occupied_building()
+        graph.add_node(4, room_type="yangin_holu", area_m2=4.0, floor_level=0)
+        graph.add_edge(2, 4, door_width_cm=100.0, distance_m=5.0)
+        report = Building3DEvacuationSimulator().simulate_evacuation(graph)
+        assert report.smoke_zone_states[4].is_protected_zone is True
+        assert report.smoke_zone_states[4].is_tenable is True
+
+
+class TestBackwardRedundancyPruning:
+    def test_every_remaining_step_is_needed_and_measured(self, tmp_path):
+        from diagram_yonetmelik.cad_ingest import DXFFloorplanParser
+        doc = generate_high_rise_12_story_building_dxf(str(tmp_path / "a.dxf"))
+        rooms, doors, scale = DXFFloorplanParser().parse_dxf_document(doc)
+        graph = MultiFloor3DRAGBuilder().build_3d_building_rag(rooms, doors, unit_scale_to_meters=scale).G_3d
+
+        optimizer = CounterfactualEvacuationOptimizer(max_iterations=4)
+        result = optimizer.optimize_building_design(graph)
+        assert result.intervention_steps
+        assert all(step.evacuation_time_delta_sec is not None for step in result.intervention_steps)
+        assert result.total_remodeling_cost == pytest.approx(sum(s.cost_index for s in result.intervention_steps), abs=0.1)
+        assert result.optimized_evacuation_time_sec <= result.baseline_evacuation_time_sec
+
+        final = optimizer.sim.simulate_evacuation(result.optimized_building_graph)
+        for step in result.intervention_steps:
+            trial_graph = result.optimized_building_graph.copy()
+            if step.action_type == "HOLDING_AREA_EXPAND":
+                trial_graph.nodes[step.target_element]["area_m2"] = step.original_metric_value
+            else:
+                u, v = step.target_element
+                trial_graph[u][v]["door_width_cm"] = step.original_metric_value
+            trial = optimizer.sim.simulate_evacuation(trial_graph)
+            assert (trial.total_evacuation_time_sec > final.total_evacuation_time_sec
+                    or trial.critical_bottleneck_count > final.critical_bottleneck_count
+                    or len({s.target_element for s in result.intervention_steps}) < len(result.intervention_steps))
+
+
+class TestChecklistReportsOnlyMeasuredValues:
+    @staticmethod
+    def _report(measured=None):
+        from diagram_yonetmelik.occupancy_rules import BuildingOccupancyType, evaluate_building_checklist
+        return evaluate_building_checklist(
+            occupancy_type=BuildingOccupancyType.RESIDENTIAL, sprinkler_enabled=False,
+            building_height_m=24.0, total_floors=8, measured_data=measured,
+        )
+
+    def test_without_measurements_nothing_passes(self):
+        report = self._report()
+        assert report.measured_checks == 0
+        assert report.passed_checks == 0
+        assert report.failed_checks == 0
+        assert report.unmeasured_checks == report.total_checks
+        assert report.critical_violations == []
+        items = [item for group in report.categories.values() for item in group]
+        assert all(item.status == "olculmedi" and item.actual_value_str == "Ölçülmedi" for item in items)
+
+    def test_measured_failure_counts_and_score_ignores_unmeasured(self):
+        report = self._report({"door_width_cm": 60.0, "stairs_count": 2})
+        assert report.measured_checks == 2
+        assert report.passed_checks == 1
+        assert report.failed_checks == 1
+        assert report.compliance_score_percent == 50.0
+        assert [item.item_id for item in report.critical_violations] == ["CHK-2.1"]
+
+    def test_partial_multi_value_item_stays_unmeasured(self):
+        report = self._report({"stair_riser_cm": 16.0})
+        item = next(i for i in report.categories["3_merdiven_geometrisi"] if i.item_id == "CHK-3.1")
+        assert item.status == "olculmedi"
+
+    def test_graph_measurements_use_worst_case_values(self):
+        from diagram_yonetmelik.api import _measurements_from_graph
+        graph = nx.Graph()
+        graph.add_node(1, room_type="salon", area_m2=20.0, floor_level=1)
+        graph.add_node(2, room_type="yangin_holu", area_m2=5.0, floor_level=1)
+        graph.add_node(3, room_type="yangin_holu", area_m2=2.0, floor_level=1)
+        graph.add_node(4, room_type="yangin_merdiveni", area_m2=9.0, floor_level=1)
+        graph.add_node(5, room_type="dis_cikis", area_m2=9.0, floor_level=0)
+        graph.add_edge(1, 2, door_width_cm=120.0, distance_m=20.0)
+        graph.add_edge(2, 4, door_width_cm=70.0, distance_m=2.0)
+        graph.add_edge(3, 4, door_width_cm=120.0, distance_m=2.0)
+        measured = _measurements_from_graph(graph)
+        assert measured["door_width_cm"] == 70.0
+        assert measured["safety_hall_area_m2"] == 2.0
+        assert measured["travel_distance_m"] == 22.0
+        assert measured["stairs_count"] == 0  # Zemin katta merdiven yok
+
+
+class TestSpminerAndNeuroMatchRoles:
+    def test_neural_options_require_a_model(self):
+        with pytest.raises(ValueError):
+            ArchitecturalSPMiner(use_neural_clustering=True)
+
+    def test_default_miner_is_deterministic_and_counts_entries(self):
+        from diagram_yonetmelik.sample_generator import generate_experiment_building
+        graph = generate_experiment_building(5)
+        first = ArchitecturalSPMiner().discover_frequent_modules(graph)
+        second = ArchitecturalSPMiner().discover_frequent_modules(graph)
+        assert [m.wl_hash for m in first[0]] == [m.wl_hash for m in second[0]]
+        entries = sum(d["room_type"] == "daire_antresi" for _, d in graph.nodes(data=True))
+        assert first[1].total_apartments == entries
+        assert sum(first[1].apartment_types_breakdown.values()) == entries
+
+    def test_coarsened_distance_is_never_shorter_than_real_distance(self):
+        from diagram_yonetmelik.sample_generator import generate_experiment_building
+        checked = 0
+        for seed in range(6):
+            graph = generate_experiment_building(seed)
+            motifs, _ = ArchitecturalSPMiner().discover_frequent_modules(graph)
+            result = ArchitecturalGraphCoarsener.coarsen_building_graph(graph, motifs)
+            exits = [n for n, d in graph.nodes(data=True) if d["room_type"] == "dis_cikis"]
+            full = nx.multi_source_dijkstra_path_length(graph, exits, weight="distance_m")
+            coarse = nx.multi_source_dijkstra_path_length(result.G_coarsened, exits, weight="distance_m")
+            for macro, record in result.macro_node_registry.items():
+                worst = max(full[n] for n in record.contained_original_nodes)
+                assert coarse[macro] + record.internal_max_escape_m >= worst - 1e-6
+                checked += 1
+        assert checked > 0
+
+    def test_all_room_types_have_distinct_gnn_features(self):
+        graph = nx.Graph()
+        graph.add_node(1, room_type="daire_antresi")
+        graph.add_node(2, room_type="mutfak")
+        graph.add_edge(1, 2)
+        x = nx_subgraph_to_pyg_data(graph, anchor_node=1).x
+        assert x.shape[1] == NUM_ROOM_TYPES + RWPE_DIM + 1
+        assert x[0, :NUM_ROOM_TYPES].sum() == 1.0 and x[1, :NUM_ROOM_TYPES].sum() == 1.0
+        assert not torch.equal(x[0, :NUM_ROOM_TYPES], x[1, :NUM_ROOM_TYPES])
+
+    def test_neuromatch_filter_only_removes_candidates_and_verifies_the_rest(self):
+        from diagram_yonetmelik.neuromatch import NeuroMatchIndex, contains_anchored
+        from diagram_yonetmelik.sample_generator import generate_experiment_building
+        graph = generate_experiment_building(2)
+        anchor = next(n for n, d in graph.nodes(data=True) if d["room_type"] == "daire_antresi")
+        query = graph.subgraph([anchor, *list(graph.neighbors(anchor))[:2]]).copy()
+
+        wide = NeuroMatchIndex(SpatialOrderGNN(), tau=1e12, k_hops=2)
+        wide.add_graphs({"bina": graph})
+        exact = wide.search(query, anchor, use_filter=False)
+        filtered = wide.search(query, anchor, use_filter=True)
+        assert ("bina", anchor) in exact["matches"]
+        assert sorted(filtered["matches"]) == sorted(exact["matches"])
+
+        changed = query.copy()
+        victim = next(n for n in changed if n != anchor)
+        changed.nodes[victim]["room_type"] = "dis_cikis"
+        assert contains_anchored(changed, anchor, graph, anchor) is False
+
+        strict = NeuroMatchIndex(SpatialOrderGNN(), tau=-1.0, k_hops=2)
+        strict.add_graphs({"bina": graph})
+        none_left = strict.search(query, anchor)
+        assert none_left["verified"] == 0 and none_left["matches"] == []
