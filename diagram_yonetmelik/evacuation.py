@@ -1,4 +1,5 @@
 import copy
+import heapq
 import math
 from typing import Dict, List, Set, Tuple, Optional, Any
 import networkx as nx
@@ -21,14 +22,18 @@ class Building3DEvacuationSimulator:
     def __init__(
         self,
         time_step_sec: float = 0.5,
-        max_simulation_sec: float = 180.0,
+        max_simulation_sec: float = 900.0,
         door_boundary_layer_m: float = 0.15,
         stair_boundary_layer_m: float = 0.20,
         horizontal_specific_flow: float = 1.30,   # kişi / (sn * m)
         stair_specific_flow: float = 1.00,        # kişi / (sn * m)
         max_density_persons_per_m2: float = 3.5,
-        target_evacuation_threshold_sec: float = 65.0
+        target_evacuation_threshold_sec: float = 65.0,
+        horizontal_walking_speed_mps: float = 1.19,  # SFPE serbest akış, koridor
+        stair_walking_speed_mps: float = 0.85        # SFPE serbest akış, 7.5"/10" basamak
     ):
+        self.walk_horiz = horizontal_walking_speed_mps
+        self.walk_stair = stair_walking_speed_mps
         self.dt = time_step_sec
         self.max_t = max_simulation_sec
         self.door_bl = door_boundary_layer_m
@@ -43,11 +48,16 @@ class Building3DEvacuationSimulator:
         is_vertical = edge_data.get("is_vertical", False)
 
         if is_vertical:
-            eff_w = max(0.30, w_m - self.stair_bl)
+            eff_w = max(0.30, w_m - 2 * self.stair_bl)
             return eff_w * self.flow_stair
         else:
-            eff_w = max(0.30, w_m - self.door_bl)
+            eff_w = max(0.30, w_m - 2 * self.door_bl)
             return eff_w * self.flow_horiz
+
+    def _compute_edge_travel_time(self, edge_data: Dict[str, Any]) -> float:
+        distance_m = max(0.0, float(edge_data.get("distance_m", 1.0)))
+        speed = self.walk_stair if edge_data.get("is_vertical", False) else self.walk_horiz
+        return distance_m / speed
 
     def simulate_evacuation(
         self,
@@ -96,7 +106,10 @@ class Building3DEvacuationSimulator:
                 rtype = d.get("room_type", "oda")
                 if rtype in ("salon", "oda"):
                     occ = 3.0
-                elif rtype in ("kat_koridoru", "yangin_holu", "yangin_merdiveni", "dis_cikis"):
+                elif rtype in (
+                    "kat_koridoru", "yangin_holu", "yangin_merdiveni", "dis_cikis",
+                    "asansor", "yangin_asansoru", "dikey_cekirdek", "teknik_saft"
+                ):
                     occ = 0.0
                 elif rtype == "macro_apartment":
                     occ = float(d.get("contained_count", 4)) * 2.0
@@ -124,18 +137,46 @@ class Building3DEvacuationSimulator:
             spillback_sec[(u, v)] = 0.0
             spillback_sec[(v, u)] = 0.0
 
+        # Çıkışa yolu olmayan düğümlerdeki kişiler hiçbir zaman tahliye edilemez.
+        unreachable_occupied = sorted(
+            [n for n, occ in occupancy.items() if occ > 0.0 and n not in exit_nodes and n not in next_hop],
+            key=str
+        )
+        trapped_float = sum(occupancy[n] for n in unreachable_occupied)
+        total_persons_float = sum(occupancy.values())
+
         current_t = 0.0
         evacuated_float = 0.0
         time_series: List[Tuple[float, int]] = [(0.0, 0)]
 
+        # Kapıdan geçip bir sonraki mekâna yürüyen kişiler: (varış_zamanı, sıra, hedef, kişi)
+        in_transit: List[Tuple[float, int, Any, float]] = []
+        inbound_persons: Dict[Any, float] = {}
+        transit_seq = 0
+        reachable_finished = False
+
         # 4. Zaman Adımlı Dinamik Simülasyon Döngüsü (dt = 0.5s)
-        while current_t < self.max_t:
-            # Sadece çıkışa erişimi olan düğümlerdeki kalan insanları takip et
+        while True:
+            # Sadece çıkışa erişimi olan düğümlerdeki ve yolda olan insanları takip et
             remaining_in_building = sum([occ for n, occ in occupancy.items() if n not in exit_nodes and n in next_hop])
+            remaining_in_building += sum(entry[3] for entry in in_transit)
             if remaining_in_building <= 0.1:
+                reachable_finished = True
+                break
+            if current_t >= self.max_t:
                 break
 
             current_t += self.dt
+
+            # Yürüyüşünü bitiren kişileri hedef mekâna veya dış çıkışa al
+            while in_transit and in_transit[0][0] <= current_t + 1e-9:
+                _, _, arrived_v, arrived_persons = heapq.heappop(in_transit)
+                if arrived_v in exit_nodes:
+                    evacuated_float += arrived_persons
+                else:
+                    inbound_persons[arrived_v] -= arrived_persons
+                    occupancy[arrived_v] += arrived_persons
+
             flows_this_step: Dict[Tuple[int, int], float] = {}
 
             # Her düğüm için ileri akışı hesapla
@@ -150,11 +191,16 @@ class Building3DEvacuationSimulator:
                 cap_rate = self._compute_edge_capacity_rate(ed)
                 max_edge_flow = cap_rate * self.dt
 
-                # Hedef mekanda boş yer: Space(v) = max(0, Capacity(v) - Occ(v))
-                space_v = max(0.0, holding_capacity[v] - occupancy[v]) if v not in exit_nodes else 999.0
+                # Hedef mekanda boş yer: Space(v) = max(0, Capacity(v) - Occ(v) - Yoldakiler(v))
+                if v in exit_nodes:
+                    space_v = 999.0
+                else:
+                    space_v = max(0.0, holding_capacity[v] - occupancy[v] - inbound_persons.get(v, 0.0))
 
                 flow = min(occ, max_edge_flow, space_v)
                 flows_this_step[(u, v)] = flow
+                if v not in exit_nodes:
+                    inbound_persons[v] = inbound_persons.get(v, 0.0) + flow
 
                 # Kuyruk ve Geri-Tıkanma (Spillback) Tespiti
                 if occ > max_edge_flow:
@@ -167,13 +213,20 @@ class Building3DEvacuationSimulator:
 
             # Akışları Uygula
             for (u, v), flow in flows_this_step.items():
+                if flow <= 0.0:
+                    continue
                 occupancy[u] = max(0.0, occupancy[u] - flow)
-                if v in exit_nodes:
-                    evacuated_float += flow
-                else:
-                    occupancy[v] += flow
+                travel_sec = self._compute_edge_travel_time(G_3d.get_edge_data(u, v, default={}))
+                heapq.heappush(in_transit, (current_t + travel_sec, transit_seq, v, flow))
+                transit_seq += 1
 
             time_series.append((round(current_t, 1), int(round(evacuated_float))))
+
+        has_exit = bool(exit_nodes)
+        trapped_persons = int(round(trapped_float))
+        evacuation_completed = reachable_finished and has_exit and trapped_float <= 0.0
+        # Tahliye tamamlanmadıysa geçerli bir süre yoktur: simülasyon tavanı raporlanır.
+        reported_t = current_t if evacuation_completed else self.max_t
 
         # 5. İki Bölgeli Duman (Two-Zone Smoke) ve ASET Durumları
         smoke_states: Dict[int, SmokeZoneState] = {}
@@ -188,10 +241,10 @@ class Building3DEvacuationSimulator:
                 d_fire = 20.0
 
             alpha = max(0.05, 0.35 / (1.0 + 0.1 * d_fire))
-            layer_h = max(0.50, h_ceil - alpha * math.sqrt(max(1.0, current_t)))
+            layer_h = max(0.50, h_ceil - alpha * math.sqrt(max(1.0, reported_t)))
             tenable = (layer_h >= 2.00)
             aset = ((h_ceil - 2.00) / max(1e-4, alpha)) ** 2
-            rset = current_t
+            rset = reported_t
 
             smoke_states[n] = SmokeZoneState(
                 node_id=n,
@@ -227,14 +280,19 @@ class Building3DEvacuationSimulator:
         crit_count = sum([1 for b in bottlenecks if b.is_critical])
 
         return BuildingEvacuationReport(
-            total_evacuation_time_sec=round(current_t, 1),
+            total_evacuation_time_sec=round(reported_t, 1),
             target_threshold_sec=self.target_threshold,
-            is_compliance_achieved=(current_t <= self.target_threshold and crit_count == 0),
+            is_compliance_achieved=(evacuation_completed and reported_t <= self.target_threshold and crit_count == 0),
             bottlenecks_ranked=bottlenecks,
             critical_bottleneck_count=crit_count,
             total_persons_evacuated=int(round(evacuated_float)),
             smoke_zone_states=smoke_states,
-            time_series_evacuated=time_series
+            time_series_evacuated=time_series,
+            total_persons=int(round(total_persons_float)),
+            trapped_persons=trapped_persons,
+            unreachable_occupied_nodes=unreachable_occupied,
+            has_exit=has_exit,
+            evacuation_completed=evacuation_completed
         )
 
 
@@ -282,6 +340,9 @@ class CounterfactualEvacuationOptimizer:
 
         for it in range(1, self.max_iter + 1):
             rep = self.sim.simulate_evacuation(G_current)
+            # Kapı genişletmek, çıkışa yolu olmayan kişileri kurtaramaz; reçete önerilmez.
+            if rep.trapped_persons > 0 or not rep.has_exit:
+                break
             if rep.total_evacuation_time_sec <= target_time_sec and rep.critical_bottleneck_count == 0:
                 break
             if not rep.bottlenecks_ranked:
@@ -347,5 +408,6 @@ class CounterfactualEvacuationOptimizer:
             optimized_critical_bottlenecks=final_rep.critical_bottleneck_count,
             total_remodeling_cost=round(total_cost, 1),
             intervention_steps=steps,
-            optimized_building_graph=G_current
+            optimized_building_graph=G_current,
+            baseline_trapped_persons=baseline_report.trapped_persons
         )

@@ -1,9 +1,26 @@
 import copy
+from diagram_yonetmelik.gnn_order import extract_anchored_k_hop
 from typing import Dict, List, Set, Tuple, Optional, Any
 import networkx as nx
 from networkx.algorithms import isomorphism
 
 from diagram_yonetmelik.schemas import RuleViolationItem, CandidateDiagnosticReport
+
+
+FIRE_HALL_AREA_LIMITS_M2: Tuple[float, float] = (3.0, 6.0)  # BYKHY Madde 34(3)
+EMERGENCY_ELEVATOR_HALL_AREA_LIMITS_M2: Tuple[float, float] = (6.0, 10.0)  # BYKHY Madde 34(4)
+
+
+def fire_hall_area_limits(
+    G: nx.Graph,
+    hall_node: Any,
+    general_limits: Tuple[float, float] = FIRE_HALL_AREA_LIMITS_M2
+) -> Tuple[float, float]:
+    """Yangın güvenlik holünün (asgari, azami) taban alanı sınırlarını döndürür."""
+    for neighbor in G.neighbors(hall_node):
+        if G.nodes[neighbor].get("room_type") == "yangin_asansoru":
+            return EMERGENCY_ELEVATOR_HALL_AREA_LIMITS_M2
+    return general_limits
 
 
 class ExplainableVF2Analyzer:
@@ -19,7 +36,7 @@ class ExplainableVF2Analyzer:
         max_fire_hall_area_m2: float = 6.0,
         max_escape_distance_m: float = 30.0,
         gnn_model: Optional[Any] = None,
-        energy_threshold: float = 0.25,
+        energy_threshold: float = float("inf"),
         enable_hybrid_pruning: bool = False
     ):
         self.min_w = min_door_width_cm
@@ -37,7 +54,7 @@ class ExplainableVF2Analyzer:
         """
         Q = nx.Graph()
         Q.add_node(0, room_type="kat_koridoru", min_area=4.0)
-        Q.add_node(1, room_type="yangin_holu", min_area=3.0, max_area=6.0, is_anchor=True)
+        Q.add_node(1, room_type="yangin_holu", is_anchor=True)  # Alan sınırları: fire_hall_area_limits
         Q.add_node(2, room_type="yangin_merdiveni", min_area=5.0)
 
         Q.add_edge(0, 1, min_width=90.0, is_fire_resistant=True, max_dist=15.0)
@@ -80,7 +97,7 @@ class ExplainableVF2Analyzer:
                         z_q = self.gnn(q_data['x'], q_data['edge_index'], q_data['edge_attr'], q_data['anchor_mask'])
                         z_t = self.gnn(t_data['x'], t_data['edge_index'], t_data['edge_attr'], t_data['anchor_mask'])
                     e = violation_energy(z_q, z_t)
-                    gnn_energy_val = round(float(e.squeeze().item()), 4)
+                    gnn_energy_val = float(e.squeeze().item())
             except Exception:
                 gnn_energy_val = None
 
@@ -88,23 +105,11 @@ class ExplainableVF2Analyzer:
             return CandidateDiagnosticReport(
                 anchor_node_id=anchor_node_id,
                 target_subgraph_nodes=list(target_subgraph.nodes()),
-                is_fully_compliant=False,
-                diagnostic_stage_reached=3,
-                violations=[
-                    RuleViolationItem(
-                        violation_code="NEUROMATCH_ENERGY_PRUNED",
-                        target_node_id=anchor_node_id,
-                        expected_value=self.energy_threshold,
-                        actual_value=gnn_energy_val,
-                        diagnostic_stage=3,
-                        severity="WARNING",
-                        description_tr=f"NeuroMatch Order Embedding ihlal enerjisi ({gnn_energy_val:.4f} > {self.energy_threshold}) eşiği aştı. VF2 aramasından budandı.",
-                        remedy_recommendation_tr="Yangın kaçış çekirdeği şablonu bu alt bölgede topolojik olarak bulunmamaktadır.",
-                        regulation_reference="BYKHY Madde 34 / NeuroMatch Pruning"
-                    )
-                ],
-                partial_node_mapping={},
-                summary_message=f"NeuroMatch hibrit budama: İhlal enerjisi yüksek ({gnn_energy_val:.4f}), VF2 aramasından budandı.",
+                is_fully_compliant=None,
+                diagnostic_stage_reached=None,
+                review_status="pruned_unverified",
+                violations=[],
+                summary_message="GNN tarafından elendi, VF2 ile doğrulanmadı",
                 gnn_energy=gnn_energy_val
             )
 
@@ -120,7 +125,7 @@ class ExplainableVF2Analyzer:
                 diagnostic_stage_reached=0,
                 violations=[],
                 partial_node_mapping=mapping,
-                summary_message="Yangın çekirdeği yönetmeliğe %100 uygundur.",
+                summary_message="Kaçış çekirdeği sorgudaki topolojik ve geometrik koşulları karşıladı.",
                 gnn_energy=gnn_energy_val
             )
 
@@ -173,14 +178,18 @@ class ExplainableVF2Analyzer:
             gnn_energy=gnn_energy_val
         )
 
+    def _hall_limits(self, G: nx.Graph, hall_node: Any) -> Tuple[float, float]:
+        return fire_hall_area_limits(G, hall_node, (self.min_fh_area, self.max_fh_area))
+
     def _run_strict_vf2(self, Q: nx.Graph, T: nx.Graph, q_anc: int, t_anc: int) -> Tuple[bool, Dict[int, int]]:
         def node_match(n1, n2):
-            if n2.get("is_anchor", False) and n1.get("_is_target_anchor", False):
-                return True
-            return (
-                n1.get("room_type") == n2.get("room_type") and
-                n1.get("area_m2", 0.0) >= n2.get("min_area", 0.0)
-            )
+            if n1.get("room_type") != n2.get("room_type"):
+                return False
+            area = n1.get("area_m2", 0.0)
+            hall_limits = n1.get("_hall_limits")
+            if hall_limits is not None:
+                return hall_limits[0] <= area <= hall_limits[1]
+            return area >= n2.get("min_area", 0.0)
 
         def edge_match(e1, e2):
             return (
@@ -190,7 +199,8 @@ class ExplainableVF2Analyzer:
 
         T_copy = T.copy()
         for n in T_copy.nodes():
-            T_copy.nodes[n]["_is_target_anchor"] = (n == t_anc)
+            if T_copy.nodes[n].get("room_type") == "yangin_holu":
+                T_copy.nodes[n]["_hall_limits"] = self._hall_limits(T_copy, n)
 
         matcher = isomorphism.GraphMatcher(T_copy, Q, node_match=node_match, edge_match=edge_match)
         for iso in matcher.subgraph_monomorphisms_iter():
@@ -228,8 +238,28 @@ class ExplainableVF2Analyzer:
         for q_node, t_node in mapping.items():
             qd = Q.nodes[q_node]
             td = T.nodes[t_node]
-            min_a = qd.get("min_area", 0.0)
             act_a = td.get("area_m2", 0.0)
+            if td.get("room_type") == "yangin_holu":
+                # Genel kat denetçisiyle aynı kod ve kat: orkestratör mükerrer ihlali eler.
+                hall_min, hall_max = self._hall_limits(T, t_node)
+                if act_a < hall_min or act_a > hall_max:
+                    is_deficit = act_a < hall_min
+                    limit = hall_min if is_deficit else hall_max
+                    items.append(RuleViolationItem(
+                        violation_code="BYKHY_M34_YANGIN_HOLU_ALAN_YETERSIZ" if is_deficit else "BYKHY_M34_YANGIN_HOLU_ALAN_FAZLA",
+                        target_node_id=t_node,
+                        expected_value=limit,
+                        actual_value=round(act_a, 2),
+                        diagnostic_stage=1,
+                        severity="CRITICAL",
+                        description_tr=f"Yangın güvenlik holü alanı ({act_a:.2f} m²) izin verilen {hall_min:.1f}-{hall_max:.1f} m² aralığının dışındadır.",
+                        remedy_recommendation_tr=f"Hol taban alanı {hall_min:.1f}-{hall_max:.1f} m² aralığına getirilmelidir.",
+                        regulation_reference="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 34",
+                        floor_level=td.get("floor_level", 0)
+                    ))
+                continue
+
+            min_a = qd.get("min_area", 0.0)
             if act_a < min_a:
                 items.append(RuleViolationItem(
                     violation_code="ROOM_AREA_DEFICIT",
@@ -247,7 +277,7 @@ class ExplainableVF2Analyzer:
         total_dist = 0.0
         for q_u, q_v in Q.edges():
             t_u, t_v = mapping.get(q_u), mapping.get(q_v)
-            if t_u and t_v and T.has_edge(t_u, t_v):
+            if t_u is not None and t_v is not None and T.has_edge(t_u, t_v):
                 qed = Q[q_u][q_v]
                 ted = T[t_u][t_v]
                 w_act = ted.get("door_width_cm", 0.0)
@@ -322,7 +352,7 @@ class ExplainableVF2Analyzer:
                 if T.nodes[t_neighbor].get("room_type") == req_type:
                     matched_t = t_neighbor
                     break
-            if matched_t:
+            if matched_t is not None:
                 mapping[q_neighbor] = matched_t
             else:
                 # İlgili mekan kat planında var mı ama kapı mı kopuk?
@@ -351,3 +381,13 @@ class ExplainableVF2Analyzer:
                         regulation_reference="BYKHY Madde 34"
                     ))
         return items, mapping
+
+
+def fire_candidates(graph, analyzer, hops):
+    for floor in sorted({d["floor_level"] for _, d in graph.nodes(data=True)}):
+        rooms = [n for n in graph if graph.nodes[n]["floor_level"] == floor]
+        halls = [n for n in rooms if graph.nodes[n]["room_type"] == "yangin_holu"]
+        for anchor in halls or [n for n in rooms if graph.nodes[n]["room_type"] == "yangin_merdiveni"]:
+            target = extract_anchored_k_hop(graph, anchor, hops)
+            exit_required = floor == 0 and any(d["room_type"] == "dis_cikis" for _, d in target.nodes(data=True))
+            yield analyzer.build_standard_fire_core_query(exit_required), target, anchor

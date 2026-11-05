@@ -273,7 +273,8 @@ ALL_REGULATION_ARTICLES: List[RegulationArticleDetail] = [
         full_text_tr=(
             "Yangın güvenlik holleri; kaçış merdivenlerine ve acil durum asansörlerine duman ve zehirli gazların "
             "geçişini engellemek amacıyla düzenlenir. Koridordan yangın merdivenine doğrudan kapı açılamaz.\n\n"
-            "Yangın güvenlik holü taban alanı 3.0 m²'den az, 6.0 m²'den fazla olamaz (konut yapılarında). "
+            "Yangın güvenlik holü taban alanı 3.0 m²'den az, 6.0 m²'den fazla olamaz; acil durum asansörü "
+            "önündeki holün alanı 6.0 m²'den az, 10.0 m²'den çok olamaz. "
             "Hole açılan kapılar yangına ve dumana en az 60 dakika dayanıklı (EI60), kendiliğinden kapanan "
             "duman sızdırmaz nitelikte olmalıdır. Hol tabanında hiçbir yanıcı malzeme ve tesisat geçişi bulunamaz."
         ),
@@ -289,7 +290,7 @@ ALL_REGULATION_ARTICLES: List[RegulationArticleDetail] = [
             "Hol alanı 6.0 m²'den büyük tutularak yangın yükü artırılmamalı."
         ],
         design_guidance_tr="Yangın güvenlik holü ebadı en az 1.80 m x 1.70 m = 3.06 m² net ölçülerde planlanmalı; kapıların süpürme yayları birbirine çarpmamalıdır.",
-        associated_violation_codes=["BYKHY_M34_YANGIN_GUVENLIK_HOLU_EKSIK", "BYKHY_M34_YANGIN_HOLU_ALAN_YETERSIZ"],
+        associated_violation_codes=["BYKHY_M34_YANGIN_GUVENLIK_HOLU_EKSIK", "BYKHY_M34_YANGIN_HOLU_ALAN_YETERSIZ", "BYKHY_M34_YANGIN_HOLU_ALAN_FAZLA"],
         tags=["yangın holü", "duman sızdırmazlık", "3 m2", "ara geçiş"]
     ),
 

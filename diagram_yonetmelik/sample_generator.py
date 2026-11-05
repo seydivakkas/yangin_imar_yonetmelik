@@ -557,3 +557,42 @@ def generate_sample_floorplan_image(output_path: str = "sample_floorplan.png") -
 
     cv2.imwrite(output_path, img)
     return img
+
+def generate_experiment_building(seed: int):
+    """Parametrik sentetik bina RAG'ı. Uzunluklar metre, kapı açıklıkları cm."""
+    import random
+    import networkx as nx
+
+    rng = random.Random(seed)
+    graph = nx.Graph()
+    floors = rng.randint(2, 6)
+    apartments = rng.randint(1, 4)
+
+    def room(kind, area):
+        node = len(graph)
+        graph.add_node(node, room_type=kind, area_m2=area, floor_level=floor)
+        return node
+
+    def door(u, v, width, distance, vertical=False):
+        graph.add_edge(u, v, door_width_cm=width, distance_m=distance,
+                       is_fire_resistant=True, is_vertical=vertical, usable_in_fire=True)
+
+    for floor in range(floors):
+        length = rng.uniform(3, 14)
+        corridor = room("kat_koridoru", length * 2)
+        hall = room("yangin_holu", rng.uniform(3.1, 5.9))
+        stair = room("yangin_merdiveni", rng.uniform(6, 12))
+        width = rng.choice([70, 80, 90, 110, 120])
+        door(corridor, hall, width, length)
+        door(hall, stair, 110, 2)
+        if floor == 0:
+            door(stair, room("dis_cikis", 5), 120, 3)
+        else:
+            door(stair, previous_stair, 120, 4, vertical=True)
+        previous_stair = stair
+        for _ in range(apartments):
+            entry = room("daire_antresi", rng.uniform(4, 9))
+            door(corridor, entry, 90, 2)
+            for kind in ["salon", "mutfak"] + ["oda"] * rng.randint(0, 2):
+                door(entry, room(kind, rng.uniform(8, 25)), 90, 2)
+    return graph

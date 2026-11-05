@@ -67,9 +67,6 @@ class OrderEmbeddingLoss(nn.Module):
         super().__init__()
         self.margin = margin
 
-    def violation_energy(self, z_q: torch.Tensor, z_u: torch.Tensor) -> torch.Tensor:
-        return violation_energy(z_q, z_u)
-
     def forward(
         self,
         z_q: torch.Tensor,
@@ -139,9 +136,6 @@ class SpatialOrderGNN(nn.Module):
             nn.Softplus()  # R_+^d pozitif ortant garantisi
         )
 
-    def violation_energy(self, z_q: torch.Tensor, z_u: torch.Tensor) -> torch.Tensor:
-        return violation_energy(z_q, z_u)
-
     def forward(
         self,
         x: torch.Tensor,
@@ -200,8 +194,7 @@ class SpatialOrderGNN(nn.Module):
         if anchor_node is None or anchor_node not in G:
             anchor_node = list(G.nodes())[0]
 
-        effective_walk_steps = getattr(self, "rwpe_dim", 6)
-        data = nx_subgraph_to_pyg_data(G, anchor_node=anchor_node, walk_steps=effective_walk_steps)
+        data = nx_subgraph_to_pyg_data(G, anchor_node=anchor_node, walk_steps=walk_steps)
         dev = next(self.parameters()).device
         self.eval()
         with torch.no_grad():

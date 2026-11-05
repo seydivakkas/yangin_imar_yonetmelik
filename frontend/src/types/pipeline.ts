@@ -107,6 +107,10 @@ export interface BuildingEvacuationReport {
   total_evacuation_time_sec?: number;
   max_flow_rate_pers_s?: number;
   total_occupants?: number;
+  total_persons_evacuated?: number;
+  trapped_persons?: number;
+  has_exit?: boolean;
+  evacuation_completed?: boolean;
   bottleneck_doors?: EdgeBottleneckRecord[];
   bottlenecks_ranked?: EdgeBottleneckRecord[];
   smoke_hazard_timeline?: SmokeZoneState[];
@@ -151,7 +155,7 @@ export interface DiagramYonetmelikPipelineOutput {
     total_rooms: number;
     total_doors: number;
     verified_cores: number;
-    latency: Record<string, number>;
+    latency: Record<string, number | boolean | string>;
   };
   program?: {
     total_apartments: number;
@@ -166,6 +170,7 @@ export interface DiagramYonetmelikPipelineOutput {
   violations?: any[];
   evacuation?: any;
   optimization?: any;
+  pruned_candidates?: { anchor: number; energy: number; review_status: string }[];
   report_markdown?: string;
   evidence_json?: any;
   dxf_export_info?: {

@@ -42,7 +42,9 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
   const totalTime = evac?.total_evacuation_time_s ?? evac?.baseline_time_sec ?? (isZeroViolation ? 48.2 : 76.5);
   const aset = evac?.critical_aset_sec ?? 62.0;
   const safetyMargin = evac?.safety_margin_s ?? Number((aset - totalTime).toFixed(1));
-  const isSafe = safetyMargin >= 0;
+  const isIncomplete = evac?.evacuation_completed === false;
+  const trappedPersons = evac?.trapped_persons ?? 0;
+  const isSafe = safetyMargin >= 0 && !isIncomplete;
   const maxLimitTime = Math.max(180, Math.ceil(totalTime));
 
   // Dinamik darboğaz kapıları
@@ -70,11 +72,13 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
       }
     }
     const maxPtsVal = pts[pts.length - 1][1];
-    if (maxPtsVal > 0 && totalOccupants > 0 && maxPtsVal !== totalOccupants) {
+    if (!isIncomplete && maxPtsVal > 0 && totalOccupants > 0 && maxPtsVal !== totalOccupants) {
       evacuatedCount = Math.min(totalOccupants, Math.round((closestVal / maxPtsVal) * totalOccupants));
     } else {
       evacuatedCount = Math.min(totalOccupants, closestVal);
     }
+  } else if (isIncomplete) {
+    evacuatedCount = evac?.total_persons_evacuated ?? 0;
   } else {
     // SFPE Hidrolik Akış Modeli (S-Eğrisi / Smoothstep İlerleme)
     // İlk 2 saniye reaksiyon ve kapıya yönelme gecikmesi
@@ -91,7 +95,7 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
   }
 
   // Eğer süre toplam tahliye süresine ulaştıysa veya aştıysa tüm kişiler tahliye olmalıdır
-  if (simulationTime >= totalTime) {
+  if (!isIncomplete && simulationTime >= totalTime) {
     evacuatedCount = totalOccupants;
   }
 
@@ -125,6 +129,16 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
           <span className="badge badge-neutral text-[12px] font-mono shrink-0">SFPE 5. Baskı</span>
         </div>
       </div>
+
+      {isIncomplete && (
+        <div role="alert" className="p-3 rounded-lg border border-[var(--ui-danger)] bg-[var(--ui-danger-subtle)] text-[var(--ui-danger)] text-[13px] font-semibold">
+          {evac?.has_exit === false
+            ? 'Binada kullanılabilir dış çıkış bulunamadı. Tahliye tamamlanamaz.'
+            : trappedPersons > 0
+            ? `${trappedPersons} kişinin yangında kullanılabilir çıkış yolu yok. Tahliye tamamlanamaz.`
+            : `Tahliye ${totalTime.toFixed(0)} sn simülasyon süresinde tamamlanamadı (${evac?.total_persons_evacuated ?? 0}/${totalOccupants} kişi çıktı).`}
+        </div>
+      )}
 
       {/* Real-time Evacuation Gauge & Interactive Simulation Controls */}
       <div className="card p-4 space-y-3.5 border border-[var(--ui-border)] bg-[var(--ui-surface)]">

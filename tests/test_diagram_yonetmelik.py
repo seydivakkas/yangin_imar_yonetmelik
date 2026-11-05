@@ -191,6 +191,68 @@ class TestExplainableVF2AndBasementCompliance:
         codes = [v.violation_code for v in report.violations]
         assert "DOOR_WIDTH_DEFICIT" in codes
 
+    @staticmethod
+    def _fire_core(hall_area=5.0, corridor_id=2, door_width=100.0):
+        T = nx.Graph()
+        T.add_node(corridor_id, room_type="kat_koridoru", area_m2=20.0, floor_level=3)
+        T.add_node(1, room_type="yangin_holu", area_m2=hall_area, floor_level=3)
+        T.add_node(3, room_type="yangin_merdiveni", area_m2=12.0, floor_level=3)
+        T.add_edge(corridor_id, 1, door_width_cm=door_width, distance_m=5.0, is_fire_resistant=True)
+        T.add_edge(1, 3, door_width_cm=100.0, distance_m=2.0, is_fire_resistant=True)
+        return T
+
+    @pytest.mark.parametrize("hall_area,expected_code", [
+        (5.0, None),
+        (3.0, None),
+        (6.0, None),
+        (1.0, "BYKHY_M34_YANGIN_HOLU_ALAN_YETERSIZ"),
+        (40.0, "BYKHY_M34_YANGIN_HOLU_ALAN_FAZLA"),
+    ])
+    def test_vf2_enforces_general_fire_hall_area_limits(self, hall_area, expected_code):
+        analyzer = ExplainableVF2Analyzer()
+        Q = analyzer.build_standard_fire_core_query(include_exit=False)
+        report = analyzer.explain_candidate(Q, self._fire_core(hall_area=hall_area), 1)
+
+        assert report.is_fully_compliant is (expected_code is None)
+        codes = [v.violation_code for v in report.violations]
+        assert codes == ([] if expected_code is None else [expected_code])
+
+    @pytest.mark.parametrize("hall_area,is_compliant", [(8.0, True), (5.0, False), (11.0, False)])
+    def test_vf2_uses_emergency_elevator_hall_limits(self, hall_area, is_compliant):
+        analyzer = ExplainableVF2Analyzer()
+        T = self._fire_core(hall_area=hall_area)
+        T.add_node(9, room_type="yangin_asansoru", area_m2=9.0, floor_level=3)
+        T.add_edge(1, 9, door_width_cm=120.0, distance_m=1.0, is_fire_resistant=True)
+        Q = analyzer.build_standard_fire_core_query(include_exit=False)
+        assert analyzer.explain_candidate(Q, T, 1).is_fully_compliant is is_compliant
+
+    def test_vf2_stair_anchor_cannot_pass_as_fire_hall(self):
+        analyzer = ExplainableVF2Analyzer()
+        T = nx.Graph()
+        T.add_node(1, room_type="kat_koridoru", area_m2=20.0)
+        T.add_node(2, room_type="yangin_merdiveni", area_m2=8.0)
+        T.add_node(3, room_type="yangin_merdiveni", area_m2=8.0)
+        T.add_edge(1, 2, door_width_cm=100.0, distance_m=5.0, is_fire_resistant=True)
+        T.add_edge(2, 3, door_width_cm=100.0, distance_m=2.0, is_fire_resistant=True)
+        Q = analyzer.build_standard_fire_core_query(include_exit=False)
+        assert analyzer.explain_candidate(Q, T, 2).is_fully_compliant is False
+
+    def test_vf2_reports_door_violation_for_node_id_zero(self):
+        analyzer = ExplainableVF2Analyzer()
+        Q = analyzer.build_standard_fire_core_query(include_exit=False)
+        report = analyzer.explain_candidate(Q, self._fire_core(corridor_id=0, door_width=50.0), 1)
+        assert "DOOR_WIDTH_DEFICIT" in [v.violation_code for v in report.violations]
+
+    @pytest.mark.parametrize("label,expected", [
+        ("Z-04 ASANSOR", "asansor"),
+        ("B-05 SEDYE ASANSORU", "asansor"),
+        ("Z-05 ITFAIYE ASANSORU", "yangin_asansoru"),
+        ("K-01 ASANSOR HOLU", "kat_koridoru"),
+        ("Z-02 YANGIN GUVENLIK HOLU", "yangin_holu"),
+    ])
+    def test_classifier_recognizes_elevators(self, label, expected):
+        assert TurkishArchitecturalLabelClassifier.classify_room_type(label, area_m2=9.0) == expected
+
     def test_basement_auditor_violations(self):
         auditor = BasementComplianceAuditor()
         prog = BuildingProgramSummary(
@@ -235,6 +297,85 @@ class TestEvacuationAndComputerVision:
         opt = CounterfactualEvacuationOptimizer()
         opt_res = opt.optimize_building_design(G, target_time_sec=50.0)
         assert opt_res.optimized_evacuation_time_sec <= rep.total_evacuation_time_sec
+
+    @staticmethod
+    def _simple_building(distance_m=5.0, with_exit=True, with_island=False, is_vertical=False):
+        G = nx.Graph()
+        G.add_node(1, room_type="salon", area_m2=30.0, floor_level=0)
+        G.add_node(2, room_type="kat_koridoru", area_m2=20.0, floor_level=0)
+        G.add_edge(1, 2, door_width_cm=100.0, distance_m=distance_m, is_vertical=is_vertical)
+        if with_exit:
+            G.add_node(3, room_type="dis_cikis", area_m2=10.0, floor_level=0)
+            G.add_edge(2, 3, door_width_cm=120.0, distance_m=distance_m, is_vertical=is_vertical)
+        if with_island:
+            G.add_node(10, room_type="salon", area_m2=50.0, floor_level=0)
+            G.add_node(11, room_type="salon", area_m2=50.0, floor_level=0)
+            G.add_edge(10, 11, door_width_cm=90.0, distance_m=3.0)
+        return G
+
+    def test_evacuation_time_includes_walking_distance(self):
+        sim = Building3DEvacuationSimulator()
+        near = sim.simulate_evacuation(self._simple_building(distance_m=5.0))
+        far = sim.simulate_evacuation(self._simple_building(distance_m=50.0))
+
+        assert near.is_compliance_achieved is True
+        assert near.total_persons_evacuated == 3
+        # 100 m toplam yürüyüş, 1.19 m/sn ile en az 84 sn sürer ve 65 sn hedefini aşar.
+        assert far.total_evacuation_time_sec >= 100.0 / 1.19
+        assert far.evacuation_completed is True
+        assert far.is_compliance_achieved is False
+
+    def test_stairs_are_slower_than_corridors(self):
+        sim = Building3DEvacuationSimulator()
+        flat = sim.simulate_evacuation(self._simple_building(distance_m=20.0))
+        stairs = sim.simulate_evacuation(self._simple_building(distance_m=20.0, is_vertical=True))
+        assert stairs.total_evacuation_time_sec > flat.total_evacuation_time_sec
+
+    def test_building_without_exit_is_not_compliant(self):
+        rep = Building3DEvacuationSimulator().simulate_evacuation(self._simple_building(with_exit=False))
+        assert rep.has_exit is False
+        assert rep.trapped_persons == 3
+        assert rep.total_persons_evacuated == 0
+        assert rep.evacuation_completed is False
+        assert rep.is_compliance_achieved is False
+
+    def test_occupants_without_route_are_reported_as_trapped(self):
+        sim = Building3DEvacuationSimulator()
+        rep = sim.simulate_evacuation(self._simple_building(with_island=True))
+        assert rep.total_persons == 9
+        assert rep.total_persons_evacuated == 3
+        assert rep.trapped_persons == 6
+        assert set(rep.unreachable_occupied_nodes) == {10, 11}
+        assert rep.evacuation_completed is False
+        assert rep.total_evacuation_time_sec == sim.max_t
+        assert rep.is_compliance_achieved is False
+
+    def test_evacuation_exceeding_simulation_limit_is_not_compliant(self):
+        sim = Building3DEvacuationSimulator(max_simulation_sec=180.0, target_evacuation_threshold_sec=1000.0)
+        rep = sim.simulate_evacuation(self._simple_building(), initial_occupancy={1: 1000})
+        assert rep.evacuation_completed is False
+        assert rep.trapped_persons == 0
+        assert rep.total_persons_evacuated < rep.total_persons
+        assert rep.is_compliance_achieved is False
+
+    def test_unoccupied_technical_spaces_are_not_trapped(self):
+        for room_type in ("teknik_saft", "asansor"):
+            G = self._simple_building()
+            G.add_node(20, room_type=room_type, area_m2=5.0, floor_level=0)
+            rep = Building3DEvacuationSimulator().simulate_evacuation(G)
+            assert rep.trapped_persons == 0
+            assert rep.evacuation_completed is True
+
+    def test_vent_shaft_label_is_classified_as_technical_space(self):
+        classify = TurkishArchitecturalLabelClassifier.classify_room_type
+        assert classify("B-10 BODRUM ACIL KACIS MENFEZI VE BACASI", area_m2=5.0) == "teknik_saft"
+        assert classify("Z-23 YATAK ODASI", area_m2=14.0) == "oda"
+
+    def test_optimizer_does_not_prescribe_doors_for_trapped_occupants(self):
+        result = CounterfactualEvacuationOptimizer().optimize_building_design(self._simple_building(with_island=True))
+        assert result.baseline_trapped_persons == 6
+        assert result.intervention_steps == []
+        assert result.time_savings_sec == 0.0
 
     def test_opencv_floorplan_image_analyzer(self):
         img_path = "test_plan.png"
@@ -304,6 +445,16 @@ class TestMultiFloorComprehensiveAuditor:
         assert "BYKHY_M34_YANGIN_HOLU_ALAN_YETERSIZ" in all_violation_codes
         assert "PAIY_M29_KAT_KORIDORU_GENISLIK_YETERSIZ" in all_violation_codes
         assert "BYKHY_M52_CIKMAZ_KORIDOR_MESAFESI_ASILDI" in all_violation_codes
+
+    def test_multi_floor_auditor_flags_oversized_fire_hall(self):
+        G = nx.Graph()
+        G.add_node(1, room_type="kat_koridoru", area_m2=20.0, floor_level=0, anchor_point=(0, 0))
+        G.add_node(2, room_type="yangin_holu", area_m2=10.0, floor_level=0, anchor_point=(1, 0))
+        G.add_edge(1, 2, width_cm=120.0, weight=3.0)
+
+        reports = MultiFloorComprehensiveAuditor().audit_entire_building(G, custom_building_height_m=3.0)
+        codes = [v.violation_code for rep in reports for v in rep.violations]
+        assert "BYKHY_M34_YANGIN_HOLU_ALAN_FAZLA" in codes
 
     def test_high_rise_12_story_dxf_generation_and_audit(self):
         dxf_path = "test_sample_12_story.dxf"
@@ -479,7 +630,7 @@ class TestLearnedAIAndNeuroSymbolicDualMode:
     def test_gnn_model_checkpoint_and_embedding_inference(self):
         import os
         import torch
-        from diagram_yonetmelik.gnn_order import SpatialOrderGNN, OrderEmbeddingLoss
+        from diagram_yonetmelik.gnn_order import SpatialOrderGNN
         from diagram_yonetmelik.subgraph_dataset import build_sample_architectural_rag
 
         checkpoint_path = "data/spatial_order_gnn.pt"
@@ -490,18 +641,16 @@ class TestLearnedAIAndNeuroSymbolicDualMode:
         assert loaded is True, "Model ağırlıkları başarıyla yüklenmeli!"
 
         rag = build_sample_architectural_rag()
-        z_sub = model.embed_subgraph(rag, anchor_node="salon_1", walk_steps=2)
+        z_sub = model.embed_subgraph(rag, anchor_node=1)
 
         z_list = z_sub.tolist() if hasattr(z_sub, "tolist") else list(z_sub)
         assert len(z_list) == 64
-        # Order embedding ReLU kısıtı: Tüm boyutlar non-negative olmalıdır
+        # Order embedding Softplus kısıtı: Tüm boyutlar non-negative olmalıdır
         assert all(val >= 0.0 for val in z_list)
 
         # Violation energy testi: Subgraph kendine karşı sıfır enerji vermeli
-        loss_fn = OrderEmbeddingLoss(margin=1.0)
         t_z = z_sub.unsqueeze(0) if z_sub.dim() == 1 else z_sub
-        e_self = loss_fn.violation_energy(t_z, t_z).item()
-        assert e_self == 0.0
+        assert violation_energy(t_z, t_z).item() == 0.0
 
     def test_spminer_neural_clustering_vs_wl_hash_fallback(self):
         import os
@@ -523,7 +672,7 @@ class TestLearnedAIAndNeuroSymbolicDualMode:
             use_neural_clustering=True,
             neural_similarity_threshold=0.75
         )
-        motifs_ai = miner_ai.extract_frequent_motifs(rag)
+        motifs_ai, _ = miner_ai.discover_frequent_modules(rag)
         assert len(motifs_ai) > 0
         for m in motifs_ai:
             assert m.clustering_method == "gnn_order_embedding"
@@ -538,18 +687,18 @@ class TestLearnedAIAndNeuroSymbolicDualMode:
             max_motif_nodes=5,
             use_neural_clustering=False
         )
-        motifs_det = miner_det.extract_frequent_motifs(rag)
+        motifs_det, _ = miner_det.discover_frequent_modules(rag)
         assert len(motifs_det) > 0
         for m in motifs_det:
             assert m.clustering_method == "wl_hash"
 
-    def test_hybrid_pruning_and_physical_evacuation_safety_proof(self):
-        import ezdxf
+    def test_pruning_does_not_change_evacuation_regression(self, tmp_path):
+        """Tahliye simülasyonu Aşama 4 çıktısını kullanmadığı için bu bir regresyon testidir, güvenlik kanıtı değildir."""
         from diagram_yonetmelik.orchestrator import DiagramYonetmelikPipeline
         from diagram_yonetmelik.schemas import PipelineConfig
 
-        doc_ai = ezdxf.readfile("sample_building.dxf")
-        doc_det = ezdxf.readfile("sample_building.dxf")
+        doc_ai = generate_sample_building_dxf(str(tmp_path / "ai.dxf"))
+        doc_det = generate_sample_building_dxf(str(tmp_path / "det.dxf"))
 
         # Mode A: Neural AI Pruning + Neural Clustering
         cfg_ai = PipelineConfig(
@@ -569,16 +718,19 @@ class TestLearnedAIAndNeuroSymbolicDualMode:
         orch_det = DiagramYonetmelikPipeline(cfg_det)
         out_det = orch_det.run_full_pipeline(doc_det)
 
-        # FİZİKSEL TAHLİYE VE MEVZUAT GÜVENLİK İSPATI:
-        # İster Yapay Zeka (GNN/SPMiner) açık olsun, ister kapalı olsun;
-        # Fiziksel tahliye süresi ve mevzuat doğrulaması birebir aynı çıkmalıdır.
+        # Budanan aday hiçbir zaman "doğrulandı" sayılamaz; budanmayan adayların teşhisleri birebir aynı kalmalıdır.
+        pruned_anchors = {rep.anchor_node_id for rep in out_ai.pruned_candidates}
+        assert all(rep.review_status == "pruned_unverified" for rep in out_ai.pruned_candidates)
+        assert not pruned_anchors & set(out_ai.verified_escape_cores)
+
+        # Tahliye simülatörü GNN çıktısı almaz; bu kontrol yalnızca aynı grafın kullanıldığını gösterir.
         assert out_ai.baseline_evacuation_report.total_evacuation_time_sec == \
                out_det.baseline_evacuation_report.total_evacuation_time_sec
         assert out_ai.baseline_evacuation_report.is_compliance_achieved == \
                out_det.baseline_evacuation_report.is_compliance_achieved
         assert out_ai.baseline_evacuation_report.critical_bottleneck_count == \
                out_det.baseline_evacuation_report.critical_bottleneck_count
-        assert len(out_ai.verified_escape_cores) == len(out_det.verified_escape_cores)
+        assert set(out_ai.verified_escape_cores) == set(out_det.verified_escape_cores) - pruned_anchors
 
         # AI modunda Stage 4 execution metric teyidi
         assert "gnn_hybrid_pruning_enabled" in out_ai.execution_metrics
@@ -586,4 +738,66 @@ class TestLearnedAIAndNeuroSymbolicDualMode:
         assert bool(out_det.execution_metrics["gnn_hybrid_pruning_enabled"]) is False
 
 
+def test_pruned_candidates_have_no_regulatory_finding(tmp_path):
+    import json
+    from pathlib import Path
+    from diagram_yonetmelik.orchestrator import DiagramYonetmelikPipeline
+    from diagram_yonetmelik.schemas import PipelineConfig
+    config = PipelineConfig(enable_hybrid_pruning=True)
+    calibration = json.loads(Path(config.gnn_calibration_path).read_text())
+    calibration["tau"] = 0
+    path = tmp_path / "calibration.json"
+    path.write_text(json.dumps(calibration))
+    config.gnn_calibration_path = str(path)
+    out = DiagramYonetmelikPipeline(config).run_full_pipeline(generate_sample_building_dxf(str(tmp_path / "sample.dxf")))
+    assert out.pruned_candidates
+    for candidate in out.pruned_candidates:
+        assert candidate.review_status == "pruned_unverified"
+        assert candidate.violations == []
+        assert candidate.is_fully_compliant is None
+        assert candidate not in out.diagnostic_reports
+    assert out.execution_metrics["pruned_candidates"] == len(out.pruned_candidates)
+    assert "GNN tarafından elendi, VF2 ile doğrulanmadı" in out.official_markdown_report
 
+
+def test_missing_calibration_disables_pruning(tmp_path):
+    from diagram_yonetmelik.orchestrator import DiagramYonetmelikPipeline
+    from diagram_yonetmelik.schemas import PipelineConfig
+    cfg = PipelineConfig(enable_hybrid_pruning=True, gnn_calibration_path=str(tmp_path / "missing"))
+    out = DiagramYonetmelikPipeline(cfg).run_full_pipeline(generate_sample_building_dxf(str(tmp_path / "input.dxf")))
+    assert out.execution_metrics["pruning_status"] == "missing_calibration"
+    assert out.execution_metrics["vf2_candidates"] > 0
+    assert not out.pruned_candidates
+
+
+def test_cluster_members_match_representative_structure():
+    from diagram_yonetmelik.sample_generator import generate_experiment_building
+    from diagram_yonetmelik.spminer import ArchitecturalSPMiner
+    graph = generate_experiment_building(3)
+    miner = ArchitecturalSPMiner(min_support=1, neural_similarity_threshold=-1)
+    motifs, _ = miner.discover_frequent_modules(graph)
+    assert miner.rejected_candidates > 0
+    for motif in motifs:
+        assert motif.support == len(motif.member_node_sets) == len(motif.matched_anchor_nodes)
+        for anchor, nodes in zip(motif.matched_anchor_nodes, motif.member_node_sets):
+            member = graph.subgraph(nodes).copy()
+            for n in member:
+                member.nodes[n]["motif_label"] = member.nodes[n]["room_type"] + ("@anchor" if n == anchor else "")
+            assert nx.is_isomorphic(member, motif.motif_graph,
+                                    node_match=nx.isomorphism.categorical_node_match("motif_label", ""))
+
+
+def test_all_splits_are_building_disjoint():
+    from diagram_yonetmelik.train_gnn import SEEDS, SAMPLE, building_splits
+    for seed in SEEDS:
+        split = building_splits(seed)
+        a, b, c = (set(split[k]) for k in ("train", "validation", "test"))
+        assert not (a & b or b & c or a & c)
+        assert SAMPLE in c and len(a | b | c) == 31
+
+
+def test_capacity_subtracts_boundary_layer_on_both_sides():
+    sim = Building3DEvacuationSimulator()
+    for vertical, layer, flow in [(False, sim.door_bl, sim.flow_horiz), (True, sim.stair_bl, sim.flow_stair)]:
+        rate = sim._compute_edge_capacity_rate({"door_width_cm": 100, "is_vertical": vertical})
+        assert rate == (1 - 2 * layer) * flow

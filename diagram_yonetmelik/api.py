@@ -47,7 +47,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # Arayüz API'ye Vite proxy'si veya aynı köken üzerinden erişir; başka siteler yanıt okuyamaz.
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -157,7 +158,7 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
     aset_values = [s.aset_sec for s in output.baseline_evacuation_report.smoke_zone_states.values() if s.aset_sec > 0]
     min_aset = min(aset_values) if aset_values else 62.0
     total_evac_time = output.baseline_evacuation_report.total_evacuation_time_sec
-    total_occ = output.baseline_evacuation_report.total_persons_evacuated or output.building_program.estimated_occupancy_persons or (output.building_3d_result.total_rooms * 3)
+    total_occ = output.baseline_evacuation_report.total_persons or output.building_program.estimated_occupancy_persons or (output.building_3d_result.total_rooms * 3)
     safety_margin = round(min_aset - total_evac_time, 1)
 
     evacuation_dict = {
@@ -169,6 +170,10 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
         "safety_margin_s": safety_margin,
         "critical_count": output.baseline_evacuation_report.critical_bottleneck_count,
         "is_compliant": output.baseline_evacuation_report.is_compliance_achieved,
+        "total_persons_evacuated": output.baseline_evacuation_report.total_persons_evacuated,
+        "trapped_persons": output.baseline_evacuation_report.trapped_persons,
+        "has_exit": output.baseline_evacuation_report.has_exit,
+        "evacuation_completed": output.baseline_evacuation_report.evacuation_completed,
         "bottlenecks": bottlenecks_data,
         "bottleneck_doors": bottlenecks_data,
         "smoke_zones": smoke_data,
@@ -360,18 +365,13 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
         except Exception:
             pass
 
-    is_compliant = (len(violations_data) == 0)
+    pending = len(output.pruned_candidates)
+    is_compliant = not violations_data and not pending
     total_fl = len(floors_in_g)
-    
-    if total_fl >= 12 or len(violations_data) > 100:
-        active_pafta_name = "12 Katlı Yüksek Yapı (312 İhlal Analizli)"
-        dxf_filename = "12_KATLI_YUKSEK_YAPI_DENETLENMIS_IHLALLI_PAFTA.dxf"
-    elif is_compliant:
-        active_pafta_name = "8 Katlı Kusursuz Pafta (%100 Yönetmelik Onaylı)"
-        dxf_filename = "8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf"
-    else:
-        active_pafta_name = f"{total_fl} Katlı Mimari Model"
-        dxf_filename = f"DENETLENMIS_MIMARI_PAFTA_{total_fl}_KATLI.dxf"
+    active_pafta_name = f"{total_fl} Katlı Mimari Model"
+    dxf_filename = f"DENETLENMIS_MIMARI_PAFTA_{total_fl}_KATLI.dxf"
+    status = "IHLAL_VAR" if violations_data else ("INCELEME_BEKLIYOR" if pending else "UYGUN")
+    stamp = f"Kaydedilen ihlal: {len(violations_data)} · VF2 ile doğrulanmayan aday: {pending}"
 
     dxf_layers_info = [
         {
@@ -382,7 +382,7 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
             "lineweight": 50,
             "entity_count": layer_counts.get("DENETIM_IHLALLERI", 0) + layer_counts.get("DENETIM_IHLALLERI_METIN", 0),
             "description": "Mimarın CAD çizimi üzerine eklenen kırmızı oklar, hedef kısıt kutuları ve mevzuat madde numaralarını içeren MTEXT lider çizgileri.",
-            "status_text": f"{len(violations_data)} ihlal için kırmızı kısıt çerçeveleri ve lider okları işlendi" if len(violations_data) > 0 else "0 İhlal (Temiz Pafta Onayı)"
+            "status_text": f"{len(violations_data)} ihlal için kırmızı kısıt çerçeveleri ve lider okları işlendi" if len(violations_data) > 0 else "İhlal kaydedilmedi"
         },
         {
             "name": "OPTIMIZASYON_ONERILERI",
@@ -442,13 +442,13 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
         "total_entities": total_entities or (len(nodes_data) * 2 + len(edges_data) + 60),
         "dxf_version": "AutoCAD 2010 (AC1024)",
         "unit_scale": "1 Birim = 0.01 Metre (Santimetre)",
-        "compliance_status": "UYGUN" if is_compliant else "IHLAL_VAR",
+        "compliance_status": status,
         "total_violations": len(violations_data),
         "total_interventions": len(interventions_data),
         "layers": dxf_layers_info,
         "cad_table": {
             "title": "MİMARİ VE YANGIN MEVZUATI DENETİM ÖZET CETVELİ",
-            "stamp": "%100 YÖNETMELİĞE TAM UYGUN" if is_compliant else f"DİKKAT: {len(violations_data)} İHLAL TESPİT EDİLDİ",
+            "stamp": stamp,
             "is_compliant": is_compliant,
             "author": "Seydi Eryılmaz (@seydivakkas)",
             "license": "ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR (c) 2026"
@@ -500,7 +500,7 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
             "total_doors": output.building_3d_result.total_doors,
             "verified_cores": output.verified_escape_cores,
             "latency": output.execution_metrics,
-            "gnn_hybrid_pruning_enabled": output.execution_metrics.get("gnn_hybrid_pruning_enabled", True),
+            "gnn_hybrid_pruning_enabled": output.execution_metrics.get("gnn_hybrid_pruning_enabled", False),
             "spminer_neural_clustering_enabled": output.execution_metrics.get("spminer_neural_clustering_enabled", True),
         },
         "program": {
@@ -526,6 +526,8 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
         "counterfactual_optimization": opt_dict,
         "dxf_export_info": dxf_export_info,
         "cv_image_analysis": cv_info,
+        "pruned_candidates": [{"anchor": c.anchor_node_id, "energy": c.gnn_energy, "review_status": c.review_status}
+                              for c in output.pruned_candidates],
         "report_markdown": output.official_markdown_report,
         "evidence_json": output.grounded_evidence_json
     }
@@ -677,14 +679,20 @@ def download_compliant_8_story_dxf():
     )
 
 
+def _save_upload_to_temp(contents: bytes, suffix: str) -> str:
+    """Yüklemeyi rastgele adlı geçici dosyaya yazar; istemcinin dosya adı yol olarak kullanılmaz."""
+    fd, temp_path = tempfile.mkstemp(prefix="diag_upload_", suffix=suffix)
+    with os.fdopen(fd, "wb") as f:
+        f.write(contents)
+    return temp_path
+
+
 @app.post("/api/audit/dxf")
 async def audit_dxf_file(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith(".dxf"):
+    if not (file.filename or "").lower().endswith(".dxf"):
         raise HTTPException(status_code=400, detail="Lütfen geçerli bir .dxf dosyası yükleyin.")
     contents = await file.read()
-    temp_path = os.path.join(tempfile.gettempdir(), file.filename)
-    with open(temp_path, "wb") as f:
-        f.write(contents)
+    temp_path = _save_upload_to_temp(contents, ".dxf")
     try:
         doc = ezdxf.readfile(temp_path)
         output = pipeline.run_full_pipeline(doc)
@@ -703,13 +711,11 @@ async def audit_dxf_file(file: UploadFile = File(...)):
 
 @app.post("/api/audit/image")
 async def audit_image_file(file: UploadFile = File(...)):
-    ext = os.path.splitext(file.filename)[1].lower()
+    ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in (".png", ".jpg", ".jpeg"):
         raise HTTPException(status_code=400, detail="Lütfen PNG veya JPG formatında kat planı yükleyin.")
     contents = await file.read()
-    temp_path = os.path.join(tempfile.gettempdir(), file.filename)
-    with open(temp_path, "wb") as f:
-        f.write(contents)
+    temp_path = _save_upload_to_temp(contents, ext)
     try:
         output = pipeline.run_image_pipeline(temp_path)
         data = serialize_building_3d_result(output)

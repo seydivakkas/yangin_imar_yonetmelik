@@ -20,7 +20,7 @@ from diagram_yonetmelik.gnn_order import (
 class ArchitecturalSPMiner:
     """
     Şablonsuz Sık Altgraf Madenciliği Motoru.
-    GNN Order Embedding uzayında açgözlü büyümeyle (Greedy Growth)
+    Sezgisel komşu seçimi ve yapısal doğrulamayla
     bina içindeki standart daire tiplerini, çekirdek modüllerini keşfeder ve tekilleştirir.
     """
     def __init__(
@@ -40,7 +40,7 @@ class ArchitecturalSPMiner:
         self.threshold = energy_threshold
         self.use_neural_clustering = use_neural_clustering
         self.neural_similarity_threshold = neural_similarity_threshold
-        self.use_neural_growth = use_neural_growth
+        self.use_heuristic_neighbor_selection = use_neural_growth
 
     def _compute_embedding_similarity(self, z1: torch.Tensor, z2: torch.Tensor) -> float:
         """
@@ -73,9 +73,8 @@ class ArchitecturalSPMiner:
             if d.get("room_type") in target_seed_types
         ]
 
-        motifs_by_hash: Dict[str, DiscoveredArchitecturalMotif] = {}
-        neural_clusters: List[Dict[str, Any]] = []
-        motif_counter = 1
+        clusters = []
+        self.rejected_candidates = 0
 
         for seed in candidate_seeds:
             # Açgözlü Büyütme (Greedy Growth)
@@ -98,8 +97,8 @@ class ArchitecturalSPMiner:
                     break
 
                 best_neighbor = None
-                if self.use_neural_growth and self.gnn is not None:
-                    # GNN Order Embedding ile en uyumlu komşuyu seç
+                if self.use_heuristic_neighbor_selection and self.gnn is not None:
+                    # Sezgisel komşu seçimi: gömme normu ve alan
                     best_score = -999.0
                     for cand in boundary_neighbors:
                         test_nodes = current_nodes + [cand]
@@ -123,98 +122,61 @@ class ArchitecturalSPMiner:
                     current_nodes.append(best_neighbor)
                     current_graph = building_graph.subgraph(current_nodes).copy()
 
-            if len(current_graph) >= 3:
-                wl_hash = nx.weisfeiler_lehman_graph_hash(current_graph, node_attr="room_type")
+            if len(current_graph) < 3:
+                continue
+            for n, attrs in current_graph.nodes(data=True):
+                attrs["motif_label"] = (attrs["room_type"] + ("@anchor" if n == seed else ""))
+            wl_hash = nx.weisfeiler_lehman_graph_hash(current_graph, node_attr="motif_label")
+            embedding = None
+            proposal = None
+            if self.use_neural_clustering:
+                embedding = self.gnn.embed_subgraph(current_graph, anchor_node=seed)
+                ranked = [(self._compute_embedding_similarity(embedding, c["center"]), c) for c in clusters]
+                if ranked:
+                    similarity, candidate = max(ranked, key=lambda item: item[0])
+                    if similarity >= self.neural_similarity_threshold:
+                        proposal = candidate
+            else:
+                proposal = next((c for c in clusters if c["hash"] == wl_hash and nx.is_isomorphic(
+                    current_graph, c["graph"], node_match=isomorphism.categorical_node_match("motif_label", "")
+                )), None)
 
-                if self.use_neural_clustering and self.gnn is not None:
-                    # -------------------------------------------------------------
-                    # ÖĞRENEN YAPAY ZEKA: GNN Order Embedding Kümeleme
-                    # -------------------------------------------------------------
-                    z_emb = self.gnn.embed_subgraph(current_graph, anchor_node=seed)
-                    matched_cluster = None
-                    best_sim = -1.0
-                    for cluster in neural_clusters:
-                        sim = self._compute_embedding_similarity(z_emb, cluster["centroid_embedding"])
-                        if sim >= self.neural_similarity_threshold and sim > best_sim:
-                            best_sim = sim
-                            matched_cluster = cluster
+            if proposal is not None and self.use_neural_clustering:
+                if proposal["hash"] != wl_hash or not nx.is_isomorphic(
+                    current_graph, proposal["graph"], node_match=isomorphism.categorical_node_match("motif_label", "")
+                ):
+                    self.rejected_candidates += 1
+                    proposal = None
+            if proposal is None:
+                proposal = {"hash": wl_hash, "graph": current_graph, "anchors": [], "members": [], "vectors": []}
+                clusters.append(proposal)
+            proposal["anchors"].append(seed)
+            proposal["members"].append(list(current_graph))
+            if embedding is not None:
+                proposal["vectors"].append(embedding)
+                proposal["center"] = torch.stack(proposal["vectors"]).mean(0)
 
-                    if matched_cluster is not None:
-                        n_prev = matched_cluster["member_count"]
-                        matched_cluster["centroid_embedding"] = (matched_cluster["centroid_embedding"] * n_prev + z_emb) / (n_prev + 1)
-                        matched_cluster["member_count"] += 1
-                        matched_cluster["member_anchors"].append(seed)
-                        matched_cluster["wl_hashes"].add(wl_hash)
-                    else:
-                        neural_clusters.append({
-                            "cluster_id": len(neural_clusters) + 1,
-                            "representative_graph": current_graph,
-                            "centroid_embedding": z_emb,
-                            "member_count": 1,
-                            "member_anchors": [seed],
-                            "root_room_type": building_graph.nodes[seed].get("room_type", "antre"),
-                            "wl_hashes": {wl_hash}
-                        })
-                else:
-                    # -------------------------------------------------------------
-                    # DETERMINISTIK FALLBACK: Weisfeiler-Lehman Graph Hash
-                    # -------------------------------------------------------------
-                    if wl_hash not in motifs_by_hash:
-                        matches = self._find_exact_matches(current_graph, building_graph, seed)
-                        if len(matches) >= self.min_support:
-                            motifs_by_hash[wl_hash] = DiscoveredArchitecturalMotif(
-                                motif_id=motif_counter,
-                                motif_graph=current_graph,
-                                support=len(matches),
-                                root_room_type=building_graph.nodes[seed].get("room_type", "antre"),
-                                wl_hash=wl_hash,
-                                matched_anchor_nodes=matches,
-                                total_nodes=len(current_graph),
-                                clustering_method="wl_hash",
-                                embedding_vector=None,
-                                neural_confidence=1.0
-                            )
-                            motif_counter += 1
-
-        if self.use_neural_clustering and neural_clusters:
-            discovered_motifs = []
-            m_id = 1
-            for cl in neural_clusters:
-                exact_matches = self._find_exact_matches(cl["representative_graph"], building_graph, cl["member_anchors"][0])
-                support_count = max(len(cl["member_anchors"]), len(exact_matches))
-                if support_count >= self.min_support:
-                    z_list = [round(float(v), 4) for v in cl["centroid_embedding"].cpu().numpy()]
-                    rep_wl = sorted(list(cl["wl_hashes"]))[0]
-                    discovered_motifs.append(DiscoveredArchitecturalMotif(
-                        motif_id=m_id,
-                        motif_graph=cl["representative_graph"],
-                        support=support_count,
-                        root_room_type=cl["root_room_type"],
-                        wl_hash=rep_wl,
-                        matched_anchor_nodes=cl["member_anchors"],
-                        total_nodes=len(cl["representative_graph"]),
-                        clustering_method="gnn_order_embedding",
-                        embedding_vector=z_list,
-                        neural_confidence=round(float(torch.sigmoid(torch.norm(cl["centroid_embedding"])).item()), 3)
-                    ))
-                    m_id += 1
-        else:
-            discovered_motifs = list(motifs_by_hash.values())
+        discovered_motifs = []
+        for cluster in clusters:
+            anchors = cluster["anchors"]
+            if len(anchors) < self.min_support:
+                continue
+            graph = cluster["graph"]
+            center = cluster.get("center")
+            similarity = None if center is None else torch.nn.functional.cosine_similarity(
+                torch.stack(cluster["vectors"]), center.unsqueeze(0)
+            ).mean().item()
+            discovered_motifs.append(DiscoveredArchitecturalMotif(
+                motif_id=len(discovered_motifs) + 1, motif_graph=graph, support=len(anchors),
+                root_room_type=graph.nodes[anchors[0]]["room_type"], wl_hash=cluster["hash"],
+                matched_anchor_nodes=anchors, member_node_sets=cluster["members"], total_nodes=len(graph),
+                clustering_method="gnn_order_embedding" if self.use_neural_clustering else "wl_hash",
+                embedding_vector=None if center is None else center.tolist(), neural_confidence=similarity
+            ))
 
         # Bina Programı Özetini Hesapla
         program = self._compute_building_program(building_graph, discovered_motifs)
         return discovered_motifs, program
-
-    def extract_frequent_motifs(
-        self,
-        building_graph: nx.Graph,
-        min_support: Optional[int] = None
-    ) -> List[DiscoveredArchitecturalMotif]:
-        """Altgraf motiflerini doğrudan listeler."""
-        if min_support is not None:
-            self.min_support = min_support
-        motifs, _ = self.discover_frequent_modules(building_graph)
-        return motifs
 
     def _find_exact_matches(self, pattern: nx.Graph, target: nx.Graph, pattern_anchor: int) -> List[int]:
         def node_match(n1, n2):
@@ -240,7 +202,7 @@ class ArchitecturalSPMiner:
             if m.root_room_type == "daire_antresi":
                 total_apt += m.support
                 t_name = f"{m.total_nodes - 1}+1 Modülü"
-                apt_types[t_name] = m.support
+                apt_types[t_name] = apt_types.get(t_name, 0) + m.support
 
         # Eğer motif bulunamadıysa doğrudan daire antrelerini say
         if total_apt == 0:

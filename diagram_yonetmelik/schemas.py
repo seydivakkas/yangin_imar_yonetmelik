@@ -92,12 +92,13 @@ class RuleViolationItem:
 class CandidateDiagnosticReport:
     anchor_node_id: int
     target_subgraph_nodes: List[int]
-    is_fully_compliant: bool
-    diagnostic_stage_reached: int
+    is_fully_compliant: Optional[bool]
+    diagnostic_stage_reached: Optional[int]
     violations: List[RuleViolationItem] = field(default_factory=list)
     partial_node_mapping: Dict[int, int] = field(default_factory=dict)
     summary_message: str = ""
     gnn_energy: Optional[float] = None
+    review_status: str = "reviewed"
 
 
 # =====================================================================
@@ -115,7 +116,8 @@ class DiscoveredArchitecturalMotif:
     total_nodes: int
     clustering_method: str = "gnn_order_embedding" # "gnn_order_embedding" veya "wl_hash"
     embedding_vector: Optional[List[float]] = None
-    neural_confidence: float = 1.0
+    neural_confidence: Optional[float] = None  # Üyelerin merkeze ortalama kosinüs benzerliği
+    member_node_sets: List[List[int]] = field(default_factory=list)
 
 
 @dataclass
@@ -190,6 +192,11 @@ class BuildingEvacuationReport:
     total_persons_evacuated: int
     smoke_zone_states: Dict[int, SmokeZoneState] = field(default_factory=dict)
     time_series_evacuated: List[Tuple[float, int]] = field(default_factory=list)
+    total_persons: int = 0
+    trapped_persons: int = 0  # Çıkışa yangında kullanılabilir yolu olmayan kişiler
+    unreachable_occupied_nodes: List[int] = field(default_factory=list)
+    has_exit: bool = True
+    evacuation_completed: bool = True  # Herkes simülasyon süresi içinde çıkışa ulaştı mı?
 
 
 @dataclass
@@ -216,6 +223,7 @@ class CounterfactualOptimizationResult:
     total_remodeling_cost: float
     intervention_steps: List[DesignInterventionStep]
     optimized_building_graph: nx.Graph
+    baseline_trapped_persons: int = 0
 
 
 # =====================================================================
@@ -263,8 +271,8 @@ class RetrievedLegalEvidence:
 class PipelineConfig:
     project_title: str = "DiagramYönetmelik - Çok Katlı Mekânsal Denetim ve 3D Tahliye Motoru"
     k_hops_gnn: int = 2
-    gnn_violation_threshold: float = 0.25
-    enable_hybrid_pruning: bool = True
+    gnn_calibration_path: str = "data/gnn_calibration.json"
+    enable_hybrid_pruning: bool = False
     spminer_use_neural_clustering: bool = True
     spminer_neural_similarity_threshold: float = 0.80
     gnn_model_weights_path: Optional[str] = "data/spatial_order_gnn.pt"
@@ -294,8 +302,9 @@ class DiagramYonetmelikPipelineOutput:
     annotated_dxf_document: Optional[Any]   # ezdxf.Drawing
     official_markdown_report: str
     grounded_evidence_json: dict
-    execution_metrics: Dict[str, float]
+    execution_metrics: Dict[str, Any]
     dxf_output_path: Optional[str] = None
     cv_debug_vis: Optional[Any] = None
     cv_heatmap_vis: Optional[Any] = None
     cv_image_path: Optional[str] = None
+    pruned_candidates: List[CandidateDiagnosticReport] = field(default_factory=list)

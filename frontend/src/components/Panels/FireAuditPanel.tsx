@@ -280,6 +280,12 @@ export const FireAuditPanel: React.FC<FireAuditPanelProps> = ({
 
   return (
     <div className="flex flex-col gap-3.5 text-xs font-sans text-gray-200 w-full">
+      {!!data?.pruned_candidates?.length && (
+        <section>
+          <h3>GNN tarafından elendi, VF2 ile doğrulanmadı</h3>
+          <ul>{data.pruned_candidates.map(c => <li key={c.anchor}>Aday {c.anchor} · Enerji {c.energy.toPrecision(4)}</li>)}</ul>
+        </section>
+      )}
       {/* Header Banner & Live Mevzuat Sync */}
       <div className="p-4 rounded-lg bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -456,7 +462,7 @@ export const FireAuditPanel: React.FC<FireAuditPanelProps> = ({
             <span className={`${filteredDiagnostics.filter((d: DiagnosticItem) => !d.is_compliant).length > 0 ? 'text-[var(--ui-danger)]' : 'text-[var(--ui-success)]'} font-bold`}>
               {filteredDiagnostics.filter((d: DiagnosticItem) => !d.is_compliant).length} İhlal
             </span>{' '}
-            / {filteredDiagnostics.length === 0 ? '0 İhlal (Kusursuz)' : `${filteredDiagnostics.length} Kural`}
+            / {filteredDiagnostics.length === 0 ? '0 bulgu' : `${filteredDiagnostics.length} Kural`}
           </span>
         </div>
 
@@ -466,16 +472,7 @@ export const FireAuditPanel: React.FC<FireAuditPanelProps> = ({
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-[var(--ui-text)] font-bold text-[16px]">Mevzuata %100 Uygun - Sıfır İhlal</div>
-              <div className="text-[13px] text-[var(--ui-text-muted)] max-w-lg mx-auto mt-1">
-                Yapılan nöro-sembolik denetim ve alt-graf izomorfizma analizlerinde; Yangın (BYKHY), İmar (PAİY), Sığınak ve Otopark yönetmeliklerine aykırı hiçbir bulgu tespit edilmemiştir. Bina mevzuat şartlarını eksiksiz sağlamaktadır.
-              </div>
-            </div>
-            <div className="pt-2 flex items-center justify-center gap-2 flex-wrap">
-              <span className="badge badge-success text-[12px]">BYKHY 2 Bağımsız Yangın Merdiveni Tam</span>
-              <span className="badge badge-success text-[12px]">EI90 Yangın Güvenlik Holleri Tam</span>
-              <span className="badge badge-success text-[12px]">Sığınak Hava Kilidi & Şaftı Tam</span>
-              <span className="badge badge-success text-[12px]">Otopark Geçiş Koruması Tam</span>
+              <div className="text-[var(--ui-text)] font-bold text-[16px]">Uygulanan denetimlerde ihlal kaydedilmedi</div>
             </div>
           </div>
         ) : filteredDiagnostics.length === 0 ? (

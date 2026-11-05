@@ -24,7 +24,7 @@ export const DxfExportPanel: React.FC<DxfExportPanelProps> = ({ data, onDownload
   const [activeSubTab, setActiveSubTab] = useState<'layers' | 'table_preview' | 'specs'>('layers');
 
   const dxfInfo = data?.dxf_export_info;
-  const isCompliant = dxfInfo?.compliance_status === 'UYGUN' || (data?.violations?.length ?? 0) === 0;
+  const isCompliant = dxfInfo ? dxfInfo.compliance_status === 'UYGUN' : data?.violations?.length === 0 && !data?.pruned_candidates?.length;
   const totalViolations = data?.violations?.length ?? 0;
   const totalRooms = data?.rooms_analyzed ?? data?.nodes?.length ?? 0;
   const totalDoors = data?.doors_analyzed ?? data?.edges?.length ?? 0;
@@ -111,7 +111,7 @@ export const DxfExportPanel: React.FC<DxfExportPanelProps> = ({ data, onDownload
               <span className={`badge text-[11px] font-mono font-semibold px-2 py-0.5 rounded ${
                 isCompliant ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'
               }`}>
-                {isCompliant ? '0 İhlal · Kusursuz Pafta' : `${totalViolations} İhlal İşlendi`}
+                {isCompliant ? 'Denetlenen kurallarda ihlal yok' : `${totalViolations} İhlal İşlendi`}
               </span>
             </div>
             <p className="text-[13px] text-[var(--ui-text-muted)] mt-0.5">
@@ -346,8 +346,8 @@ export const DxfExportPanel: React.FC<DxfExportPanelProps> = ({ data, onDownload
                 : 'bg-red-950/40 border-red-500/50 text-red-300'
             }`}>
               <div className="font-bold text-[13px]">
-                {isCompliant
-                  ? '[ %100 YÖNETMELİĞE TAM UYGUN — KUSURSUZ MİMARİ PAFTA ]'
+                {data?.pruned_candidates?.length ? 'VF2 ile doğrulanmayan adaylar var' : isCompliant
+                  ? 'Denetlenen kurallarda ihlal yok'
                   : `[ DİKKAT: ${totalViolations} ADET MEVZUAT İHLALİ TESPİT EDİLDİ ]`}
               </div>
               <div className="text-[11px] text-gray-300 mt-0.5">
