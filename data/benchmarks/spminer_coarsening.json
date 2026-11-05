@@ -1,0 +1,64 @@
+{
+  "benchmark": "SPMiner Makro Düğüm Sıkıştırma Oranı Ölçümü",
+  "description": "5 farklı test binasında gerçek düğüm ve kenar sıkıştırma oranları.",
+  "measured_mean_node_reduction_pct": 59.8,
+  "measured_mean_edge_reduction_pct": 61.5,
+  "documented_claim_replacement": "Dokümandaki tahmini '%40-60' ifadesi yerine ölçülen gerçek ortalama: Düğüm bazında %59.8, Kenar bazında %61.5",
+  "results": [
+    {
+      "building_name": "Bina 1: 1 Kat, 2 Daire (Villa / Az Katlı)",
+      "original_nodes": 14,
+      "coarsened_nodes": 6,
+      "node_reduction_pct": 57.1,
+      "original_edges": 13,
+      "coarsened_edges": 5,
+      "edge_reduction_pct": 61.5,
+      "macro_nodes_created": 2,
+      "compression_ratio": 0.571
+    },
+    {
+      "building_name": "Bina 2: 2 Kat, 4 Daire (Az Katlı Konut)",
+      "original_nodes": 27,
+      "coarsened_nodes": 11,
+      "node_reduction_pct": 59.3,
+      "original_edges": 26,
+      "coarsened_edges": 10,
+      "edge_reduction_pct": 61.5,
+      "macro_nodes_created": 4,
+      "compression_ratio": 0.593
+    },
+    {
+      "building_name": "Bina 3: 4 Kat, 8 Daire (Orta Yükseklikli)",
+      "original_nodes": 53,
+      "coarsened_nodes": 21,
+      "node_reduction_pct": 60.4,
+      "original_edges": 52,
+      "coarsened_edges": 20,
+      "edge_reduction_pct": 61.5,
+      "macro_nodes_created": 8,
+      "compression_ratio": 0.604
+    },
+    {
+      "building_name": "Bina 4: 8 Kat, 16 Daire (Çok Katlı Blok)",
+      "original_nodes": 105,
+      "coarsened_nodes": 41,
+      "node_reduction_pct": 61.0,
+      "original_edges": 104,
+      "coarsened_edges": 40,
+      "edge_reduction_pct": 61.5,
+      "macro_nodes_created": 16,
+      "compression_ratio": 0.61
+    },
+    {
+      "building_name": "Bina 5: 12 Kat, 24 Daire (Yüksek Yapı)",
+      "original_nodes": 157,
+      "coarsened_nodes": 61,
+      "node_reduction_pct": 61.1,
+      "original_edges": 156,
+      "coarsened_edges": 60,
+      "edge_reduction_pct": 61.5,
+      "macro_nodes_created": 24,
+      "compression_ratio": 0.611
+    }
+  ]
+}

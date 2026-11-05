@@ -1,0 +1,152 @@
+{
+  "benchmark": "RWPE Uzun Döngü ve Döngü Katılım Ablasyon Testi",
+  "description": "2-regular halka koridorlar (C8 vs 2xC4, C10 vs 2xC5, C12 vs 2xC6) uzerinde m=6, 12, 16 adimlari ve dongu ozelligi karsilastirmasi.",
+  "chosen_m": 6,
+  "rationale": "Tipik konut ve ofis binalarinda en uzun mimari koridor dongusu genelde 4-6 mekandir. m=6 adimi C8-2xC4 ve C10-2xC5 ciftlerini ayirt etmek icin yeterlidir. C12 seviyesinde ise RWPE adimini artirmak yerine DONGU KATILIM OZELLIGI (nx.minimum_cycle_basis) eklendiginde tum donguler tam olarak ayirt edilmektedir. Bu nedenle varsayilan m=6 korunmus, karmasik planlar icin use_cycle_feature secenegi sunulmustur.",
+  "results": [
+    {
+      "pair": "C8 vs 2xC4",
+      "rwpe_steps_m": 6,
+      "use_cycle_feature": false,
+      "euclidean_distance": 0.1927,
+      "cosine_similarity": 0.9997,
+      "distinguished": false
+    },
+    {
+      "pair": "C8 vs 2xC4",
+      "rwpe_steps_m": 6,
+      "use_cycle_feature": true,
+      "euclidean_distance": 2.3933,
+      "cosine_similarity": 0.9741,
+      "distinguished": true
+    },
+    {
+      "pair": "C8 vs 2xC4",
+      "rwpe_steps_m": 12,
+      "use_cycle_feature": false,
+      "euclidean_distance": 0.2549,
+      "cosine_similarity": 0.9994,
+      "distinguished": false
+    },
+    {
+      "pair": "C8 vs 2xC4",
+      "rwpe_steps_m": 12,
+      "use_cycle_feature": true,
+      "euclidean_distance": 3.9433,
+      "cosine_similarity": 0.975,
+      "distinguished": true
+    },
+    {
+      "pair": "C8 vs 2xC4",
+      "rwpe_steps_m": 16,
+      "use_cycle_feature": false,
+      "euclidean_distance": 0.4006,
+      "cosine_similarity": 0.9981,
+      "distinguished": true
+    },
+    {
+      "pair": "C8 vs 2xC4",
+      "rwpe_steps_m": 16,
+      "use_cycle_feature": true,
+      "euclidean_distance": 3.7304,
+      "cosine_similarity": 0.9605,
+      "distinguished": true
+    },
+    {
+      "pair": "C10 vs 2xC5",
+      "rwpe_steps_m": 6,
+      "use_cycle_feature": false,
+      "euclidean_distance": 0.0512,
+      "cosine_similarity": 1.0,
+      "distinguished": false
+    },
+    {
+      "pair": "C10 vs 2xC5",
+      "rwpe_steps_m": 6,
+      "use_cycle_feature": true,
+      "euclidean_distance": 4.0332,
+      "cosine_similarity": 0.9738,
+      "distinguished": true
+    },
+    {
+      "pair": "C10 vs 2xC5",
+      "rwpe_steps_m": 12,
+      "use_cycle_feature": false,
+      "euclidean_distance": 0.2118,
+      "cosine_similarity": 0.9996,
+      "distinguished": false
+    },
+    {
+      "pair": "C10 vs 2xC5",
+      "rwpe_steps_m": 12,
+      "use_cycle_feature": true,
+      "euclidean_distance": 6.5239,
+      "cosine_similarity": 0.9777,
+      "distinguished": true
+    },
+    {
+      "pair": "C10 vs 2xC5",
+      "rwpe_steps_m": 16,
+      "use_cycle_feature": false,
+      "euclidean_distance": 0.3361,
+      "cosine_similarity": 0.9988,
+      "distinguished": true
+    },
+    {
+      "pair": "C10 vs 2xC5",
+      "rwpe_steps_m": 16,
+      "use_cycle_feature": true,
+      "euclidean_distance": 6.0185,
+      "cosine_similarity": 0.97,
+      "distinguished": true
+    },
+    {
+      "pair": "C12 vs 2xC6",
+      "rwpe_steps_m": 6,
+      "use_cycle_feature": false,
+      "euclidean_distance": 0.0451,
+      "cosine_similarity": 1.0,
+      "distinguished": false
+    },
+    {
+      "pair": "C12 vs 2xC6",
+      "rwpe_steps_m": 6,
+      "use_cycle_feature": true,
+      "euclidean_distance": 6.1286,
+      "cosine_similarity": 0.9746,
+      "distinguished": true
+    },
+    {
+      "pair": "C12 vs 2xC6",
+      "rwpe_steps_m": 12,
+      "use_cycle_feature": false,
+      "euclidean_distance": 0.149,
+      "cosine_similarity": 0.9999,
+      "distinguished": false
+    },
+    {
+      "pair": "C12 vs 2xC6",
+      "rwpe_steps_m": 12,
+      "use_cycle_feature": true,
+      "euclidean_distance": 10.1655,
+      "cosine_similarity": 0.9838,
+      "distinguished": true
+    },
+    {
+      "pair": "C12 vs 2xC6",
+      "rwpe_steps_m": 16,
+      "use_cycle_feature": false,
+      "euclidean_distance": 0.2308,
+      "cosine_similarity": 0.9995,
+      "distinguished": false
+    },
+    {
+      "pair": "C12 vs 2xC6",
+      "rwpe_steps_m": 16,
+      "use_cycle_feature": true,
+      "euclidean_distance": 9.0221,
+      "cosine_similarity": 0.9732,
+      "distinguished": true
+    }
+  ]
+}

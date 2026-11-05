@@ -1,0 +1,86 @@
+{
+  "benchmark": "OpenCV Morfolojik Kapatma ve Açısal Çekirdek Ölçümü",
+  "description": "Dik, 30°, 45° ve dairesel planlarda ppm 25 ve 100 ölçeklerinde bilinen oda sayısına karşı tespit edilen oda sayıları.",
+  "results": [
+    {
+      "plan_type": "Dik Duvarlı Plan (Orthogonal)",
+      "pixels_per_meter": 25,
+      "known_rooms_count": 4,
+      "detected_rooms_old_method": 5,
+      "error_old_method": 1,
+      "detected_rooms_new_method": 5,
+      "error_new_method": 1,
+      "success_new_method": false
+    },
+    {
+      "plan_type": "Dik Duvarlı Plan (Orthogonal)",
+      "pixels_per_meter": 100,
+      "known_rooms_count": 4,
+      "detected_rooms_old_method": 5,
+      "error_old_method": 1,
+      "detected_rooms_new_method": 5,
+      "error_new_method": 1,
+      "success_new_method": false
+    },
+    {
+      "plan_type": "30° Pahlı Plan (30-deg Chamfered)",
+      "pixels_per_meter": 25,
+      "known_rooms_count": 3,
+      "detected_rooms_old_method": 2,
+      "error_old_method": 1,
+      "detected_rooms_new_method": 3,
+      "error_new_method": 0,
+      "success_new_method": true
+    },
+    {
+      "plan_type": "30° Pahlı Plan (30-deg Chamfered)",
+      "pixels_per_meter": 100,
+      "known_rooms_count": 3,
+      "detected_rooms_old_method": 2,
+      "error_old_method": 1,
+      "detected_rooms_new_method": 3,
+      "error_new_method": 0,
+      "success_new_method": true
+    },
+    {
+      "plan_type": "45° Pahlı Plan (45-deg Chamfered)",
+      "pixels_per_meter": 25,
+      "known_rooms_count": 4,
+      "detected_rooms_old_method": 3,
+      "error_old_method": 1,
+      "detected_rooms_new_method": 5,
+      "error_new_method": 1,
+      "success_new_method": false
+    },
+    {
+      "plan_type": "45° Pahlı Plan (45-deg Chamfered)",
+      "pixels_per_meter": 100,
+      "known_rooms_count": 4,
+      "detected_rooms_old_method": 3,
+      "error_old_method": 1,
+      "detected_rooms_new_method": 5,
+      "error_new_method": 1,
+      "success_new_method": false
+    },
+    {
+      "plan_type": "Dairesel Duvarlı Plan (Circular)",
+      "pixels_per_meter": 25,
+      "known_rooms_count": 2,
+      "detected_rooms_old_method": 3,
+      "error_old_method": 1,
+      "detected_rooms_new_method": 4,
+      "error_new_method": 2,
+      "success_new_method": false
+    },
+    {
+      "plan_type": "Dairesel Duvarlı Plan (Circular)",
+      "pixels_per_meter": 100,
+      "known_rooms_count": 2,
+      "detected_rooms_old_method": 3,
+      "error_old_method": 1,
+      "detected_rooms_new_method": 3,
+      "error_new_method": 1,
+      "success_new_method": false
+    }
+  ]
+}

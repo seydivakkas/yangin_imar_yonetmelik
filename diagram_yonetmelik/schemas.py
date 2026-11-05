@@ -16,6 +16,8 @@ class RoomPolygonInput:
     name_label: str = ""            # Metin etiketi (Örn: "Z-04 YANGIN HOLÜ")
     floor_level: int = 0            # Kat kotu / numarası (-1: Bodrum, 0: Zemin, 1+: Normal Kat)
     global_dxf_pos: Tuple[float, float] = (0.0, 0.0)  # Orijinal DXF dünya koordinatı
+    label_source: str = "belirsiz"  # 'sozluk', 'bulanik', 'geometri', 'belirsiz'
+    label_confidence: float = 0.0
 
 
 @dataclass
@@ -98,6 +100,7 @@ class CandidateDiagnosticReport:
     partial_node_mapping: Dict[int, int] = field(default_factory=dict)
     summary_message: str = ""
     gnn_energy: Optional[float] = None
+    is_pruned_by_gnn: bool = False
 
 
 # =====================================================================
@@ -142,6 +145,7 @@ class MacroNodeRecord:
     total_macro_area_m2: float
     internal_max_escape_m: float
     floor_level: int
+    arrival_profile: List[float] = field(default_factory=list)
 
 
 @dataclass
@@ -151,6 +155,11 @@ class CoarsenedBuildingResult:
     original_node_count: int
     coarsened_node_count: int
     compression_ratio: float
+    evacuation_time_full_sec: Optional[float] = None
+    evacuation_time_coarsened_sec: Optional[float] = None
+    evacuation_diff_pct: Optional[float] = None
+    is_simulation_blocked: bool = False
+    warning_message: Optional[str] = None
 
 
 # =====================================================================
@@ -201,6 +210,8 @@ class BuildingEvacuationReport:
     critical_aset_sec: Optional[float] = None  # En dar güvenlik payına sahip bölgenin ASET değeri
     aset_margin_sec: Optional[float] = None    # min(ASET - bölgenin son doluluk zamanı)
     aset_compliant: bool = True
+    smoke_model_active: bool = False
+    smoke_model_label: str = "gösterim amaçlı, doğrulanmamış"
 
 
 @dataclass
@@ -216,6 +227,8 @@ class DesignInterventionStep:
     floor_level: int = 0
     spatial_coords: Optional[Tuple[float, float]] = None
     evacuation_time_delta_sec: Optional[float] = None
+    feasibility_status: str = "UYGULANABILIR"  # 'UYGULANABILIR', 'RETTEDILDI_TASIYICI_CAKISMA', 'STATIK_KONTROL_YAPILMADI'
+    rejection_reason: Optional[str] = None
 
 
 @dataclass
@@ -230,6 +243,10 @@ class CounterfactualOptimizationResult:
     optimized_building_graph: nx.Graph
     baseline_trapped_persons: int = 0
     pruned_redundant_steps: int = 0
+    simulations_performed: int = 0
+    budget_exhausted: bool = False
+    warning_message: Optional[str] = None
+    cache_hits: int = 0
 
 
 # =====================================================================
@@ -292,6 +309,26 @@ class PipelineConfig:
     default_unit_scale_to_m: float = 0.01  # varsayılan cm -> m
     default_floor_height_m: float = 3.0
     high_rise_threshold_m: float = 21.50
+    # Modül 1: GNN + RWPE
+    rwpe_steps: int = 6
+    use_cycle_feature: bool = False
+    enable_hybrid_pruning: bool = False
+    # Modül 2: SPMiner + Makro Düğüm Sıkıştırma
+    macro_walking_speed_mps: float = 1.2
+    macro_reaction_time_sec: float = 15.0
+    coarsening_verification_threshold_pct: float = 10.0
+    # Modül 3: Taşıyıcı & Optimizasyon & Duman
+    structural_layers: List[str] = field(default_factory=lambda: [
+        "A-COLS", "S-COLS", "S-COLM", "S-WALL", "A-WALL-STRC", "KOLON", "PERDE"
+    ])
+    optimizer_max_candidates: int = 15
+    optimizer_max_simulations: int = 8
+    enable_smoke_model: bool = False
+    fire_hrr_kw: float = 2500.0
+    # Modül 4: Morfoloji & Etiketleme
+    door_bridge_m: float = 1.50
+    label_fuzzy_threshold: float = 0.70
+    abbreviations_path: str = "data/architectural_abbreviations.json"
 
 
 @dataclass

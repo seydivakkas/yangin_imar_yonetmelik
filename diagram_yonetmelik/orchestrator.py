@@ -52,7 +52,7 @@ class DiagramYonetmelikPipeline:
     def __init__(self, config: Optional[PipelineConfig] = None):
         self.config = config or PipelineConfig()
         self.cad_parser = DXFFloorplanParser()
-        self.cv_analyzer = FloorplanImageAnalyzer()
+        self.cv_analyzer = FloorplanImageAnalyzer(door_bridge_m=self.config.door_bridge_m)
         self.rag_3d_builder = MultiFloor3DRAGBuilder()
         self.gnn = self._load_optional_gnn()
         self.spminer = ArchitecturalSPMiner(
@@ -63,15 +63,22 @@ class DiagramYonetmelikPipeline:
         )
         self.vf2_analyzer = ExplainableVF2Analyzer(
             max_escape_distance_m=self.config.max_escape_route_distance_m,
-            gnn_model=self.gnn if self.config.record_gnn_energy else None
+            gnn_model=self.gnn if (self.config.record_gnn_energy or self.config.enable_hybrid_pruning) else None
         )
         self.basement_auditor = BasementComplianceAuditor()
         self.multi_floor_auditor = MultiFloorComprehensiveAuditor(
             default_floor_height_m=self.config.default_floor_height_m,
             high_rise_threshold_m=self.config.high_rise_threshold_m
         )
-        self.evac_sim = Building3DEvacuationSimulator(target_evacuation_threshold_sec=self.config.target_evacuation_time_sec)
-        self.optimizer = CounterfactualEvacuationOptimizer()
+        self.evac_sim = Building3DEvacuationSimulator(
+            target_evacuation_threshold_sec=self.config.target_evacuation_time_sec,
+            enable_smoke_model=self.config.enable_smoke_model,
+            fire_hrr_kw=self.config.fire_hrr_kw
+        )
+        self.optimizer = CounterfactualEvacuationOptimizer(
+            max_candidates=self.config.optimizer_max_candidates,
+            max_simulations=self.config.optimizer_max_simulations
+        )
         self.violation_annotator = DXFViolationAnnotator()
         self.opt_annotator = DXFOptimizationAnnotator()
         self.table_annotator = DXFAuditTableAnnotator()
@@ -84,25 +91,41 @@ class DiagramYonetmelikPipeline:
 
     def _load_optional_gnn(self) -> Optional[SpatialOrderGNN]:
         """GNN yalnızca istenirse yüklenir; uygunluk kararı buna bağlı değildir."""
-        if not (self.config.spminer_use_neural_clustering or self.config.record_gnn_energy):
+        if not (self.config.spminer_use_neural_clustering or self.config.record_gnn_energy or self.config.enable_hybrid_pruning):
             return None
-        gnn = SpatialOrderGNN()
+        gnn = SpatialOrderGNN(
+            rwpe_dim=self.config.rwpe_steps,
+            use_cycle_feature=self.config.use_cycle_feature
+        )
         path = self.config.gnn_model_weights_path
-        if path and gnn.load_weights(path):
-            return gnn.eval()
+        if path:
+            # Boyut uyuşmazlığı olursa açık ValueError fırlatır
+            if gnn.load_weights(path):
+                return gnn.eval()
         logging.getLogger(__name__).warning("GNN ağırlıkları yüklenemedi (%s); GNN özellikleri devre dışı.", path)
         return None
 
     def _review_fire_candidates(self, graph, metrics):
         start = time.perf_counter()
         verified, diagnostics = [], []
+        pruned_count = 0
         for query, target, anchor in fire_candidates(graph, self.vf2_analyzer, self.config.k_hops_gnn):
-            report = self.vf2_analyzer.explain_candidate(query, target, anchor)
+            if self.config.enable_hybrid_pruning and self.gnn is not None:
+                report = self.vf2_analyzer.explain_candidate(query, target, anchor, prune_with_gnn=True)
+                if getattr(report, "is_pruned_by_gnn", False):
+                    pruned_count += 1
+            else:
+                report = self.vf2_analyzer.explain_candidate(query, target, anchor, prune_with_gnn=False)
+
             if report.is_fully_compliant:
                 verified.append(anchor)
             else:
                 diagnostics.append(report)
-        metrics.update(stage4_vf2_sec=time.perf_counter() - start, vf2_candidates=len(verified) + len(diagnostics))
+        metrics.update(
+            stage4_vf2_sec=time.perf_counter() - start,
+            vf2_candidates=len(verified) + len(diagnostics),
+            pruned_candidates=pruned_count
+        )
         return verified, diagnostics
 
     def run_full_pipeline(
@@ -119,7 +142,8 @@ class DiagramYonetmelikPipeline:
         t0 = time.perf_counter()
         rooms, doors, scale = self.cad_parser.parse_dxf_document(
             dxf_doc,
-            default_scale_to_m=self.config.default_unit_scale_to_m
+            default_scale_to_m=self.config.default_unit_scale_to_m,
+            structural_layers=self.config.structural_layers
         )
         metrics["stage1_dxf_ingest_sec"] = round(time.perf_counter() - t0, 3)
 
@@ -129,6 +153,8 @@ class DiagramYonetmelikPipeline:
         t0 = time.perf_counter()
         rag_3d_result = self.rag_3d_builder.build_3d_building_rag(rooms, doors, unit_scale_to_meters=scale)
         G_3d = rag_3d_result.G_3d
+        G_3d.graph["structural_polygons"] = self.cad_parser.last_structural_polygons
+        G_3d.graph["has_structural_layer"] = self.cad_parser.has_structural_layer
         metrics["stage2_3d_rag_sec"] = round(time.perf_counter() - t0, 3)
 
         # -------------------------------------------------------------

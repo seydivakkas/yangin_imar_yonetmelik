@@ -13,9 +13,77 @@ class FloorplanImageAnalyzer:
     OpenCV tabanlı mimari kat planı görüntü işleme motoru.
     Görsel (PNG/JPG) olarak yüklenen kat planlarından duvar konturlarını,
     oda poligonlarını ve kapı açıklıklarını çıkarır, RAG formatına dönüştürür.
+    HoughLinesP ile dominant duvar açılarını (0°, 90°, 30°, 45° vb.) bularak
+    döndürülmüş doğrusal çekirdeklerle morfolojik kapatma uygular.
     """
-    def __init__(self, pixels_per_meter: float = 50.0):
+    def __init__(self, pixels_per_meter: float = 50.0, door_bridge_m: float = 1.50):
         self.ppm = pixels_per_meter
+        self.door_bridge_m = door_bridge_m
+
+    def find_dominant_wall_angles(self, binary_img: np.ndarray) -> List[float]:
+        """
+        HoughLinesP ile duvar yönlerini ve baskın açıları (0°, 90°, 30°, 45° vb.) tespit eder.
+        """
+        lines = cv2.HoughLinesP(
+            binary_img,
+            rho=1,
+            theta=np.pi / 180,
+            threshold=max(20, int(self.ppm * 0.4)),
+            minLineLength=max(10, int(self.ppm * 0.5)),
+            maxLineGap=max(5, int(self.ppm * 0.2))
+        )
+        angles = [0.0, 90.0]
+        if lines is not None:
+            raw_angles = []
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                angle_rad = math.atan2(y2 - y1, x2 - x1)
+                angle_deg = (math.degrees(angle_rad)) % 180.0
+                raw_angles.append(angle_deg)
+
+            bins: Dict[int, int] = {}
+            for a in raw_angles:
+                b = int(round(a / 15.0) * 15) % 180
+                bins[b] = bins.get(b, 0) + 1
+
+            for b, count in bins.items():
+                if count >= 3 and b not in (0, 90):
+                    angles.append(float(b))
+
+        return sorted(list(set(angles)))
+
+    def create_linear_kernel(self, length: int, angle_deg: float, thickness: int = 3) -> np.ndarray:
+        """
+        Belirtilen açı ve uzunlukta döndürülmüş doğrusal morfolojik çekirdek üretir.
+        """
+        rad = math.radians(angle_deg)
+        half_len = length / 2.0
+        dx = half_len * math.cos(rad)
+        dy = half_len * math.sin(rad)
+        size = max(length, int(2 * max(abs(dx), abs(dy))) + thickness + 2)
+        if size % 2 == 0:
+            size += 1
+        cx, cy = size // 2, size // 2
+        pt1 = (int(round(cx - dx)), int(round(cy - dy)))
+        pt2 = (int(round(cx + dx)), int(round(cy + dy)))
+        kernel = np.zeros((size, size), dtype=np.uint8)
+        cv2.line(kernel, pt1, pt2, 1, max(1, thickness))
+        return kernel
+
+    def extract_text_ocr(self, img_bgr: np.ndarray) -> Tuple[str, bool]:
+        """
+        İsteğe bağlı raster OCR: pytesseract kurulu ve tesseract native binary sistemde
+        mevcutsa metin çıkarır; tesseract binary yoksa güvenle raporlar ve atlar.
+        """
+        import shutil
+        if not shutil.which("tesseract"):
+            return "", False
+        try:
+            import pytesseract
+            txt = pytesseract.image_to_string(img_bgr, lang="tur+eng")
+            return txt.strip(), True
+        except Exception:
+            return "", False
 
     def analyze_image_file(
         self,
@@ -43,12 +111,15 @@ class FloorplanImageAnalyzer:
         # 2. Adaptif / Otsu İkili Eşikleme (Duvarlar Beyaz, Arka Plan Siyah)
         _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-        # 3. Morfolojik Kapatma & Kapı Boşluklarını Köprüleme (Directional Door Gap Bridging)
-        door_k_size = int(max(25, min(85, self.ppm * 1.5)))  # ~1.50m mimari kapı eşiği
-        k_h = cv2.getStructuringElement(cv2.MORPH_RECT, (door_k_size, 5))
-        k_v = cv2.getStructuringElement(cv2.MORPH_RECT, (5, door_k_size))
-        closed_h = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, k_h)
-        closed_walls = cv2.morphologyEx(closed_h, cv2.MORPH_CLOSE, k_v)
+        # 3. Morfolojik Kapatma & Kapı Boşluklarını Köprüleme
+        # 25-85 piksel sınırı kaldırıldı: Boyut doğrudan door_bridge_m * pixels_per_meter
+        door_k_size = max(5, int(round(self.door_bridge_m * self.ppm)))
+        angles = self.find_dominant_wall_angles(binary)
+
+        closed_walls = binary.copy()
+        for ang in angles:
+            k = self.create_linear_kernel(door_k_size, ang, thickness=max(2, int(self.ppm * 0.06)))
+            closed_walls = cv2.morphologyEx(closed_walls, cv2.MORPH_CLOSE, k)
 
         # 4. Odaları Bulmak İçin Duvarların Tersini Al (Oda hacimleri beyaz olsun)
         rooms_mask = cv2.bitwise_not(closed_walls)
@@ -112,7 +183,9 @@ class FloorplanImageAnalyzer:
                 polygon=poly,
                 name_label=f"CV_{room_type.upper()}_{room_id}",
                 floor_level=floor_level,
-                global_dxf_pos=(centroid.x, centroid.y)
+                global_dxf_pos=(centroid.x, centroid.y),
+                label_source="geometri",
+                label_confidence=0.70
             ))
 
             # Görselleştirme üzerine çiz

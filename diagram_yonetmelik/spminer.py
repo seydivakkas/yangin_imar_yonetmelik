@@ -245,7 +245,9 @@ class ArchitecturalGraphCoarsener:
     @staticmethod
     def coarsen_building_graph(
         building_graph: nx.Graph,
-        discovered_motifs: List[DiscoveredArchitecturalMotif]
+        discovered_motifs: List[DiscoveredArchitecturalMotif],
+        walking_speed_mps: float = 1.2,
+        reaction_time_sec: float = 15.0
     ) -> CoarsenedBuildingResult:
         G_coarse = building_graph.copy()
         macro_registry: Dict[int, MacroNodeRecord] = {}
@@ -282,9 +284,41 @@ class ArchitecturalGraphCoarsener:
                 # Tutucu iç mesafe: herhangi bir dış kapıdan en uzak odaya en kötü yol.
                 # Makro yol hangi kapıyı seçerse seçsin, gerçek kaçış mesafesini olduğundan kısa göstermez.
                 max_escape = 0.0
-                for source in {internal_n for _, internal_n, _ in portal_edges} or {anchor}:
+                portal_internal_nodes = {internal_n for _, internal_n, _ in portal_edges} or {anchor}
+                for source in portal_internal_nodes:
                     dists = nx.single_source_dijkstra_path_length(sub_G, source, weight="distance_m")
                     max_escape = max(max_escape, max(dists.values(), default=0.0))
+
+                # Zamana yayılmış varış profili:
+                # Daire içindeki kişiler kapıya aynı anda değil, iç kaçış mesafesine göre dağılmış zamanlarda ulaşır.
+                # Model: t_varis = d_ic / v_yurume + t_reaksiyon
+                # NOT: Daire içi duman yayılımı kapsam dışıdır. Yalnızca tahliye zamanlaması modellenir.
+                arrival_profile: List[float] = []
+                for orig_n in sub_nodes:
+                    min_d_to_portal = float("inf")
+                    for p_node in portal_internal_nodes:
+                        try:
+                            d = nx.shortest_path_length(sub_G, source=orig_n, target=p_node, weight="distance_m")
+                            if d < min_d_to_portal:
+                                min_d_to_portal = d
+                        except Exception:
+                            continue
+                    if min_d_to_portal == float("inf"):
+                        min_d_to_portal = 0.0
+
+                    rtype = building_graph.nodes[orig_n].get("room_type", "oda")
+                    if rtype in ("salon", "oda"):
+                        occ_count = 3
+                    elif rtype in ("kat_koridoru", "yangin_holu", "yangin_merdiveni", "dis_cikis", "daire_antresi", "banyo_wc"):
+                        occ_count = 0
+                    else:
+                        occ_count = 1
+
+                    for _ in range(occ_count):
+                        t_arr = (min_d_to_portal / max(0.1, walking_speed_mps)) + reaction_time_sec
+                        arrival_profile.append(round(t_arr, 2))
+
+                arrival_profile.sort()
 
                 floor = building_graph.nodes[anchor].get("floor_level", 0)
                 record = MacroNodeRecord(
@@ -295,7 +329,8 @@ class ArchitecturalGraphCoarsener:
                     portal_boundary_doors=portal_edges,
                     total_macro_area_m2=total_area,
                     internal_max_escape_m=max_escape,
-                    floor_level=floor
+                    floor_level=floor,
+                    arrival_profile=arrival_profile
                 )
                 macro_registry[macro_id_counter] = record
 
@@ -307,7 +342,8 @@ class ArchitecturalGraphCoarsener:
                     area_m2=total_area,
                     internal_max_escape_m=max_escape,
                     floor_level=floor,
-                    contained_count=len(sub_nodes)
+                    contained_count=len(sub_nodes),
+                    arrival_profile=arrival_profile
                 )
 
                 # Dış portal kenarlarını makro düğüme bağla
@@ -334,6 +370,47 @@ class ArchitecturalGraphCoarsener:
             coarsened_node_count=coarse_cnt,
             compression_ratio=comp_ratio
         )
+
+    @staticmethod
+    def verify_and_validate_coarsening(
+        building_graph: nx.Graph,
+        coarsened_result: CoarsenedBuildingResult,
+        simulator: Optional[Any] = None,
+        threshold_pct: float = 10.0
+    ) -> CoarsenedBuildingResult:
+        """
+        Doğrulama testi: aynı bina için (a) sıkıştırmasız tam graf ve
+        (b) sıkıştırılmış graf + varış profili ile tahliye süresini hesaplar.
+        Fark belirlenen eşiği (%10) aşarsa sıkıştırmanın simülasyon girdisi olarak
+        kullanılmasını engeller ve açık bir uyarı üretir.
+        """
+        if simulator is None:
+            from diagram_yonetmelik.evacuation import Building3DEvacuationSimulator
+            simulator = Building3DEvacuationSimulator()
+
+        rep_full = simulator.simulate_evacuation(building_graph)
+        t_full = rep_full.total_evacuation_time_sec
+
+        rep_coarse = simulator.simulate_evacuation(coarsened_result.G_coarsened)
+        t_coarse = rep_coarse.total_evacuation_time_sec
+
+        diff_pct = (abs(t_coarse - t_full) / max(1e-4, t_full)) * 100.0
+        coarsened_result.evacuation_time_full_sec = round(t_full, 2)
+        coarsened_result.evacuation_time_coarsened_sec = round(t_coarse, 2)
+        coarsened_result.evacuation_diff_pct = round(diff_pct, 2)
+
+        if diff_pct > threshold_pct:
+            coarsened_result.is_simulation_blocked = True
+            coarsened_result.warning_message = (
+                f"Sıkıştırma tahliye süresi farkı (%{diff_pct:.1f}) izin verilen %{threshold_pct:.1f} "
+                f"eşiğini aştı (Tam: {t_full:.1f} sn, Sıkıştırılmış: {t_coarse:.1f} sn). "
+                f"Sıkıştırmanın simülasyon girdisi olarak kullanılması engellendi."
+            )
+        else:
+            coarsened_result.is_simulation_blocked = False
+            coarsened_result.warning_message = None
+
+        return coarsened_result
 
     @staticmethod
     def expand_macro_node(

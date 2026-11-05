@@ -36,7 +36,9 @@ class Building3DEvacuationSimulator:
         horizontal_walking_speed_mps: float = 1.19,  # SFPE serbest akış, koridor
         stair_walking_speed_mps: float = 0.85,       # SFPE serbest akış, 7.5"/10" basamak
         ceiling_height_m: float = 2.80,
-        critical_smoke_height_m: float = 1.80
+        critical_smoke_height_m: float = 1.80,
+        enable_smoke_model: bool = False,
+        fire_hrr_kw: float = 2500.0
     ):
         self.ceiling_h = ceiling_height_m
         self.critical_smoke_h = critical_smoke_height_m
@@ -50,6 +52,8 @@ class Building3DEvacuationSimulator:
         self.flow_stair = stair_specific_flow
         self.max_density = max_density_persons_per_m2
         self.target_threshold = target_evacuation_threshold_sec
+        self.enable_smoke_model = enable_smoke_model
+        self.fire_hrr_kw = fire_hrr_kw
 
     def _compute_edge_capacity_rate(self, edge_data: Dict[str, Any]) -> float:
         w_m = float(edge_data.get("door_width_cm", 90.0)) / 100.0
@@ -107,9 +111,24 @@ class Building3DEvacuationSimulator:
         # 2. Başlangıç Doluluklarını Belirle (Varsayılan: daire/oda başına 2-4 kişi)
         occupancy: Dict[int, float] = {}
         total_initial_persons = 0
+        scheduled_arrivals: Dict[int, List[float]] = {}
+
         for n, d in G_3d.nodes(data=True):
-            if initial_occupancy and n in initial_occupancy:
+            arrival_prof = d.get("arrival_profile")
+            if arrival_prof:
+                # Zamana yayılmış varış profili: Daire içi kişiler kapıya iç kaçış mesafelerine göre ulaşır
+                # Model: t_varis = d_ic / v_yurume + t_reaksiyon
+                # NOT: Daire içi duman yayılımı kapsam dışıdır. Yalnızca tahliye zamanlaması modellenir.
+                t_zero = [t_a for t_a in arrival_prof if t_a <= 0.0]
+                t_future = [t_a for t_a in arrival_prof if t_a > 0.0]
+                occupancy[n] = float(len(t_zero))
+                if t_future:
+                    scheduled_arrivals[n] = sorted(t_future)
+                total_initial_persons += len(arrival_prof)
+            elif initial_occupancy and n in initial_occupancy:
                 occ = float(initial_occupancy[n])
+                occupancy[n] = occ
+                total_initial_persons += int(occ)
             else:
                 rtype = d.get("room_type", "oda")
                 if rtype in ("salon", "oda"):
@@ -123,8 +142,8 @@ class Building3DEvacuationSimulator:
                     occ = float(d.get("contained_count", 4)) * 2.0
                 else:
                     occ = 1.0
-            occupancy[n] = occ
-            total_initial_persons += int(occ)
+                occupancy[n] = occ
+                total_initial_persons += int(occ)
 
         # Mekan Barındırma Kapasiteleri: C_hold(v) = Area(v) * 3.5
         holding_capacity: Dict[int, float] = {}
@@ -147,17 +166,17 @@ class Building3DEvacuationSimulator:
 
         # Çıkışa yolu olmayan düğümlerdeki kişiler hiçbir zaman tahliye edilemez.
         unreachable_occupied = sorted(
-            [n for n, occ in occupancy.items() if occ > 0.0 and n not in exit_nodes and n not in next_hop],
+            [n for n, occ in occupancy.items() if (occ > 0.0 or n in scheduled_arrivals) and n not in exit_nodes and n not in next_hop],
             key=str
         )
-        trapped_float = sum(occupancy[n] for n in unreachable_occupied)
-        total_persons_float = sum(occupancy.values())
+        trapped_float = sum(occupancy[n] for n in unreachable_occupied) + sum(len(scheduled_arrivals.get(n, [])) for n in unreachable_occupied)
+        total_persons_float = sum(occupancy.values()) + sum(len(arrs) for arrs in scheduled_arrivals.values())
 
         # Yangın başlangıcı verilmediyse tahliye başlamadan en kalabalık (eşitlikte en büyük) oda seçilir.
         fire_n = fire_origin_node
         if fire_n is None and G_3d.number_of_nodes() > 0:
             occupied = [n for n, occ in occupancy.items() if occ > 0.0 and G_3d.nodes[n].get("room_type") not in SMOKE_PROTECTED_ZONES]
-            fire_n = max(occupied or list(G_3d.nodes()), key=lambda n: (occupancy[n], float(G_3d.nodes[n].get("area_m2", 0.0)), str(n)))
+            fire_n = max(occupied or list(G_3d.nodes()), key=lambda n: (occupancy.get(n, 0.0), float(G_3d.nodes[n].get("area_m2", 0.0)), str(n)))
         last_occupied: Dict[Any, float] = {n: 0.0 for n in G_3d.nodes()}
 
         current_t = 0.0
@@ -172,9 +191,16 @@ class Building3DEvacuationSimulator:
 
         # 4. Zaman Adımlı Dinamik Simülasyon Döngüsü (dt = 0.5s)
         while True:
+            # Gelecekteki varışları zamana göre serbest bırak
+            for n, arr_list in list(scheduled_arrivals.items()):
+                while arr_list and arr_list[0] <= current_t + 1e-9:
+                    arr_list.pop(0)
+                    occupancy[n] += 1.0
+
             # Sadece çıkışa erişimi olan düğümlerdeki ve yolda olan insanları takip et
+            remaining_scheduled = sum(len(arrs) for n, arrs in scheduled_arrivals.items() if n not in exit_nodes and n in next_hop)
             remaining_in_building = sum([occ for n, occ in occupancy.items() if n not in exit_nodes and n in next_hop])
-            remaining_in_building += sum(entry[3] for entry in in_transit)
+            remaining_in_building += sum(entry[3] for entry in in_transit) + remaining_scheduled
             if remaining_in_building <= 0.1:
                 reachable_finished = True
                 break
@@ -237,7 +263,7 @@ class Building3DEvacuationSimulator:
 
             time_series.append((round(current_t, 1), int(round(evacuated_float))))
             for n, occ in occupancy.items():
-                if occ > 0.01 or inbound_persons.get(n, 0.0) > 0.01:
+                if occ > 0.01 or inbound_persons.get(n, 0.0) > 0.01 or (n in scheduled_arrivals and len(scheduled_arrivals[n]) > 0):
                     last_occupied[n] = current_t
 
         has_exit = bool(exit_nodes)
@@ -253,34 +279,59 @@ class Building3DEvacuationSimulator:
         critical_aset: Optional[float] = None
         aset_margin: Optional[float] = None
 
-        for n, d in G_3d.nodes(data=True):
-            # Yangın odasından olan topolojik uzaklığa göre duman tabakası alçalma hızı
-            try:
-                d_fire = nx.shortest_path_length(G_3d, source=fire_n, target=n, weight="distance_m")
-            except Exception:
-                d_fire = 20.0
+        if self.enable_smoke_model:
+            # İki Bölgeli Doldurma Modeli (Gösterim amaçlı, doğrulanmamış)
+            # Duman debisi: V_dot = 0.076 * Q^(1/3)
+            # Yangın kapısı sızdırmazlığı ve basınçlandırma duman geçişini önemli ölçüde azaltır
+            hrr = max(500.0, self.fire_hrr_kw)
+            v_dot_base = 0.076 * (hrr ** (1.0 / 3.0))
 
-            alpha = max(0.05, 0.35 / (1.0 + 0.1 * d_fire))
-            rset = last_occupied[n]
-            layer_h = max(0.50, self.ceiling_h - alpha * math.sqrt(max(1.0, rset)))
-            aset = ((self.ceiling_h - self.critical_smoke_h) / max(1e-4, alpha)) ** 2
-            is_protected = d.get("room_type") in SMOKE_PROTECTED_ZONES
+            for n, d in G_3d.nodes(data=True):
+                is_protected = d.get("room_type") in SMOKE_PROTECTED_ZONES
+                area_n = max(4.0, float(d.get("area_m2", 15.0)))
 
-            if not is_protected and rset > 0.0 and (aset_margin is None or aset - rset < aset_margin):
-                aset_margin = aset - rset
-                critical_aset = aset
+                if n == fire_n:
+                    alpha = v_dot_base / (area_n * self.ceiling_h)
+                else:
+                    try:
+                        path = nx.shortest_path(G_3d, source=fire_n, target=n, weight="distance_m")
+                        tau = 1.0
+                        for idx in range(len(path) - 1):
+                            u_p, v_p = path[idx], path[idx + 1]
+                            edge_d = G_3d.get_edge_data(u_p, v_p, default={})
+                            if edge_d.get("is_fire_resistant", False):
+                                tau *= 0.05  # Yangın kapısı: %95 sızdırmazlık
+                            elif G_3d.nodes[v_p].get("room_type") in ("yangin_holu", "yangin_merdiveni"):
+                                tau *= 0.02  # Basınçlandırılmış yangın holü/merdiveni: %98 koruma
+                            else:
+                                tau *= 0.70  # Doğal seyrelme
+                        alpha = (v_dot_base / (area_n * self.ceiling_h)) * tau
+                    except Exception:
+                        alpha = 0.001
 
-            smoke_states[n] = SmokeZoneState(
-                node_id=n,
-                smoke_layer_height_m=round(layer_h, 2),
-                soot_density=round(min(1.0, 1.0 - (layer_h / self.ceiling_h)), 2),
-                is_tenable=is_protected or layer_h >= self.critical_smoke_h,
-                aset_sec=round(aset, 1),
-                rset_sec=round(rset, 1),
-                is_protected_zone=is_protected
-            )
+                rset = last_occupied[n]
+                layer_h = max(0.50, self.ceiling_h - alpha * rset)
+                aset = (self.ceiling_h - self.critical_smoke_h) / max(1e-5, alpha)
 
-        aset_compliant = aset_margin is None or aset_margin >= 0.0
+                if not is_protected and rset > 0.0 and (aset_margin is None or (aset - rset) < aset_margin):
+                    aset_margin = aset - rset
+                    critical_aset = aset
+
+                smoke_states[n] = SmokeZoneState(
+                    node_id=n,
+                    smoke_layer_height_m=round(layer_h, 2),
+                    soot_density=round(min(1.0, 1.0 - (layer_h / self.ceiling_h)), 2),
+                    is_tenable=is_protected or layer_h >= self.critical_smoke_h,
+                    aset_sec=round(aset, 1),
+                    rset_sec=round(rset, 1),
+                    is_protected_zone=is_protected
+                )
+            aset_compliant = aset_margin is None or aset_margin >= 0.0
+        else:
+            # Duman modeli varsayılan olarak KAPALI
+            aset_compliant = True
+            critical_aset = None
+            aset_margin = None
 
         # 6. Darboğazları Sırala
         bottlenecks: List[EdgeBottleneckRecord] = []
@@ -306,10 +357,13 @@ class Building3DEvacuationSimulator:
         bottlenecks.sort(key=lambda b: b.severity_score, reverse=True)
         crit_count = sum([1 for b in bottlenecks if b.is_critical])
 
+        # TÜBİTAK ilkesi: Duman modeli gösterim amaçlıdır; mevzuat uygunluk kararını ve ihlal sayısını değiştirmez.
+        is_compliant = (evacuation_completed and reported_t <= self.target_threshold and crit_count == 0)
+
         return BuildingEvacuationReport(
             total_evacuation_time_sec=round(reported_t, 1),
             target_threshold_sec=self.target_threshold,
-            is_compliance_achieved=(evacuation_completed and aset_compliant and reported_t <= self.target_threshold and crit_count == 0),
+            is_compliance_achieved=is_compliant,
             bottlenecks_ranked=bottlenecks,
             critical_bottleneck_count=crit_count,
             total_persons_evacuated=int(round(evacuated_float)),
@@ -323,53 +377,134 @@ class Building3DEvacuationSimulator:
             fire_origin_node=fire_n,
             critical_aset_sec=None if critical_aset is None else round(critical_aset, 1),
             aset_margin_sec=None if aset_margin is None else round(aset_margin, 1),
-            aset_compliant=aset_compliant
+            aset_compliant=aset_compliant,
+            smoke_model_active=self.enable_smoke_model,
+            smoke_model_label="gösterim amaçlı, doğrulanmamış" if self.enable_smoke_model else "devre dışı"
         )
 
 
 class CounterfactualEvacuationOptimizer:
     """
     Karşı-Olgusal (Counterfactual) Tasarım İyileştirme Motoru.
-    En çok geri-basınç üreten geçişi açgözlü biçimde iyileştirir, ardından sonucu kötüleştirmeden
-    çıkarılabilen adımları geriye dönük budamayla eler. Sonuç iyi bir reçetedir; en ucuz olduğu garanti edilmez.
+    Kombinatoryal patlamayı önlemek için aday limiti (max_candidates), simülasyon bütçesi (max_simulations),
+    marjinal fayda/maliyet oranına göre aday sıralama ve simülasyon önbelleği (cache) içerir.
+    Taşıyıcı elemanlarla çakışan kapı genişletme önerilerini reddeder.
     """
     def __init__(
         self,
         cost_door_per_cm: float = 1.0,
         cost_shaft_per_cm: float = 3.2,
         cost_area_per_m2: float = 12.0,
-        max_iterations: int = 8
+        max_iterations: int = 8,
+        max_candidates: int = 15,
+        max_simulations: int = 8
     ):
         self.c_door = cost_door_per_cm
         self.c_shaft = cost_shaft_per_cm
         self.c_area = cost_area_per_m2
         self.max_iter = max_iterations
+        self.max_candidates = max_candidates
+        self.max_sim = max_simulations
         self.sim = Building3DEvacuationSimulator()
+        self._sim_cache: Dict[Tuple, BuildingEvacuationReport] = {}
+        self._cache_hits: int = 0
+        self._sim_count: int = 0
+        self._budget_exhausted: bool = False
+
+    def _get_graph_state_key(self, G: nx.Graph) -> Tuple:
+        edges_key = tuple(sorted((u, v, round(float(d.get("door_width_cm", 90.0)), 1)) for u, v, d in G.edges(data=True)))
+        nodes_key = tuple(sorted((n, round(float(d.get("area_m2", 10.0)), 1)) for n, d in G.nodes(data=True)))
+        return (edges_key, nodes_key)
+
+    def _simulate_cached(self, G: nx.Graph) -> Optional[BuildingEvacuationReport]:
+        key = self._get_graph_state_key(G)
+        if key in self._sim_cache:
+            self._cache_hits += 1
+            return self._sim_cache[key]
+        if self._sim_count >= self.max_sim:
+            self._budget_exhausted = True
+            return None
+        self._sim_count += 1
+        rep = self.sim.simulate_evacuation(G)
+        self._sim_cache[key] = rep
+        return rep
+
+    def _check_structural_collision(
+        self,
+        G: nx.Graph,
+        edge: Tuple[Any, Any],
+        new_width_cm: float,
+        bottleneck: EdgeBottleneckRecord
+    ) -> Tuple[bool, str, Optional[str]]:
+        """
+        Genişletilmiş kapı poligonunu Shapely ile oluşturur.
+        Taşıyıcı elemanlarla kesişip kesişmediğini (intersects) kontrol eder.
+        Döner: (is_colliding, feasibility_status, rejection_reason)
+        """
+        has_str = G.graph.get("has_structural_layer", False)
+        structural_polys = G.graph.get("structural_polygons", [])
+
+        if not has_str or not structural_polys:
+            return False, "STATIK_KONTROL_YAPILMADI", "Taşıyıcı bilgisi yok, statik kontrol yapılmadı"
+
+        u, v = edge
+        edge_data = G.get_edge_data(u, v, default={})
+        geom = edge_data.get("geometry")
+
+        delta_m = (new_width_cm / 100.0)
+        from shapely.geometry import LineString, Point
+        if geom is not None and isinstance(geom, LineString) and len(geom.coords) >= 2:
+            widened_poly = geom.buffer(max(0.15, delta_m / 2.0))
+        elif bottleneck.spatial_coords:
+            cx, cy = bottleneck.spatial_coords
+            widened_poly = Point(cx, cy).buffer(delta_m / 2.0)
+        else:
+            pos_u = G.nodes[u].get("global_dxf_pos") or (0.0, 0.0)
+            pos_v = G.nodes[v].get("global_dxf_pos") or (0.0, 0.0)
+            mx, my = (pos_u[0] + pos_v[0]) / 2.0, (pos_u[1] + pos_v[1]) / 2.0
+            widened_poly = Point(mx, my).buffer(delta_m / 2.0)
+
+        for col_poly in structural_polys:
+            if widened_poly.intersects(col_poly):
+                return True, "RETTEDILDI_TASIYICI_CAKISMA", "uygulanamaz: taşıyıcı elemanla çakışıyor"
+
+        return False, "UYGULANABILIR", None
 
     def optimize_building_design(
         self,
         G_3d: nx.Graph,
         target_time_sec: float = 65.0
     ) -> CounterfactualOptimizationResult:
-        G_current = copy.deepcopy(G_3d)
-        baseline_report = self.sim.simulate_evacuation(G_current)
+        self._sim_cache = {}
+        self._cache_hits = 0
+        self._sim_count = 0
+        self._budget_exhausted = False
 
-        if baseline_report.is_compliance_achieved:
+        G_current = copy.deepcopy(G_3d)
+        baseline_report = self._simulate_cached(G_current)
+
+        if baseline_report is None or baseline_report.is_compliance_achieved:
+            t_base = baseline_report.total_evacuation_time_sec if baseline_report else 0.0
             return CounterfactualOptimizationResult(
-                baseline_evacuation_time_sec=baseline_report.total_evacuation_time_sec,
-                optimized_evacuation_time_sec=baseline_report.total_evacuation_time_sec,
+                baseline_evacuation_time_sec=t_base,
+                optimized_evacuation_time_sec=t_base,
                 time_savings_sec=0.0,
                 baseline_critical_bottlenecks=0,
                 optimized_critical_bottlenecks=0,
                 total_remodeling_cost=0.0,
                 intervention_steps=[],
-                optimized_building_graph=G_current
+                optimized_building_graph=G_current,
+                simulations_performed=self._sim_count,
+                budget_exhausted=self._budget_exhausted,
+                warning_message=None,
+                cache_hits=self._cache_hits
             )
 
         plan: List[Dict[str, Any]] = []
         for _ in range(self.max_iter):
-            rep = self.sim.simulate_evacuation(G_current)
-            # Kapı genişletmek, çıkışa yolu olmayan kişileri kurtaramaz; reçete önerilmez.
+            rep = self._simulate_cached(G_current)
+            if rep is None:
+                break
             if rep.trapped_persons > 0 or not rep.has_exit:
                 break
             if rep.total_evacuation_time_sec <= target_time_sec and rep.critical_bottleneck_count == 0:
@@ -377,28 +512,74 @@ class CounterfactualEvacuationOptimizer:
             if not rep.bottlenecks_ranked:
                 break
 
-            top_bn = rep.bottlenecks_ranked[0]
-            u, v = top_bn.edge
-            width = float(G_current[u][v].get("door_width_cm", 90.0))
-            item = {"kind": "door" if width < 159.9 else "area", "edge": (u, v), "bottleneck": top_bn}
-            plan.append(item)
-            self._apply_plan_item(G_current, item, step_id=len(plan))
+            # Adayları marjinal kazanç / maliyet oranına göre sırala
+            cands = rep.bottlenecks_ranked[:self.max_candidates]
+            ranked_items = []
+            for bn in cands:
+                u, v = bn.edge
+                is_vert = G_current[u][v].get("is_vertical", False)
+                width = float(G_current[u][v].get("door_width_cm", 90.0))
+                if width < 159.9:
+                    kind = "door"
+                    new_width = min(160.0, width + (30.0 if is_vert else 20.0))
+                    cost = (new_width - width) * (self.c_shaft if is_vert else self.c_door)
+                else:
+                    kind = "area"
+                    new_width = width
+                    cost = 2.5 * self.c_area
+                ratio = bn.severity_score / max(1.0, cost)
+                ranked_items.append((ratio, kind, bn, new_width, cost))
 
-        # Geriye Dönük Fazlalık Budaması: çıkarıldığında sonucu kötüleştirmeyen adımlar elenir.
-        full_rep = self.sim.simulate_evacuation(self._replay(G_3d, plan)[0])
+            ranked_items.sort(key=lambda x: x[0], reverse=True)
+
+            accepted_item = None
+            for ratio, kind, bn, new_width, cost in ranked_items:
+                u, v = bn.edge
+                feas_status = "UYGULANABILIR"
+                rej_reason = None
+                if kind == "door":
+                    is_colliding, feas_status, rej_reason = self._check_structural_collision(G_current, (u, v), new_width, bn)
+                    if is_colliding:
+                        continue
+                accepted_item = {
+                    "kind": kind,
+                    "edge": (u, v),
+                    "bottleneck": bn,
+                    "feasibility_status": feas_status,
+                    "rejection_reason": rej_reason
+                }
+                break
+
+            if accepted_item is None:
+                break
+
+            plan.append(accepted_item)
+            self._apply_plan_item(G_current, accepted_item, step_id=len(plan))
+
+        # Geriye Dönük Fazlalık Budaması
+        full_rep = self._simulate_cached(self._replay(G_3d, plan)[0])
         pruned_count = 0
-        for index in range(len(plan) - 1, -1, -1):
-            remaining = plan[:index] + plan[index + 1:]
-            trial = self.sim.simulate_evacuation(self._replay(G_3d, remaining)[0])
-            if (trial.total_evacuation_time_sec <= full_rep.total_evacuation_time_sec
+        if full_rep is not None and not self._budget_exhausted:
+            for index in range(len(plan) - 1, -1, -1):
+                if self._budget_exhausted:
+                    break
+                remaining = plan[:index] + plan[index + 1:]
+                trial = self._simulate_cached(self._replay(G_3d, remaining)[0])
+                if trial is not None and (
+                    trial.total_evacuation_time_sec <= full_rep.total_evacuation_time_sec
                     and trial.critical_bottleneck_count <= full_rep.critical_bottleneck_count
-                    and trial.is_compliance_achieved >= full_rep.is_compliance_achieved):
-                plan = remaining
-                pruned_count += 1
+                    and trial.is_compliance_achieved >= full_rep.is_compliance_achieved
+                ):
+                    plan = remaining
+                    pruned_count += 1
 
         G_current, steps = self._replay(G_3d, plan, measure_delta=True)
         total_cost = sum(step.cost_index for step in steps)
         final_rep = self.sim.simulate_evacuation(G_current)
+
+        warning_msg = None
+        if self._budget_exhausted:
+            warning_msg = f"Simülasyon bütçesi doldu ({self._sim_count} simülasyon). Mevcut en iyi çözüm döndürüldü."
 
         return CounterfactualOptimizationResult(
             baseline_evacuation_time_sec=baseline_report.total_evacuation_time_sec,
@@ -410,7 +591,11 @@ class CounterfactualEvacuationOptimizer:
             intervention_steps=steps,
             optimized_building_graph=G_current,
             baseline_trapped_persons=baseline_report.trapped_persons,
-            pruned_redundant_steps=pruned_count
+            pruned_redundant_steps=pruned_count,
+            simulations_performed=self._sim_count,
+            budget_exhausted=self._budget_exhausted,
+            warning_message=warning_msg,
+            cache_hits=self._cache_hits
         )
 
     def _apply_plan_item(self, G: nx.Graph, item: Dict[str, Any], step_id: int) -> DesignInterventionStep:
@@ -419,6 +604,8 @@ class CounterfactualEvacuationOptimizer:
         edge = G[u][v]
         is_vert = edge.get("is_vertical", False)
         width = float(edge.get("door_width_cm", 90.0))
+        feas = item.get("feasibility_status", "UYGULANABILIR")
+        rej = item.get("rejection_reason")
 
         if item["kind"] == "door":
             new_width = min(160.0, width + (30.0 if is_vert else 20.0))
@@ -435,7 +622,9 @@ class CounterfactualEvacuationOptimizer:
                 marginal_benefit_score=(50.0 + delta) / max(1.0, cost),
                 description_tr=f"{bottleneck.source_room_type} -> {bottleneck.target_room_type} geçiş genişliği {width:.0f} cm'den {new_width:.0f} cm'ye çıkarıldı.",
                 floor_level=bottleneck.floor_level,
-                spatial_coords=bottleneck.spatial_coords
+                spatial_coords=bottleneck.spatial_coords,
+                feasibility_status=feas,
+                rejection_reason=rej
             )
 
         area = float(G.nodes[v].get("area_m2", 5.0))
@@ -452,7 +641,9 @@ class CounterfactualEvacuationOptimizer:
             marginal_benefit_score=40.0 / max(1.0, cost),
             description_tr=f"{G.nodes[v].get('room_type', 'Hol')} alanı {area:.1f} m²'den {new_area:.1f} m²'ye büyütüldü.",
             floor_level=G.nodes[v].get("floor_level", 0),
-            spatial_coords=bottleneck.spatial_coords
+            spatial_coords=bottleneck.spatial_coords,
+            feasibility_status=feas,
+            rejection_reason=rej
         )
 
     def _replay(self, G_base: nx.Graph, plan: List[Dict[str, Any]], measure_delta: bool = False) -> Tuple[nx.Graph, List[DesignInterventionStep]]:

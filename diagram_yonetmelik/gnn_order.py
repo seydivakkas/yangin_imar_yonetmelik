@@ -44,6 +44,28 @@ def compute_rwpe(edge_index: torch.Tensor, num_nodes: int, walk_steps: int = 6) 
     return torch.cat(rwpe_list, dim=1)  # [num_nodes, walk_steps]
 
 
+def compute_node_cycle_features(G: nx.Graph, nodes: List[Any]) -> List[float]:
+    """
+    Düğüm başına döngü katılım özelliği:
+    Düğümün içinde bulunduğu en kısa döngü uzunluğu (networkx.minimum_cycle_basis ile).
+    Döngüye katılmıyorsa 0.0 döner.
+    """
+    node_min_cycle = {n: 0.0 for n in nodes}
+    try:
+        cycles = nx.minimum_cycle_basis(G)
+        for cycle in cycles:
+            c_len = float(len(cycle))
+            for n in cycle:
+                if n in node_min_cycle:
+                    curr = node_min_cycle[n]
+                    if curr == 0.0 or c_len < curr:
+                        node_min_cycle[n] = c_len
+    except Exception:
+        pass
+    return [node_min_cycle[n] for n in nodes]
+
+
+
 # =====================================================================
 # 2. İHLAL ENERJİSİ (VIOLATION ENERGY) VE MAX-MARGIN LOSS
 # =====================================================================
@@ -111,11 +133,20 @@ class SpatialOrderGNN(nn.Module):
         rwpe_dim: int = RWPE_DIM,
         hidden_dim: int = 64,
         emb_dim: int = 64,
-        num_layers: int = 3
+        num_layers: int = 3,
+        use_cycle_feature: bool = False
     ):
         super().__init__()
-        # Girdi: [Oda tipi || RWPE || Çapa biti]. Sayısal mevzuat eşikleri bilinçli olarak girdi değildir.
-        total_in_dim = node_in_dim + rwpe_dim + 1
+        self.node_in_dim = node_in_dim
+        self.edge_in_dim = edge_in_dim
+        self.rwpe_dim = rwpe_dim
+        self.hidden_dim = hidden_dim
+        self.emb_dim = emb_dim
+        self.num_layers = num_layers
+        self.use_cycle_feature = use_cycle_feature
+
+        # Girdi: [Oda tipi || RWPE || Çapa biti || (Opsiyonel Döngü Katılım)].
+        total_in_dim = node_in_dim + rwpe_dim + 1 + (1 if use_cycle_feature else 0)
 
         self.node_proj = nn.Linear(total_in_dim, hidden_dim)
         self.edge_proj = nn.Linear(edge_in_dim, hidden_dim)
@@ -185,7 +216,8 @@ class SpatialOrderGNN(nn.Module):
         self,
         G: nx.Graph,
         anchor_node: Optional[int] = None,
-        walk_steps: int = 6
+        walk_steps: Optional[int] = None,
+        use_cycle_feature: Optional[bool] = None
     ) -> torch.Tensor:
         """
         NetworkX altgrafını alır; SpatialOrderGNN üzerinden tekil
@@ -198,7 +230,10 @@ class SpatialOrderGNN(nn.Module):
         if anchor_node is None or anchor_node not in G:
             anchor_node = list(G.nodes())[0]
 
-        data = nx_subgraph_to_pyg_data(G, anchor_node=anchor_node, walk_steps=walk_steps)
+        m = walk_steps if walk_steps is not None else self.rwpe_dim
+        use_cyc = use_cycle_feature if use_cycle_feature is not None else self.use_cycle_feature
+
+        data = nx_subgraph_to_pyg_data(G, anchor_node=anchor_node, walk_steps=m, use_cycle_feature=use_cyc)
         dev = next(self.parameters()).device
         self.eval()
         with torch.no_grad():
@@ -222,18 +257,27 @@ class SpatialOrderGNN(nn.Module):
         torch.save(self.state_dict(), path)
 
     def load_weights(self, path: str) -> bool:
-        """Kayıtlı model ağırlıklarını yükler."""
-        if os.path.exists(path):
-            try:
-                dev = next(self.parameters()).device
-                state = torch.load(path, map_location=dev, weights_only=True)
-                self.load_state_dict(state)
-                self.eval()
-                return True
-            except Exception as e:
-                print(f"[SpatialOrderGNN] Ağırlık yüklenemedi ({path}): {e}")
-                return False
-        return False
+        """
+        Kayıtlı model ağırlıklarını yükler.
+        Boyut uyuşmazlığı durumunda sessizce rastgele ağırlığa düşmez, açık ValueError fırlatır.
+        """
+        if not os.path.exists(path):
+            return False
+
+        dev = next(self.parameters()).device
+        state = torch.load(path, map_location=dev, weights_only=True)
+        if "node_proj.weight" in state:
+            loaded_in_features = state["node_proj.weight"].shape[1]
+            expected_in_features = self.node_proj.in_features
+            if loaded_in_features != expected_in_features:
+                raise ValueError(
+                    f"[SpatialOrderGNN] Ağırlık boyut uyuşmazlığı ({path}): "
+                    f"Model girdi boyutu {expected_in_features} (rwpe_dim={self.rwpe_dim}, use_cycle_feature={self.use_cycle_feature}), "
+                    f"ancak dosyadaki ağırlık boyutu {loaded_in_features}. Sessizce rastgele ağırlığa düşülemez."
+                )
+        self.load_state_dict(state)
+        self.eval()
+        return True
 
 
 # =====================================================================
@@ -242,7 +286,8 @@ class SpatialOrderGNN(nn.Module):
 def nx_subgraph_to_pyg_data(
     subgraph: nx.Graph,
     anchor_node: int,
-    walk_steps: int = 6
+    walk_steps: int = 6,
+    use_cycle_feature: bool = False
 ) -> Any:
     nodes = list(subgraph.nodes())
     node_to_idx = {n: i for i, n in enumerate(nodes)}
@@ -276,9 +321,15 @@ def nx_subgraph_to_pyg_data(
         edge_index = torch.empty((2, 0), dtype=torch.long)
         edge_attr = torch.empty((0, 2), dtype=torch.float32)
 
-    # 3. RWPE ve çapa biti
+    # 3. RWPE ve çapa biti ve opsiyonel döngü katılım özelliği
     rwpe = compute_rwpe(edge_index, num_nodes, walk_steps=walk_steps)
-    full_x = torch.cat([type_tensor, rwpe, anchor_mask.float().unsqueeze(1)], dim=-1)
+    feature_blocks = [type_tensor, rwpe, anchor_mask.float().unsqueeze(1)]
+    if use_cycle_feature:
+        cycle_lens = compute_node_cycle_features(subgraph, nodes)
+        cycle_tensor = torch.tensor(cycle_lens, dtype=torch.float32).unsqueeze(1)
+        feature_blocks.append(cycle_tensor)
+
+    full_x = torch.cat(feature_blocks, dim=-1)
 
     if PYG_AVAILABLE:
         return Data(

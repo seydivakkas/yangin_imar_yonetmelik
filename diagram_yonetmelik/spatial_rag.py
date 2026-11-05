@@ -124,7 +124,9 @@ class FloorplanToRAGExtractor:
                 flight_width_m=1.20,
                 stair_riser_cm=17.0,
                 stair_tread_cm=28.0,
-                parapet_height_m=1.20
+                parapet_height_m=1.20,
+                label_source=getattr(r, "label_source", "belirsiz"),
+                label_confidence=getattr(r, "label_confidence", 0.0)
             )
 
         # STRtree ile Kapı Eşleşmesi

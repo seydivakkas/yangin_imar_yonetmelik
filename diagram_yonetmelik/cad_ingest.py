@@ -1,3 +1,5 @@
+import os
+import json
 import re
 import math
 from typing import Dict, List, Tuple, Optional, Any
@@ -8,6 +10,13 @@ from shapely.geometry import Polygon, LineString, Point, MultiPolygon
 from shapely.strtree import STRtree
 from shapely.ops import unary_union, polygonize
 
+try:
+    from rapidfuzz import fuzz
+    RAPIDFUZZ_AVAILABLE = True
+except ImportError:
+    import difflib
+    RAPIDFUZZ_AVAILABLE = False
+
 from diagram_yonetmelik.schemas import RoomPolygonInput, DoorGeometryInput
 
 
@@ -16,8 +25,8 @@ from diagram_yonetmelik.schemas import RoomPolygonInput, DoorGeometryInput
 # =====================================================================
 class TurkishArchitecturalLabelClassifier:
     """
-    AutoCAD metinlerini temizler ve Türk Yangın/İmar mevzuatına uygun standart
-    mekan ve kapı etiketlerine sınıflandırır.
+    AutoCAD metinlerini temizler, Türkçe mimari kısaltma sözlüğü ve bulanık eşleştirmeyle
+    Türk Yangın/İmar mevzuatına uygun standart mekan ve kapı etiketlerine sınıflandırır.
     """
     RULES: List[Tuple[str, List[str]]] = [
         ("teknik_saft",      ["menfez", "baca", "saft", "tesisat"]),
@@ -42,29 +51,110 @@ class TurkishArchitecturalLabelClassifier:
 
     FIRE_KEYWORDS = ["yangin", "fire", "ei30", "ei60", "ei90", "ei120", "yk", "fhc", "duman sizdirmaz", "sizdirmaz"]
 
+    _ABBREVIATIONS: Optional[Dict[str, str]] = None
+
+    @classmethod
+    def _load_abbreviations(cls, path: str = "data/architectural_abbreviations.json") -> Dict[str, str]:
+        if cls._ABBREVIATIONS is None:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        cls._ABBREVIATIONS = json.load(f)
+                except Exception:
+                    cls._ABBREVIATIONS = {}
+            else:
+                cls._ABBREVIATIONS = {}
+        return cls._ABBREVIATIONS
+
     @staticmethod
     def normalize_turkish(text: str) -> str:
-        tr_map = str.maketrans("ÇĞİÖŞÜçğıöşü", "CGIOSUcgiosu")
+        # Türkçe karakter dönüşümü (İ/ı, Ş/ş, Ğ/ğ, Ü/ü, Ö/ö, Ç/ç)
+        tr_map = str.maketrans({
+            "Ç": "c", "ç": "c",
+            "Ğ": "g", "ğ": "g",
+            "İ": "i", "I": "i", "ı": "i", "i": "i",
+            "Ö": "o", "ö": "o",
+            "Ş": "s", "ş": "s",
+            "Ü": "u", "ü": "u",
+        })
         cleaned = text.translate(tr_map).lower()
+        # Noktalama işaretlerini boşluğa dönüştür, ancak kısaltma noktalarını (. karakterini) koru
         cleaned = re.sub(r"[^a-z0-9\s\.]", " ", cleaned)
         return re.sub(r"\s+", " ", cleaned).strip()
 
     @classmethod
-    def classify_room_type(cls, raw_text: str, aspect_ratio: float = 1.0, area_m2: float = 15.0) -> str:
+    def classify_room_details(
+        cls,
+        raw_text: str,
+        aspect_ratio: float = 1.0,
+        area_m2: float = 15.0,
+        fuzzy_threshold: float = 0.70,
+        abbreviations_path: str = "data/architectural_abbreviations.json"
+    ) -> Tuple[str, str, float]:
+        """
+        Mekân etiketini hiyerarşik olarak tanır:
+        1. Türkçe Kısaltma Sözlüğü (label_source: 'sozluk')
+        2. Kural Anahtar Kelimeleri (label_source: 'sozluk')
+        3. Bulanık Eşleştirme (RapidFuzz / difflib) (label_source: 'bulanik')
+        4. Geometrik Yedek Kurallar (label_source: 'geometri')
+        5. Tanımlanamayan / Eşik Altı (label_source: 'belirsiz', room_type: 'belirsiz')
+        """
         norm = cls.normalize_turkish(raw_text)
-        for canonical_type, keywords in cls.RULES:
-            for kw in keywords:
-                if kw in norm:
-                    return canonical_type
+        abbrevs = cls._load_abbreviations(abbreviations_path)
 
-        # Metin boşsa veya eşleşmediyse geometrik heuristikler
-        if aspect_ratio >= 3.5 and area_m2 >= 10.0:
-            return "kat_koridoru"
-        if area_m2 < 7.0:
-            return "banyo_wc"
-        if area_m2 >= 24.0:
-            return "salon"
-        return "oda"
+        # 1. Sözlük Tam ve Alt-Dize Eşleşmesi
+        if norm:
+            if norm in abbrevs:
+                return abbrevs[norm], "sozluk", 1.0
+            # Noktasız hali de kontrol et
+            no_dots = norm.replace(".", "").strip()
+            if no_dots in abbrevs:
+                return abbrevs[no_dots], "sozluk", 1.0
+
+            # Kural tablosu kontrolü
+            for canonical_type, keywords in cls.RULES:
+                for kw in keywords:
+                    if kw in norm:
+                        return canonical_type, "sozluk", 0.95
+
+            # 2. Bulanık Eşleştirme (Fuzzy Matching)
+            best_score = 0.0
+            best_type = None
+
+            # Sözlük anahtarları ve kural anahtar kelimeleriyle karşılaştır
+            targets = list(abbrevs.items()) + [(kw, ctype) for ctype, kws in cls.RULES for kw in kws]
+            for phrase, ctype in targets:
+                if RAPIDFUZZ_AVAILABLE:
+                    score = fuzz.token_sort_ratio(norm, phrase) / 100.0
+                else:
+                    score = difflib.SequenceMatcher(None, norm, phrase).ratio()
+
+                if score > best_score:
+                    best_score = score
+                    best_type = ctype
+
+            if best_type and best_score >= fuzzy_threshold:
+                return best_type, "bulanik", round(best_score, 2)
+
+        # 3. Geometriye Dayalı Yedek Kurallar (Alan, En-Boy Oranı)
+        if aspect_ratio >= 3.5 and area_m2 >= 8.0:
+            return "kat_koridoru", "geometri", 0.75
+        if area_m2 < 5.0 and aspect_ratio < 2.0:
+            return "banyo_wc", "geometri", 0.70
+        if area_m2 >= 26.0 and aspect_ratio < 2.5:
+            return "salon", "geometri", 0.65
+
+        # 4. Sonuç tahmin edilemiyorsa mekânı "belirsiz" olarak işaretle; tahmin uydurma.
+        return "belirsiz", "belirsiz", 0.0
+
+    @classmethod
+    def classify_room_type(cls, raw_text: str, aspect_ratio: float = 1.0, area_m2: float = 15.0) -> str:
+        """Geriye dönük uyumluluk: oda tipi stringi döner."""
+        rtype, _, _ = cls.classify_room_details(raw_text, aspect_ratio=aspect_ratio, area_m2=area_m2)
+        if rtype == "belirsiz":
+            # Eski kod ve testlerin kırılmaması için varsayılan oda kabulü
+            return "oda"
+        return rtype
 
     @classmethod
     def classify_door_attributes(cls, layer_name: str, block_name: str, text_attrib: str) -> Tuple[bool, Optional[float]]:
@@ -148,22 +238,85 @@ class DXFFloorplanParser:
     """
     AutoCAD DXF dosyasını okur; birim ölçekleme, LWPOLYLINE bulge eğrileri,
     INSERT kapı blokları ve LINE Soup fallback mantığıyla geometrileri ayrıştırır.
+    Taşıyıcı katman desteği ve Türkçe mimari mekan etiketi sınıflandırması içerir.
     """
+    DEFAULT_STRUCTURAL_LAYERS = ["A-COLS", "S-COLS", "S-COLM", "S-WALL", "A-WALL-STRC", "KOLON", "PERDE"]
+
     def __init__(self, target_unit: str = "m"):
         self.target_unit = target_unit
         self.classifier = TurkishArchitecturalLabelClassifier()
         self.polygonizer = WallLinePolygonizer()
+        self.last_structural_polygons: List[Polygon] = []
+        self.has_structural_layer: bool = False
+
+    def extract_structural_elements(
+        self,
+        dxf_doc: Drawing,
+        structural_layers: Optional[List[str]] = None,
+        scale: float = 1.0
+    ) -> Tuple[List[Polygon], bool]:
+        """
+        DXF model alanındaki kolon, perde ve taşıyıcı duvarları ayrıştırır.
+        Taşıyıcı katman yoksa ([], False) döner.
+        """
+        if structural_layers is None:
+            structural_layers = self.DEFAULT_STRUCTURAL_LAYERS
+        norm_layers = {layer.lower() for layer in structural_layers}
+        msp = dxf_doc.modelspace()
+
+        found_any = False
+        for entity in msp:
+            layer = getattr(entity.dxf, 'layer', '').lower()
+            if layer in norm_layers:
+                found_any = True
+                break
+
+        if not found_any:
+            return [], False
+
+        structural_polys = []
+        for polyline in msp.query('LWPOLYLINE'):
+            layer = getattr(polyline.dxf, 'layer', '').lower()
+            if layer in norm_layers and len(polyline) >= 3:
+                pts = [(round(float(p[0]) * scale, 6), round(float(p[1]) * scale, 6)) for p in polyline.get_points('xy')]
+                poly = Polygon(pts)
+                if poly.is_valid and poly.area > 0.01:
+                    structural_polys.append(poly)
+
+        for line in msp.query('LINE'):
+            layer = getattr(line.dxf, 'layer', '').lower()
+            if layer in norm_layers:
+                start = (line.dxf.start.x * scale, line.dxf.start.y * scale)
+                end = (line.dxf.end.x * scale, line.dxf.end.y * scale)
+                str_poly = LineString([start, end]).buffer(0.15)
+                if str_poly.is_valid and str_poly.area > 0.01:
+                    structural_polys.append(str_poly)
+
+        for insert in msp.query('INSERT'):
+            layer = getattr(insert.dxf, 'layer', '').lower()
+            if layer in norm_layers:
+                pos = (insert.dxf.insert.x * scale, insert.dxf.insert.y * scale)
+                box = Point(pos).buffer(0.25, cap_style=3)
+                structural_polys.append(box)
+
+        return structural_polys, True
 
     def parse_dxf_document(
         self,
         dxf_doc: Drawing,
-        default_scale_to_m: float = 0.01
+        default_scale_to_m: float = 0.01,
+        structural_layers: Optional[List[str]] = None
     ) -> Tuple[List[RoomPolygonInput], List[DoorGeometryInput], float]:
         """
         Dökümanı tarar. Kapalı poligon sayısı < 2 ise otomatik Line Soup moduna geçer.
         """
         msp = dxf_doc.modelspace()
         scale = self._detect_unit_scale(dxf_doc, default_scale_to_m)
+
+        # 0. Taşıyıcı Elemanları Çıkar
+        str_polys, has_str = self.extract_structural_elements(dxf_doc, structural_layers=structural_layers, scale=scale)
+        self.last_structural_polygons = str_polys
+        self.has_structural_layer = has_str
 
         # 1. Kapıları Çıkar
         doors: List[DoorGeometryInput] = []
@@ -267,14 +420,16 @@ class DXFFloorplanParser:
             area_m2 = poly.area * (scale ** 2)
             bounds = poly.bounds
             aspect_ratio = max(bounds[2] - bounds[0], bounds[3] - bounds[1]) / max(1e-4, min(bounds[2] - bounds[0], bounds[3] - bounds[1]))
-            room_type = self.classifier.classify_room_type(label, aspect_ratio=aspect_ratio, area_m2=area_m2)
+            room_type, source, conf = self.classifier.classify_room_details(label, aspect_ratio=aspect_ratio, area_m2=area_m2)
 
             rooms.append(RoomPolygonInput(
                 room_id=room_id,
                 room_type=room_type,
                 polygon=poly,
                 name_label=label,
-                global_dxf_pos=(float(centroid.x), float(centroid.y))
+                global_dxf_pos=(float(centroid.x), float(centroid.y)),
+                label_source=source,
+                label_confidence=conf
             ))
 
         return rooms, doors, scale

@@ -1,0 +1,52 @@
+{
+  "benchmark": "Makro Düğüm Varış Profilli Tahliye Doğrulama Testi",
+  "description": "Tam graf ile sıkıştırılmış graf + zamana yayılmış varış profili tahliye sürelerinin karşılaştırılması.",
+  "mean_difference_pct": 17.43,
+  "results": [
+    {
+      "building_name": "Bina 1 (1 Kat, 2 Daire)",
+      "full_graph_time_sec": 33.0,
+      "coarsened_graph_time_sec": 45.5,
+      "difference_pct": 37.88,
+      "threshold_pct": 10.0,
+      "is_simulation_blocked": true,
+      "warning_message": "Sıkıştırma tahliye süresi farkı (%37.9) izin verilen %10.0 eşiğini aştı (Tam: 33.0 sn, Sıkıştırılmış: 45.5 sn). Sıkıştırmanın simülasyon girdisi olarak kullanılması engellendi."
+    },
+    {
+      "building_name": "Bina 2 (2 Kat, 4 Daire)",
+      "full_graph_time_sec": 45.0,
+      "coarsened_graph_time_sec": 55.0,
+      "difference_pct": 22.22,
+      "threshold_pct": 10.0,
+      "is_simulation_blocked": true,
+      "warning_message": "Sıkıştırma tahliye süresi farkı (%22.2) izin verilen %10.0 eşiğini aştı (Tam: 45.0 sn, Sıkıştırılmış: 55.0 sn). Sıkıştırmanın simülasyon girdisi olarak kullanılması engellendi."
+    },
+    {
+      "building_name": "Bina 3 (4 Kat, 8 Daire)",
+      "full_graph_time_sec": 84.5,
+      "coarsened_graph_time_sec": 86.5,
+      "difference_pct": 2.37,
+      "threshold_pct": 10.0,
+      "is_simulation_blocked": false,
+      "warning_message": null
+    },
+    {
+      "building_name": "Bina 4 (8 Kat, 16 Daire)",
+      "full_graph_time_sec": 174.5,
+      "coarsened_graph_time_sec": 156.5,
+      "difference_pct": 10.32,
+      "threshold_pct": 10.0,
+      "is_simulation_blocked": true,
+      "warning_message": "Sıkıştırma tahliye süresi farkı (%10.3) izin verilen %10.0 eşiğini aştı (Tam: 174.5 sn, Sıkıştırılmış: 156.5 sn). Sıkıştırmanın simülasyon girdisi olarak kullanılması engellendi."
+    },
+    {
+      "building_name": "Bina 5 (12 Kat, 24 Daire)",
+      "full_graph_time_sec": 264.5,
+      "coarsened_graph_time_sec": 226.5,
+      "difference_pct": 14.37,
+      "threshold_pct": 10.0,
+      "is_simulation_blocked": true,
+      "warning_message": "Sıkıştırma tahliye süresi farkı (%14.4) izin verilen %10.0 eşiğini aştı (Tam: 264.5 sn, Sıkıştırılmış: 226.5 sn). Sıkıştırmanın simülasyon girdisi olarak kullanılması engellendi."
+    }
+  ]
+}

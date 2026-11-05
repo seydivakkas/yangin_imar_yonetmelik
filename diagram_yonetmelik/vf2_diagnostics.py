@@ -64,7 +64,9 @@ class ExplainableVF2Analyzer:
         self,
         query_pattern: nx.Graph,
         target_subgraph: nx.Graph,
-        anchor_node_id: int
+        anchor_node_id: int,
+        prune_with_gnn: bool = False,
+        gnn_pruning_threshold: float = 0.40
     ) -> CandidateDiagnosticReport:
         # Sorgu çapasını belirle
         query_anchor = None
@@ -76,7 +78,7 @@ class ExplainableVF2Analyzer:
             query_anchor = list(query_pattern.nodes())[0]
 
         # -------------------------------------------------------------
-        # YALNIZCA ÖLÇÜM: GNN enerjisi kaydedilir, adayı hiçbir zaman elemez
+        # YALNIZCA ÖLÇÜM / İSTEĞE BAĞLI ÖN ELEME: GNN enerjisi
         # -------------------------------------------------------------
         gnn_energy_val: Optional[float] = None
         if self.gnn is not None:
@@ -97,10 +99,18 @@ class ExplainableVF2Analyzer:
             except Exception:
                 gnn_energy_val = None
 
-        # -------------------------------------------------------------
-        # 0. TAM MONOMORFİZM DENETİMİ (%100 UYGUNLUK)
-        # -------------------------------------------------------------
-        full_match, mapping = self._run_strict_vf2(query_pattern, target_subgraph, query_anchor, anchor_node_id)
+        is_pruned = False
+        if prune_with_gnn and gnn_energy_val is not None and gnn_energy_val > gnn_pruning_threshold:
+            # GNN ön elemesi: Monomorfizm sağlanamaz, sıkı VF2 araması atlanır
+            full_match = False
+            mapping = {}
+            is_pruned = True
+        else:
+            # -------------------------------------------------------------
+            # 0. TAM MONOMORFİZM DENETİMİ (TAM UYGUNLUK)
+            # -------------------------------------------------------------
+            full_match, mapping = self._run_strict_vf2(query_pattern, target_subgraph, query_anchor, anchor_node_id)
+
         if full_match:
             return CandidateDiagnosticReport(
                 anchor_node_id=anchor_node_id,
@@ -110,15 +120,29 @@ class ExplainableVF2Analyzer:
                 violations=[],
                 partial_node_mapping=mapping,
                 summary_message="Kaçış çekirdeği sorgudaki topolojik ve geometrik koşulları karşıladı.",
-                gnn_energy=gnn_energy_val
+                gnn_energy=gnn_energy_val,
+                is_pruned_by_gnn=False
             )
+
+        # Belirsiz etiket kontrolü
+        has_uncertain_label = any(
+            target_subgraph.nodes[n].get("label_source") == "belirsiz"
+            for n in target_subgraph.nodes()
+        )
+
+        def _tag_uncertain(v_list: List[RuleViolationItem]):
+            if has_uncertain_label:
+                for v in v_list:
+                    if "etiket belirsiz, uzman kontrolü gerekli" not in v.description_tr:
+                        v.description_tr = f"{v.description_tr} (etiket belirsiz, uzman kontrolü gerekli)"
+            return v_list
 
         # -------------------------------------------------------------
         # AŞAMA 1: PARAMETRİK GEVŞETME (Topoloji ve Tipler Tam, Ölçüler Kusurlu)
         # -------------------------------------------------------------
         stage1_match, stage1_mapping = self._run_topology_and_types_vf2(query_pattern, target_subgraph, query_anchor, anchor_node_id)
         if stage1_match:
-            violations = self._audit_parametric_violations(query_pattern, target_subgraph, stage1_mapping)
+            violations = _tag_uncertain(self._audit_parametric_violations(query_pattern, target_subgraph, stage1_mapping))
             return CandidateDiagnosticReport(
                 anchor_node_id=anchor_node_id,
                 target_subgraph_nodes=list(target_subgraph.nodes()),
@@ -127,7 +151,8 @@ class ExplainableVF2Analyzer:
                 violations=violations,
                 partial_node_mapping=stage1_mapping,
                 summary_message=f"Topolojik bağlantı tam fakat {len(violations)} adet parametrik kusur tespit edildi.",
-                gnn_energy=gnn_energy_val
+                gnn_energy=gnn_energy_val,
+                is_pruned_by_gnn=is_pruned
             )
 
         # -------------------------------------------------------------
@@ -135,7 +160,7 @@ class ExplainableVF2Analyzer:
         # -------------------------------------------------------------
         stage2_match, stage2_mapping = self._run_skeleton_only_vf2(query_pattern, target_subgraph, query_anchor, anchor_node_id)
         if stage2_match:
-            violations = self._audit_role_violations(query_pattern, target_subgraph, stage2_mapping)
+            violations = _tag_uncertain(self._audit_role_violations(query_pattern, target_subgraph, stage2_mapping))
             return CandidateDiagnosticReport(
                 anchor_node_id=anchor_node_id,
                 target_subgraph_nodes=list(target_subgraph.nodes()),
@@ -144,13 +169,15 @@ class ExplainableVF2Analyzer:
                 violations=violations,
                 partial_node_mapping=stage2_mapping,
                 summary_message=f"Mekan fonksiyon uyuşmazlığı: Şablon iskeleti bulundu ancak {len(violations)} odanın tipi hatalı.",
-                gnn_energy=gnn_energy_val
+                gnn_energy=gnn_energy_val,
+                is_pruned_by_gnn=is_pruned
             )
 
         # -------------------------------------------------------------
         # AŞAMA 3: KISMİ HİZALAMA (BFS İle Kopuk Kapı / Eksik Mekan Tespiti)
         # -------------------------------------------------------------
         violations, partial_map = self._run_partial_bfs_alignment(query_pattern, target_subgraph, query_anchor, anchor_node_id)
+        violations = _tag_uncertain(violations)
         return CandidateDiagnosticReport(
             anchor_node_id=anchor_node_id,
             target_subgraph_nodes=list(target_subgraph.nodes()),
@@ -159,7 +186,8 @@ class ExplainableVF2Analyzer:
             violations=violations,
             partial_node_mapping=partial_map,
             summary_message="Ağır topolojik kusur: Zorunlu kapı bağlantısı veya mekan kat planında mevcut değil.",
-            gnn_energy=gnn_energy_val
+            gnn_energy=gnn_energy_val,
+            is_pruned_by_gnn=is_pruned
         )
 
     def _hall_limits(self, G: nx.Graph, hall_node: Any) -> Tuple[float, float]:

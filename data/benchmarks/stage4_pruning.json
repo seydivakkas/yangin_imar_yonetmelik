@@ -1,0 +1,57 @@
+{
+  "benchmark": "Aşama 4 VF2 Yangın Çekirdeği Denetimi Süre Ölçümü",
+  "description": "3 farklı bina boyutunda (küçük, orta, büyük) budamalı ve budamasız gerçek çalışma süreleri.",
+  "results": [
+    {
+      "building_scale": "Kucuk Bina (1 Kat, 8 Düğüm)",
+      "total_nodes": 8,
+      "total_edges": 7,
+      "unpruned": {
+        "time_ms": 1.01,
+        "candidates_evaluated": 1,
+        "verified_cores": 1
+      },
+      "pruned": {
+        "time_ms": 20.01,
+        "candidates_evaluated": 1,
+        "pruned_candidates": 0,
+        "verified_cores": 1
+      },
+      "speedup_ratio": 0.05
+    },
+    {
+      "building_scale": "Orta Bina (4 Kat, 44 Düğüm)",
+      "total_nodes": 45,
+      "total_edges": 44,
+      "unpruned": {
+        "time_ms": 1.98,
+        "candidates_evaluated": 4,
+        "verified_cores": 4
+      },
+      "pruned": {
+        "time_ms": 25.38,
+        "candidates_evaluated": 4,
+        "pruned_candidates": 0,
+        "verified_cores": 4
+      },
+      "speedup_ratio": 0.08
+    },
+    {
+      "building_scale": "Buyuk Bina (10 Kat, 110 Düğüm)",
+      "total_nodes": 111,
+      "total_edges": 110,
+      "unpruned": {
+        "time_ms": 3.7,
+        "candidates_evaluated": 10,
+        "verified_cores": 10
+      },
+      "pruned": {
+        "time_ms": 60.94,
+        "candidates_evaluated": 10,
+        "pruned_candidates": 0,
+        "verified_cores": 10
+      },
+      "speedup_ratio": 0.06
+    }
+  ]
+}
