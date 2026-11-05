@@ -189,7 +189,7 @@ Platformumuzda denetlenen ve arayüzde dinamik kontrol listesi ([FireChecklistPa
 
 ## 6. Kullanılan Matematiksel ve Mühendislik Yöntemleri
 
-1. **Topolojik Graf Çıkarımı (Graph RAG):** Mimari mekânlar düğümlere ($V$), aralarındaki kapı veya koridor geçişleri kenarlara ($E$) dönüştürülür. Çıkış kapısı olmayan izole odalar $O(1)$ karmaşıklığında tespit edilir.
+1. **Topolojik Graf Çıkarımı (Graph RAG):** Mimari mekânlar düğümlere ($V$), aralarındaki kapı veya koridor geçişleri kenarlara ($E$) dönüştürülür. Çıkış kapısı olmayan izole odalar tespit edilir.
 2. **Geodezik Mesafe ve En Kısa Yol (Dijkstra / NetworkX):** Kaçış mesafeleri kuş uçuşu değil, duvar poligonları arasından geçen gerçek yürüyüş hattı ağırlıkları ile hesaplanır.
 3. **Mekânsal Köşegen Ayrımı (Bounding Box Diagonal):** Katın tüm oda poligonlarının dış sınır kutusu hesaplanır:
    $$D = \sqrt{(X_{\max} - X_{\min})^2 + (Y_{\max} - Y_{\min})^2}$$
@@ -210,543 +210,25 @@ Platformumuzda denetlenen ve arayüzde dinamik kontrol listesi ([FireChecklistPa
 
 ---
 
-## 8. Nöro-Sembolik Mekânsal Graf Mimarisi (RAG, SPMiner, Order Embedding & NeuroMatch)
+## 8. GNN ile aday eleme ve yapısal denetim
 
-Klasik kural tabanlı sistemler mimari projeleri yalnızca düz if-else kontrolleriyle denetlemeye çalıştıklarında, mekânın **topolojik bütünlüğünü**, **dolaşım hiyerarşisini** ve **tekrar eden modüler örüntülerini** kavrayamazlar. **DiagramYönetmelik**, bu kısıtı aşmak amacıyla mimari kat planlarını **Bölge Komşuluk Graflarına (Region Adjacency Graph - RAG)** dönüştürür; **PyTorch Geometric (PyG)**, **Order Embedding (Kısmi Sıralama Gömmesi)**, **1-WL sınırını aşan yapısal kodlamalar** ve **Hibrit Budamalı VF2 Teşhis Hunisini** birleştiren öncü bir nöro-sembolik mimari işletir.
+### Bina düzeyinde eğitim, kalibrasyon ve test
 
-```
-                      ┌──────────────────────────────────────────┐
-                      │ 2B CAD DXF / Kat Planı Poligon Sınırları │
-                      └─────────────────────┬────────────────────┘
-                                            │
-                                            ▼
-                      ┌──────────────────────────────────────────┐
-                      │    Bölge Komşuluk Grafı (RAG) Çıkarımı   │
-                      │  Düğümler (V): Mekanlar | Kenarlar (E):   │
-                      │  Kapılar, Geçişler, Geodezik Mesafeler   │
-                      └─────────────────────┬────────────────────┘
-                                            │
-                 ┌──────────────────────────┴──────────────────────────┐
-                 ▼                                                     ▼
-   ┌───────────────────────────┐                         ┌───────────────────────────┐
-   │    SPMiner Modülü         │                         │   NeuroMatch + VF2        │
-   │  (Sık Altgraf Keşfi)      │                         │ (Yönetmelik Doğrulama)    │
-   │                           │                         │                           │
-   │ • Order Space Greedy Büyüme│                         │ • 1-WL Aşan RWPE Kodlama  │
-   │ • Daire Tipleri Keşfi     │                         │ • O(1) Nöral Filtreleme   │
-   │ • MacroNode Kaba Graf     │                         │ • 3 Aşamalı VF2 Gevşetme  │
-   │   (Coarsening)            │                         │ • Kök Neden Teşhis Raporu │
-   └─────────────┬─────────────┘                         └─────────────┬─────────────┘
-                 │                                                     │
-                 └──────────────────────────┬──────────────────────────┘
-                                            │
-                                            ▼
-                      ┌──────────────────────────────────────────┐
-                      │   PyTorch Geometric (PyG) GNN Hattı      │
-                      │   SpatialOrderGNN + GINEConv + Softplus  │
-                      └──────────────────────────────────────────┘
-```
+GNN yalnızca adayları eler. Kaçış çekirdeği için olumlu karar çapa eşleşmesine, VF2 monomorfizmine ve geometrik koşullara dayanır. Budama varsayılan olarak kapalıdır. Etkinleştirildiğinde ağırlık dosyasının SHA-256 özeti, komşuluk yarıçapı ve rota mesafesi kalibrasyonla eşleşmelidir. Eşik üstündeki aday ayrı listelenir ve mevzuat maddesi almaz.
 
----
+Deney 30 parametrik sentetik bina grafı kullanır. Kat ve daire sayıları, oda alanları, kapı genişlikleri ve koridor uzunlukları tohumla değişir. Her tekrarda 18 bina eğitim, 6 bina doğrulama ve 6 bina test için ayrılır. Ayrıştırılmış `sample_building.dxf` yalnızca teste eklenir. Çiftler bu ayrımdan sonra üretilir. Etiket, uygulamadaki çapa ve geometri kısıtlarıyla VF2 sonucudur. Dört eğitim turundan sonra doğrulamadaki pozitiflerin en çok yüzde birini eleyen en küçük gözlenen pozitif enerji eşik olarak alınır. Eşitlikte aday VF2’ye gider.
 
-### 8.0. Neden Bu Sistem? Alternatif Mimarilerin Kapsamlı Karşılaştırmalı Analizi ve Graf Yapısal Kodlama Gerekçesi
+| Tohum | Test AUROC | Elenen pozitif / pozitif | Elenen negatif / negatif |
+|---:|---:|---:|---:|
+| 17 | 0,5104 | 0 / 16 | 2 / 12 |
+| 41 | 0,4881 | 0 / 18 | 2 / 14 |
+| 73 | 0,4545 | 4 / 11 | 2 / 13 |
 
-Yangın kaçış yolları, kaçış merdivenleri ve imar mevzuatı denetimi; salt bir şekil tanıma veya basit bir geometrik kural kontrolü değildir. Bir binanın güvenli tahliye edilebilmesi; odalar, koridorlar, yangın güvenlik holleri ve merdiven kovanları arasındaki **asimetrik dolaşım hiyerarşisine**, **fiziksel kapı genişliklerine**, **duman sızdırmazlık sertifikalarına** ve **geodezik yürüme mesafelerine** bağlıdır.
+Dağıtım için önceden seçilen tohum 17 ve eşik 1,1130144596’dır. Doğrulamadaki 14 pozitifin hiçbiri elenmedi. Tohum 73’te testteki 11 eşleşmenin 4’ü kaybedildi. Küçük örneklem, ortak sentetik üretici ve bağımsız saha etiketi eksikliği nedeniyle bu oranlar başka binalara taşınamaz. Eğitim kaybı ayrı kaydedilir. Tam ölçümler ve enerji çeyreklikleri `data/gnn_eval_metrics.json`, ağırlık sürümü ve eşik `data/gnn_calibration.json` içindedir.
 
-Geliştirme sürecinde değerlendirilen alternatif yaklaşımlar ve bunların neden can güvenliği denetiminde yetersiz kalarak elendiği aşağıda kuramsal ve pratik nedenleriyle belgelenmiştir:
+SPMiner sezgisel komşu seçimi için gömme normunu ve alanı kullanır. GNN bir küme önerir. Üye kabulünde çapa ve oda tiplerini içeren WL özeti ile etiketli izomorfizm kontrol edilir. Destek, kabul edilen çapa sayısıdır. Merkeze ortalama kosinüs benzerliği yalnızca küme içi benzerliği betimler. Dağıtım tohumunun yedi test binasında tek üyeli kümeler dahil WL ile 53, GNN ile 53 küme bulundu. Yapısal kontrolde ilk GNN önerisi 7 kez reddedildi. Daire tipi referans etiketleri bulunmadığından ARI ve NMI ölçülmedi.
 
-#### Alternatif Yaklaşımların Karşılaştırma Matrisi
-
-| Değerlendirilen Mimari / Yaklaşım | Algoritmik / Teorik Sınır | Can Güvenliği ve İmar Denetiminde Neden Elendi? | Sistemimizin Sağladığı Çözüm |
-| :--- | :--- | :--- | :--- |
-| **1. Salt Kural Tabanlı Geometri (CAD If-Else Heuristics)** | Permütasyonel Kırılganlık ($O(K^N)$ özel durum patlaması) | Mimari koridorlar L, T, döngüsel veya çok kollu olabilir. Düz if-else kuralları topolojik izomorfizmi kavrayamaz; her yeni bina tipinde if-else zincirleri kırılır ve bakım imkansızlaşır. | **Bölge Komşuluk Grafı (RAG):** Mekânları düğüm, geçişleri kenar yaparak mimariyi koordinat bağımsız topolojiye çevirir. |
-| **2. Çok Modlu Büyük Dil Modelleri (VLM / LLM: GPT-4V, Claude Vision)** | Stokastik Belirsizlik, Halüsinasyon ve Ölçek Körlüğü | Can güvenliği sıfır hata toleransına sahiptir. LLM'ler var olmayan kapılar uydurabilir, 89 cm ile 90 cm arasındaki milimetrik farkı ayıramaz ve 30 m geodezik yürüyüş rotasını hesaplayamaz. Resmi belediye/itfaiye onayında hukuki bağlayıcılığı ve determinizmi yoktur. | **Nöro-Sembolik Hibrit Motor:** %100 deterministik, tekrarlanabilir, milimetrik ve resmi yönetmelik maddesine dayalı ispat üretir. |
-| **3. Saf Klasik Altgraf İzomorfizmi (Brute-Force VF2 / Ullmann)** | NP-Tam Kombinatoryel Patlama ($O(N!)$ veya $O(N^K)$ arama uzayı) | Yüzlerce odası, merdiveni ve kapısı olan çok katlı binalarda klasik VF2 algoritması binlerce permütasyon dener. Arama saniyelerce kilitlenir veya bellek tükenmesiyle çöker. | **Order Embedding Nöral Ön Eleme:** $O(1)$ matris işlemiyle alakasız adayların %99.5'ini VF2'ye girmeden eler (~200 kat hız). |
-| **4. Standart GNN Modelleri (GCN, GraphSAGE, GAT, Standart GIN)** | 1-WL İfade Gücü Kısıtı, Kenar Nitelik Körlüğü ve Simetrik Metrik Uyuşmazlığı | **1-WL Körlüğü:** Eş dereceli simetrik mimarileri (örn: $C_6$ halka koridor ile $2 \times C_3$ ayrık üçgen daire) ayırt edemez.<br>**Kenar Körlüğü:** Kapı genişliği ve yangın dayanımını mesaj iletimine dahil edemez.<br>**Metrik Uyuşmazlığı:** Öklid/Kosinüs mesafeleri simetriktir ($d(A, B) = d(B, A)$); oysa altgraf içerme bağıntısı asimetrik bir kısmi sıralamadır ($G_Q \subseteq G_T \centernot\iff G_T \subseteq G_Q$). | **RWPE + ID-GNN + GINEConv + Order Embedding:** 1-WL kısıtını aşar, kenarları 3D tensör olarak işler ve asimetrik pozitif koniye ($\mathbb{R}_+^{64}$) gömer. |
-
----
-
-#### Detaylı Karşılaştırmalı Gerekçeler
-
-##### A. Neden Yapısal Kodlama Olarak RWPE Seçildi? (Laplacian PE ve Yüksek Dereceli $k$-WL'e Karşı)
-* **Spektral Laplacian PE'nin Sorunları:** Laplasyen özvektörleri işaret belirsizliğine ($\pm \phi_i$) ve özdeğer çok katlılığı durumunda baz rotasyonu belirsizliğine sahiptir. Yönlendirilmemiş simetrik mimari planlarda modelin kararsız öğrenmesine neden olur. Ayrıca $O(N^3)$ özdeğer ayrışımı tarayıcı/CPU ortamında yüksek gecikme yaratır.
-* **Yüksek Dereceli $k$-WL ($k \ge 3$) Modellerinin Sorunları:** Düğüm ikilileri ve üçlüleri üzerinden tensör tuttuğundan bellek karmaşıklığı $O(N^k)$ düzeyine fırlar; 14 katlı bir binada yüzlerce mekân için belleğe sığmaz.
-* **RWPE'nin Üstünlüğü ([`diagram_yonetmelik/gnn_order.py:L19-44`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py#L19-L44)):** 
-  $R = A D^{-1}$ rastgele yürüyüş geçiş matrisi üzerinden sadece $m=6$ adımda $O(m \cdot |E|)$ lineer sürede hesaplanır. İşaret belirsizliği kesinlikle yoktur; $R^m_{vv}$ diyagonal elemanı doğrudan $m$-uzunluğundaki kapalı döngülerin ($C_3$ üçgenler, $C_4$ dörtgenler, $C_6$ dairesel koridorlar) varlığını ve başlangıç düğümüne geri dönüş olasılığını kodlayarak **1-WL sınırını kesin olarak kırar**.
-
-##### B. Neden Pozitif Koni $\mathbb{R}_+^D$ Order Embedding? (Öklid, Kosinüs ve Hiperbolik Gömmelere Karşı)
-* **Öklid ve Kosinüs Uyuşmazlığı:** $\mathbb{R}^D$ uzayında mesafe $\|z_A - z_B\|$ veya kosinüs açısı simetriktir ($d(A, B) = d(B, A)$). Ancak bir mimari altgraf ilişkisi kesinlikle **asimetriktir**: Bir yangın güvenlik holü şablonu binada yer alabilir ($G_Q \subseteq G_T$), fakat koca bir bina yangın güvenlik holünün alt kümesi olamaz ($G_T \not\subseteq G_Q$). Simetrik metrikler altgraf kapsamasını modelleyemez.
-* **Poincaré / Hiperbolik Uzay Kısıtı:** Hiperbolik gömmeler ağaç hiyerarşilerini iyi temsil etse de altgraf monomorfizminin asimetrik kapsama şartını ($\forall i, z_Q[i] \le z_T[i]$) doğrudan koni geometrisiyle cebirsel olarak garanti edemez.
-* **Order Embedding Koni Üstünlüğü ([`diagram_yonetmelik/gnn_order.py:L49-72`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py#L49-L72)):**
-  Çıkış katmanında `Softplus` aktivasyonu kullanılarak temsiller pozitif reel ortanta ($\mathbb{R}_+^{64}$) kilitlenir. Kapsama testi, ihlal enerjisi denklemiyle $O(1)$ sürede sorgulanır:
-  $$E(z_Q, z_T) = \|\max(0, z_Q - z_T)\|_2^2 = 0 \iff \forall i, z_Q[i] \le z_T[i] \iff G_Q \subseteq G_T$$
-
-##### C. Neden Nöro-Sembolik Hibrit Sistem? (Hukuki İspat ve Işık Hızında Doğrulama)
-* **Salt Yapay Zekâ (GNN) Neden Yetmez?** Bir GNN modeli %99.5 doğrulukla çalışsa dahi can güvenliği mevzuatında "kara kutu" olarak kalamaz. Bir belediye imar denetçisi veya itfaiye mühendisi ruhsat onayında "GNN skoru 0.88 çıktı, bina güvenli" diyemez; *"3. Katta Yangın Holü kapısı 78 cm'dir, BYKHY Madde 38 gereğince en az 90 cm olmalıdır"* şeklinde somut, ölçülebilir ve hukuki dayanağı olan kanıt sunulmalıdır.
-* **Salt Sembolik (VF2) Neden Yetmez?** 200 odalı bir projede saf VF2 kombinatoryel patlamaya ($O(N!)$) girerek dakikalarca yanıt veremez.
-* **Hibrit Sentez:** Nöral Order Embedding filtresi binlerce alakasız odayı $O(1)$ matris işlemiyle milisaniyeler içinde budar (~200 kat hızlanma). Açıklanabilir VF2 ise sadece filtreden geçen aday bölgelerde 3 aşamalı kısıt gevşetme uygulayarak **%100 kesin, açıklanabilir ve resmi madde atıflı teşhis raporu** üretir.
-
----
-
-### 8.1. Bölge Komşuluk Grafı (RAG) Matematiksel Temsili
-
-Mimari planlar [`spatial_rag.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/spatial_rag.py) modülü tarafından yönlendirilmemiş, öznitelikli bir $G = (V, E, X_V, X_E)$ grafına dönüştürülür:
-
-1. **Düğümler ($V$ - Odalar ve Mekânlar):**
-   * Her bir mekân $v \in V$; salon, yatak odası, kat koridoru, yangın güvenlik holü, yangın merdiveni, sığınak veya dış çıkış kapısını temsil eder.
-   * **Düğüm Öznitelik Vektörü ($x_v \in \mathbb{R}^{10}$):** 
-     $$x_v = [\text{One-Hot}(v.\text{type}) \in \mathbb{R}^9 \;\parallel\; \text{Norm}(v.\text{area\_m2}) \in \mathbb{R}^1]$$
-   * Düğüm geometrik temsili: Kapalı Shapely poligonu ($P_v \subset \mathbb{R}^2$), temsilci çapa noktası ($c_v \in \mathbb{R}^2$) ve kat kotu ($z_v \in \mathbb{R}$).
-
-2. **Kenarlar ($E$ - Geçişler ve Komşuluklar):**
-   * İki mekân arasında fiziksel bir kapı eşiği, açık geçiş veya dikey merdiven şaftı varsa kenar $(u, v) \in E$ tanımlanır.
-   * **Kenar Öznitelik Vektörü ($e_{uv} \in \mathbb{R}^3$):**
-     $$e_{uv} = [\text{Norm}(W_{\text{net}}), \;\text{Norm}(d_{\text{geodesic}}), \;\mathbb{I}_{\text{fire\_resistant}}]$$
-     Burada $W_{\text{net}}$ temiz kapı genişliği (cm), $d_{\text{geodesic}}$ duvar poligonlarını kesmeyen iç görünürlük grafı (Visibility Graph) üzerinden hesaplanan net yürüme mesafesi (m) ve $\mathbb{I}_{\text{fire\_resistant}} \in \{0, 1\}$ yangın dayanım (EI60/EI90) bayrağıdır.
-
----
-
-### 8.2. Sütun 1: RWPE + ID-GNN (1-WL Sınırını Aşma Mekanizması ve Matematiksel Kanıtı)
-
-Klasik **1-Weisfeiler-Lehman (1-WL)** renk arıtma testi ve bu teste denk olan standart Mesaj Geçiren Sinir Ağları (MPNN; GCN, GAT, GraphSAGE); **eş dereceli simetrik düğümleri** ve **farklı büyüklükteki döngüleri (cycles)** ayırt edemez.
-
-#### A. 1-WL Kısıtının Somut Matematiksel Kanıtı: $C_6$ vs $2 \times C_3$
-Bir mimari kat planında iki zıt yerleşimi ele alalım:
-* **Graf A ($C_6$ Altıgen Koridor):** 6 odadan oluşan tekil dairesel kat koridoru.
-* **Graf B ($C_3 \cup C_3$ Ayrık Üçgenler):** Birbirinden bağımsız 3'er odalı iki ayrık üçgen daire çekirdeği.
-
-Her iki grafın tüm düğümlerinin yerel derecesi tam olarak 2'dir: $\forall v \in V_A \cup V_B, \; d_v = 2$.
-
-Standart 1-WL renk arıtma güncelleme denklemi multiset komşuluk toplar:
-$$c_v^{(t+1)} = \text{HASH}\left(c_v^{(t)}, \{\!\!\{ c_u^{(t)} \mid u \in \mathcal{N}(v) \}\!\!\}\right)$$
-
-Başlangıçta tüm düğümlere aynı renk $c^{(0)}$ verildiğinde:
-* $C_6$ üzerindeki herhangi bir düğüm için multiset: $\{\!\!\{ c^{(0)}, c^{(0)} \}\!\!\}$
-* $C_3$ üzerindeki herhangi bir düğüm için multiset: $\{\!\!\{ c^{(0)}, c^{(0)} \}\!\!\}$
-
-Tüm adımlarda ($t = 1, 2, \dots$) multisetler tamamen özdeş kalır; renk arıtımı kilitlenir. Standart bir GCN/GIN modeli **$C_6$ dairesel kaçış koridoru ile bağımsız $C_3$ daire içi odalarını asla ayırt edemez**. Can güvenliği açısından bu körlük; daire içi çıkmaz bir odanın kaçış koridoru sanılmasına yol açabilecek ölümcül bir kusurdur.
-
-#### B. RWPE Çözümü ve Geri Dönüş Olasılıkları Kanıtı
-[`diagram_yonetmelik/gnn_order.py:L19-44`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py#L19-L44) modülünde kurgulanan `compute_rwpe` fonksiyonu, $R = A D^{-1}$ geçiş matrisi üzerinden $m=6$ adımlı rastgele yürüyüş dönüş olasılıklarını hesaplar:
-$$R = A D^{-1}$$
-$$\text{RWPE}(v) = \left[ R^1_{vv}, \; R^2_{vv}, \; R^3_{vv}, \; R^4_{vv}, \; R^5_{vv}, \; R^6_{vv} \right] \in \mathbb{R}^6$$
-
-* **3. Adım Dönüş Olasılığı Karşılaştırması:**
-  * **$C_3$ Üçgeninde:** Düğümden çıkan ajan 3. adımda başlangıç noktasına geri dönebilir. $v \to u \to w \to v$ yolunun olasılığı:
-    $$R^3_{vv} = \frac{1}{2} \times \frac{1}{2} \times 1 = \frac{1}{4} = 0.25 > 0$$
-  * **$C_6$ Altıgen Koridorunda:** En kısa döngü 6 adım olduğundan, 3 adımda başa dönmek kesinlikle imkansızdır:
-    $$R^3_{vv} = 0.0$$
-* **Sonuç:** Modelimiz, RWPE tensörünün 3. bileşeninde ($R^3_{vv}$) bu iki topolojiyi **%100 kesinlikle ayrıştırarak 1-WL sınırını kırar**. Bu matematiksel ayrım [`tests/test_diagram_yonetmelik.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/tests/test_diagram_yonetmelik.py) içerisindeki `test_1wl_rwpe_distinguishes_c6_from_two_c3_triangles` birim testi ile doğrulanmıştır.
-
-#### C. ID-GNN Çapa Farkındalığı (Inductive Node Identity Bit)
-Acil kaçış çekirdeği taranırken ($k=2$ komşuluklu ego-altgraf), merkeze alınan hedef kaçış düğümüne (`yangin_holu` veya `yangin_merdiveni`) 1-bitlik çapa indikatörü ($I_{\text{anchor}} \in \{0, 1\}$) eklenir:
-$$I_{\text{anchor}}(v) = \begin{cases} 1.0, & v = \text{anchor\_node} \\ 0.0, & v \neq \text{anchor\_node} \end{cases}$$
-
-Böylece permütasyon eşdeğerliği (permutation equivariance) korunurken kaçış yönü odağı modele kazandırılır ve 17 boyutlu zenginleştirilmiş düğüm tensörü oluşturulur:
-$$\tilde{x}_v = [\text{One-Hot}(v.\text{type}) \in \mathbb{R}^9 \;\parallel\; \text{Norm}(v.\text{area}) \in \mathbb{R}^1 \;\parallel\; \text{RWPE}(v) \in \mathbb{R}^6 \;\parallel\; I_{\text{anchor}}(v) \in \mathbb{R}^1] \in \mathbb{R}^{17}$$
-
----
-
-### 8.2.1. Sütun 2: GINEConv (Kapı Net Genişliği ve Mesafe Kenar Niteliklerinin Mesaj İletimine Dahil Edilmesi)
-
-Mimaride iki mekân arasındaki kenar alelade bir çizgi değildir; **90 cm net genişlikte, EI60 yangına dayanıklı sertifikalı bir kapı** veya **15 m yürüyüş mesafesi** gibi can güvenliğini belirleyen fiziksel parametreler taşır.
-
-[`diagram_yonetmelik/gnn_order.py:L103-142`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py#L103-L142) dosyasında kurgulanan `SpatialOrderGNN`, kenar özelliklerini mesaj iletimine dahil edebilen **GINEConv (Graph Isomorphism Network with Edge Features)** katmanlarını kullanır:
-
-#### 1. Kenar Nitelik Vektörü ($e_{uv} \in \mathbb{R}^3$)
-$$e_{uv} = \left[ \frac{W_{\text{net\_cm}}}{100.0}, \; \frac{d_{\text{geodesic\_m}}}{20.0}, \; \mathbb{I}_{\text{fire\_resistant}} \right] \in \mathbb{R}^3$$
-Kenar öznitelikleri lineer projeksiyon katmanıyla gizli boyuta aktarılır: $\tilde{e}_{uv} = \Theta_{\text{edge}} \cdot e_{uv} \in \mathbb{R}^{64}$.
-
-#### 2. Residual (Artık) Bağlantılı 3 Katmanlı GINEConv Denklemi
-Her $l$-inci konvolüsyon katmanında ($l \in \{1, 2, 3\}$) düğüm gösterimi komşu düğüm ve bağlantı kapısı özelliklerinin toplamı üzerinden güncellenir:
-$$h_v^{(l+1)} = h_v^{(l)} + \text{ReLU}\left( \text{MLP}^{(l)} \left( (1 + \epsilon^{(l)}) h_v^{(l)} + \sum_{u \in \mathcal{N}(v)} \text{ReLU}\left(h_u^{(l)} + \tilde{e}_{uv}\right) \right) \right)$$
-
-* **$\epsilon^{(l)}$ (Öğrenilebilir Epsilon):** Graf izomorfizmi ayırt ediciliğini maksimize eder.
-* **Residual (Artık) Bağlantı:** $h_v^{(l)} + \text{ReLU}(\dots)$ yapısı sayesinde 3 katmanlı derin mimaride aşırı düzleşme (over-smoothing) engellenir; kapı net genişliği ve yangın dayanım bilgisi üst katmanlara kayıpsız aktarılır.
-
----
-
-### 8.3. Sütun 3: Order Embedding Max-Margin Loss (Asimetrik Koni Geometrisi ve Kısmi Sıralama Gömmesi)
-
-Altgraf izomorfizmi **asimetrik bir kısmi sıralama (partial order)** bağıntısıdır:
-$$G_Q \subseteq G_T \centernot\iff G_T \subseteq G_Q$$
-(Bir yangın güvenlik holü çekirdeği binada yer alabilir, ancak koca bina yangın holü çekirdeğinin içinde yer alamaz.)
-
-Bu matematiksel zorunluluk gereği modelimiz mimari grafı $D=64$ boyutlu **pozitif koni uzayına** $(\mathbb{R}^D_+, \preceq)$ yansıtır:
-
-#### 1. Geometrik Pozitif Koni Kapsama Şartı
-Bir $G_Q$ yangın şablonunun, $G_T$ bina altgrafı tarafından kapsanması için temsil vektörünün her boyutta hedef vektörden küçük veya eşit olması gerekir:
-$$G_Q \subseteq G_T \iff z(G_Q) \preceq z(G_T) \iff \forall i \in \{1, \dots, D\}, \quad z_Q[i] \le z_T[i]$$
-
-Negatif koordinatların oluşmasını imkansız kılmak ve koni tabanını garantiye almak için çıkış katmanında **Softplus aktivasyon fonksiyonu** kullanılır:
-$$z(G) = \text{Softplus}\left(W_{\text{out}} \cdot [h_{\text{anchor}} \parallel h_{\text{pool}}] + b_{\text{out}}\right) = \ln\left(1 + e^{W_{\text{out}} [h_{\text{anchor}} \parallel h_{\text{pool}}] + b_{\text{out}}}\right) > 0$$
-
-#### 2. Koni İhlal Enerjisi (Violation Energy - [`gnn_order.py:L49-57`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py#L49-L57))
-Sorgu vektörünün hedefin koni sınırını aştığı miktar ceza enerjisi olarak hesaplanır:
-$$E(z_Q, z_T) = \| \max(0, z_Q - z_T) \|_2^2 = \sum_{i=1}^{64} \left(\max(0, z_Q[i] - z_T[i])\right)^2$$
-* Eğer $G_Q$ hedefte topolojik olarak kapsanıyorsa: $\forall i, z_Q[i] \le z_T[i] \implies E(z_Q, z_T) = 0.0$ (Sıfır İhlal Enerjisi).
-* Kapsanmıyorsa: En az bir koordinatta $z_Q[i] > z_T[i] \implies E(z_Q, z_T) > 0$ (Pozitif Ceza Enerjisi).
-
-#### 3. Max-Margin Sıralama Kaybı (Order Loss - [`gnn_order.py:L59-72`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py#L59-L72))
-Modelin eğitimi sırasında pozitif (şablonu içeren) çiftlerin enerjisi sıfıra çekilirken, negatif (şablonu içermeyen) çiftler güvenlik marjı ($\gamma = 1.0$) kadar koni dışına fırlatılır:
-$$\mathcal{L}_{\text{order}} = E(z_Q, z_{\text{pos}}) + \max\left(0, \gamma - E(z_Q, z_{\text{neg}})\right), \quad \gamma = 1.0$$
-* $\gamma = 1.0$ güvenlik marjı, yanlış pozitif (false positive) adayların eşik civarında kümelenmesini önler ve karar sınırını keskinleştirir.
-
----
-
-### 8.4. SPMiner: Şablonsuz Sık Altgraf Madenciliği ve Kaba Taneli Graf (MacroNode Coarsening)
-
-[`spminer.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/spminer.py) modülü, önceden tanımlanmış hiçbir şablon kütüphanesine ihtiyaç duymadan binadaki tipik daire planlarını (1+1, 2+1, 3+1) ve dikey çekirdek modüllerini **Order Embedding uzayında Açgözlü Büyütme (Greedy Growth)** ile keşfeder:
-
-1. **Tohum Seçimi (Anchor Seeding):** Graf üzerindeki giriş düğümleri (`daire_antresi`, `kat_koridoru`, `yangin_holu`) tohum olarak belirlenir.
-2. **Order Space Açgözlü Büyüme:** 
-   Her adımda aday altgrafın sınır komşularından ($u \in \partial S$), büyütülmüş grafın gömme enerjisini minimize eden en uygun komşu seçilir:
-   $$v^* = \arg\min_{v \in \partial S} E(z(S \cup \{v\}), z(G_{\text{target}}))$$
-3. **Koridor Sızıntısı Engeli (Hub Boundary Containment):**
-   Daire içi modül keşfedilirken antreden ortak kat koridoruna ve oradan yan daireye atlama (leakage) topolojik kurallarla budanır; arama dairenin ıslak ve kuru hacim sınırları içinde tutulur.
-4. **Öğrenen Yapay Zekâ ile Nöral Kümeleme vs. Deterministik WL-Hash Geri Çekilme (Dual Mode):**
-   * **Mod 1 (Öğrenen Nöral AI Aktif):** Eğitilmiş [`SpatialOrderGNN`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py) modeli (`data/spatial_order_gnn.pt`) aday altgrafları 64 boyutlu pozitif koni uzayına ($z \in \mathbb{R}_+^{64}$) gömer. Kosinüs benzerliği ve sıralama ihlal enerjisini ($E(z_1, z_2)$) harmanlayan hibrit metrik üzerinden dinamik merkezler (running centroids) oluşturarak mimari modülleri semantik ve topolojik benzerliklerine göre gruplar. Küçük oda alanı dalgalanmaları veya oda etiket varyasyonlarında bile öğrenen yapay zekâ genelleme yaparak doğru kümelemeyi sağlar.
-   * **Mod 2 (Deterministik Geri Çekilme - GNN Kapalı):** Yapay zekâ modeli kapalı olduğunda sistem sıfır bağımlılıkla Weisfeiler-Lehman graf karma fonksiyonuna ($H_{\text{WL}}$) geri çekilir ve %100 deterministik ayrık topolojik eşleme yapar.
-5. **Kaba Taneli Graf (MacroNode Coarsening):**
-   Tekrar eden bağımsız daire altgrafları tek bir "MacroNode" haline getirilerek graf sıkıştırılır. Bu sayede 12 katlı bir binada 300+ odalık karmaşık graf, 24 adet daire makro-düğümüne ve ana koridor omurgasına indirgenerek ASET/RSET tahliye simülasyonu saniyeler mertebesine hızlandırılır.
-
----
-
-### 8.5. Sütun 4: Hibrit VF2 Doğrulama Adımları ve Açıklanabilir Kök Neden Teşhisi
-
-#### A. Projedeki Çalışma Durumu: %100 Aktif, Entegre ve Doğrulanmış
-Bu sistem projemizde **%100 aktif olarak çalışmakta, test edilmekte ve doğrulanmaktadır**. 
-
-İlgili kaynak kod dosyaları ve test altyapısı:
-* **Nöral Order Koni Modeli ve RWPE:** [`diagram_yonetmelik/gnn_order.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py) (`SpatialOrderGNN`, `violation_energy`, `OrderEmbeddingLoss`, `nx_subgraph_to_pyg_data`)
-* **GNN Eğitimi ve Ağırlık Dosyası:** [`diagram_yonetmelik/train_gnn.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/train_gnn.py), `data/spatial_order_gnn.pt`
-* **3 Kademeli Gevşetme ve Teşhis Motoru:** [`diagram_yonetmelik/vf2_diagnostics.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/vf2_diagnostics.py) (`ExplainableVF2Analyzer`)
-* **Uçtan Uca Boru Hattı Entegrasyonu:** [`diagram_yonetmelik/orchestrator.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/orchestrator.py) (Aşama 4: GNN + VF2 Hibrit Denetimi)
-* **Veri Yapıları ve Raporlama Şemaları:** [`diagram_yonetmelik/schemas.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/schemas.py) (`CandidateDiagnosticReport.gnn_energy`, `RuleViolationItem`)
-* **Otomatik Birim ve Entegrasyon Testleri:** [`tests/test_diagram_yonetmelik.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/tests/test_diagram_yonetmelik.py) (`TestGNNAndOrderEmbeddingMath`, `TestExplainableVF2AndBasementCompliance`, `TestEndToEndPipeline`, `TestLearnedAIAndNeuroSymbolicDualMode` — **21/21 test %100 BAŞARILI**).
-
-Altgraf izomorfizmi (Subgraph Isomorphism) klasik hesaplama teorisinde **NP-Tam (NP-Complete)** bir problemdir. Yüzlerce mekânı ve karmaşık şaftları olan binalarda körleme VF2 monomorfizmi kombinatoryel patlamaya ($O(N!)$) yol açar. Sistemimiz bunu **iki kademeli hibrit mimari (Neural Order Screening + Explainable Structural Relaxation)** ile $O(1)$ tensör projeksiyonu ve milisaniyeler düzeyinde çözmektedir.
-
----
-
-#### B. Sistem Adım Adım Nasıl Çalışıyor ve İşliyor?
-
-##### Adım 1: Standart Yangın Çekirdeği Sorgu Grafı ($Q$) Üretimi ([`vf2_diagnostics.py:L33-47`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/vf2_diagnostics.py#L33-L47))
-Mevzuat şablonu (BYKHY M.34 ve M.38) öznitelikli altgraf olarak kurgulanır:
-$$\text{Kat Koridoru } (Q_0) \xrightarrow{W \ge 90\text{cm}, \text{EI60}} \text{Yangın Güvenlik Holü } (Q_1, \text{Çapa}) \xrightarrow{W \ge 90\text{cm}, \text{EI60}} \text{Yangın Merdiveni } (Q_2) \xrightarrow{W \ge 100\text{cm}} \text{Dış Çıkış } (Q_3)$$
-
-##### Adım 2: Çapa Adaylarının Taranması ve $k$-Hop Ego Altgraf Çıkarımı
-Bina 3B RAG modelinde potansiyel kaçış merkezleri (`yangin_holu`, `yangin_merdiveni`, `kat_koridoru`) çapa olarak seçilir. Her çapanın $k=2$ komşuluğu izole altgraf ($T$) olarak kesilir.
-
-##### Adım 3: 1. Kademe — $O(1)$ Nöral Ön Eleme ve Hibrit Budama (NeuroMatch / Order Embedding - [`vf2_diagnostics.py:L65-108`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/vf2_diagnostics.py#L65-L108))
-Aday altgraf $T$ ve sorgu $Q$, [`nx_subgraph_to_pyg_data`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py) ile PyG formatına dönüştürülüp `SpatialOrderGNN` modeline verilir:
-$$z_Q = \text{Softplus}\left(\text{GNN}(Q)\right) \in \mathbb{R}^{64}_+, \quad z_T = \text{Softplus}\left(\text{GNN}(T)\right) \in \mathbb{R}^{64}_+$$
-
-İki temsil arasındaki asimetrik kısmi sıralama ihlal enerjisi (Violation Energy) hesaplanır:
-$$E(z_Q, z_T) = \| \max(0, z_Q - z_T) \|_2^2 = \sum_{i=1}^{64} \left(\max(0, z_Q[i] - z_T[i])\right)^2$$
-
-* **Hibrit Budama Mantığı:** $E(z_Q, z_T) > \tau$ ($\tau = 0.25$) olan adaylar, yangın kaçış topolojisine benzemeyen (örn. daire içi odalar, kör depolar) bölgelerdir. Bunlar $O(1)$ matris işlemiyle doğrudan elenerek VF2 algoritmasına girmesi engellenir (`NEUROMATCH_ENERGY_PRUNED`).
-* **Hız Kazancı:** Klasik VF2'de 100+ odalık kat planlarında saniyeler süren arama, hibrit budama sayesinde **~0.2 ms** gibi ihmal edilebilir sürelerde tamamlanır (yaklaşık **200 kat hızlanma**).
-* **Hesaplanan Değer:** Her aday için hesaplanan kesin enerji değeri `CandidateDiagnosticReport.gnn_energy` alanına kaydedilir.
-
-##### Adım 4: 2. Kademe — Açıklanabilir VF2 Kademeli Kısıt Gevşetme Hunisi ([`vf2_diagnostics.py:L110-174`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/vf2_diagnostics.py#L110-L174))
-Nöral ön elemeden geçen aday altgraflar, [`ExplainableVF2Analyzer`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/vf2_diagnostics.py) motorunda 4 aşamalı kademeli kısıt gevşetme testine tabi tutulur:
-
-```
-                      [Aday Altgraf (E <= 0.25 Nöral Filtreyi Geçti)]
-                                            │
-                                            ▼
-           ┌─────────────────────────────────────────────────────────────────┐
-           │ AŞAMA 0: TAM MONOMORFİZM (_run_strict_vf2)                      │
-           │ • Düğüm: Oda Tipi Birebir Aynı & Alan >= Min Alan               │
-           │ • Kenar: Kapı Genişliği >= Eşik & EI60/EI90 Yangın Dayanımı     │
-           │ • Rota: Kümülatif Yürüme Mesafesi <= 30.0 m                     │
-           └────────────────────────────────┬────────────────────────────────┘
-                                            │
-                           ┌────────────────┴────────────────┐
-                      [BAŞARILI]                        [BAŞARISIZ]
-                           │                                 │
-                           ▼                                 ▼
-                 %100 YÖNETMELİK UYUMU             AŞAMA 1: PARAMETRİK GEVŞETME
-                 (Sıfır Hata, Onaylı Çekirdek)    (_run_topology_and_types_vf2)
-                                                   • Topoloji ve Mekan Tipleri Eşleşti
-                                                   • Kapı/Alan/Mesafe Kısıtları Gevşetildi
-                                                             │
-                                            ┌────────────────┴────────────────┐
-                                       [BAŞARILI]                        [BAŞARISIZ]
-                                            │                                 │
-                                            ▼                                 ▼
-                                   PARAMETRİK KUSURLAR             AŞAMA 2: ODA ROLÜ GEVŞETME
-                                   • DOOR_WIDTH_DEFICIT           (_run_skeleton_only_vf2)
-                                   • ROOM_AREA_DEFICIT            • Sadece Bağlantı İskeleti Eşleşti
-                                   • FIRE_DOOR_MISSING            • Mekan Fonksiyonları Uyuşmuyor
-                                   • TOTAL_ROUTE_EXCEEDED                     │
-                                                                 ┌────────────┴────────────┐
-                                                            [BAŞARILI]                [BAŞARISIZ]
-                                                                 │                         │
-                                                                 ▼                         ▼
-                                                        MEKAN ROLÜ KUSURU         AŞAMA 3: KOPUK ROTASI
-                                                        • CORRIDOR_DIRECT_TO_     (_run_partial_bfs_alignment)
-                                                          STAIR_PROHIBITED        • CRITICAL_PATH_DISCONNECTION
-                                                          (BYKHY M.34 İhlali)     • Merdiven veya kapı yok
-                                                        • ROOM_TYPE_MISMATCH      • MISSING_DOOR_CONNECTION
-```
-
----
-
-#### C. Kademeli Teşhis Aşamalarının Detayları ve Üretilen İhlal Kodları
-
-1. **Aşama 0 — Tam Monomorfizm (`_run_strict_vf2` - Satır 175–203):**
-   * NetworkX `GraphMatcher` ile hem düğüm nitelikleri (`node_match`: tip eşitliği ve alan yeterliliği), hem de kenar nitelikleri (`edge_match`: net kapı genişliği $\ge 90\text{ cm}$ ve EI60 sertifikası) test edilir.
-   * Çapa eşleşmesi ve toplam rota mesafesi ($\le 30\text{ m}$) tam sağlandığında `CandidateDiagnosticReport(is_fully_compliant=True, diagnostic_stage_reached=0)` döndürülür.
-
-2. **Aşama 1 — Parametrik Gevşetme (`_run_topology_and_types_vf2` - Satır 204–215, 224–291):**
-   * Kapı genişliği ve alan şartları devre dışı bırakılır; yalnızca topolojik bağlantı ve oda tipleri eşleştirilir.
-   * Eşleşme sağlandığında `_audit_parametric_violations` fonksiyonu çalışır:
-     * `ROOM_AREA_DEFICIT`: Yangın holü alanı min 3.0 m² şartını sağlamıyorsa (Örn: ölçülen 2.1 m² < 3.0 m²).
-     * `DOOR_WIDTH_DEFICIT`: Kapı temiz genişliği 90 cm (veya yüksek binalarda 120 cm) altında kalıyorsa.
-     * `FIRE_DOOR_MISSING`: Kaçış kapısında EI60/EI90 yangın ve duman sızdırmazlık sertifikası eksikse.
-     * `TOTAL_ROUTE_EXCEEDED`: Kaçış yürüyüş hattı izin verilen sınırı aşıyorsa.
-
-3. **Aşama 2 — Oda Rolü Gevşetme (`_run_skeleton_only_vf2` - Satır 216–223, 293–311):**
-   * Oda tipleri de gevşetilir; sadece kat planındaki geometrik ve topolojik dolaşım iskeleti taranır.
-   * `_audit_role_violations` fonksiyonu çalışarak mimari rol sapmalarını tespit eder:
-     * `CORRIDOR_DIRECT_TO_STAIR_PROHIBITED`: Koridordan yangın merdivenine arada yangın güvenlik holü olmaksızın doğrudan geçiş açıldığında üretilir (**BYKHY Madde 34 İhlali**).
-     * `ROOM_TYPE_MISMATCH`: Şablon iskeletindeki bir mekânın beklenen kaçış rolünü taşımadığını tespit eder.
-
-4. **Aşama 3 — Kısmi BFS Hizalama (`_run_partial_bfs_alignment` - Satır 312–353):**
-   * İskelet dahi eşleşmiyorsa, merdiven kovanı tamamen kopuktur veya kat koridoruna bağlı hiçbir kaçış kapısı tasarlanmamıştır.
-   * `MISSING_DOOR_CONNECTION`: İlgili kaçış mekânı katta vardır ancak çapa mekâna doğrudan kapı bağlantısı çizilmemiştir.
-   * `MISSING_ROOM_NODE`: Katta zorunlu yangın güvenlik holü veya merdiven hacmi hiç projelendirilmemiştir.
-   * `CRITICAL_PATH_DISCONNECTION`: Bağımsız bölümlerden kaçış merdivenine kesintisiz erişim sağlanamadığını belirten en ağır (CRITICAL) hata üretilir.
-
----
-
-#### D. Arayüz ve 3B Sahne ile Entegrasyonu
-
-Üretilen bu yapılandırılmış `CandidateDiagnosticReport` nesneleri frontend katmanına anında aktarılır:
-1. **[`FireAuditPanel.tsx`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/frontend/src/components/Panels/FireAuditPanel.tsx):** Kusurun hangi aşamada yakalandığını (`Stage 1: Parametrik`, `Stage 2: Oda Rolü`, `Stage 3: Topolojik Kopukluk`) ve hesaplanan ihlal enerjisini (`gnn_energy`) gösterir.
-2. **[`ThreeScene.tsx`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/frontend/src/components/ThreeScene.tsx):** İhlalin gerçekleştiği yangın güvenlik holü veya kapı portalı kırmızı/turuncu ışıma efektiyle 3B model üzerinde vurgulanır ve kamera doğrudan o kata odaklanır (`fly-to`).
-3. **[`DetailsDrawer.tsx`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/frontend/src/components/DetailsDrawer.tsx):** Mimarın projeyi nasıl düzelteceğine dair somut çözüm önerisini (*"Kapı kasası 30 cm genişletilmeli ve EI60 sertifikalı duman fitilli yangın kapısı takılmalıdır"*) görüntüler.
-
----
-
-### 8.6. PyTorch Geometric (PyG) Uçtan Uca Uygulama Mimarisi
-
-[`gnn_order.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py) dosyasında kurgulanan `SpatialOrderGNN` mimarisi şu tensör akışını takip eder:
-
-1. **Tensör Dönüşümü (`nx_subgraph_to_pyg_data`):**
-   * NetworkX grafı; düğüm öznitelik tensörü `x` $[N, 10]$, RWPE tensörü $[N, 6]$, çapa indikatörü $[N, 1]$, kenar indeksleri `edge_index` $[2, 2E]$ ve kenar öznitelikleri `edge_attr` $[2E, 3]$ içeren bir PyG `Data` nesnesine derlenir.
-2. **Konvolüsyonel Katmanlar (`GINEConv`):**
-   * Kenar özelliklerini mesaj iletimine dahil edebilen $L = 3$ katmanlı `GINEConv` kullanılır:
-     $$h_v^{(l+1)} = \text{MLP}^{(l)} \left( (1 + \epsilon^{(l)}) h_v^{(l)} + \sum_{u \in \mathcal{N}(v)} \text{ReLU}\left(h_u^{(l)} + \Theta_{\text{edge}}^{(l)} e_{uv}\right) \right)$$
-3. **Global Havuzlama (Pooling) ve Çıktı:**
-   * Düğüm temsilleri `global_add_pool` ile toplanır ve Softplus projeksiyon katmanıyla $D = 64$ boyutlu pozitif koni uzayına aktarılır:
-     $$z(G) = \text{Softplus}\left(W_{\text{out}} \cdot \sum_{v \in V} h_v^{(L)} + b_{\text{out}}\right) \in \mathbb{R}^{64}_+$$
-4. **CPU / Web Entegrasyonu:**
-   * Model parametreleri optimize edilmiş Torch JIT formatında hafif siklet olarak paketlenmiş olup, kullanıcı tarayıcıdan DXF yüklediğinde GPU gerektirmeden yerel CPU üzerinde 150 milisaniye altında tüm binayı denetler.
-
----
-
-### 8.7. Dört Temel Sütunun Bütünleşik İşleyişi: RWPE → ID-GNN → GINEConv → Order Loss → Hibrit VF2
-
-Projemizde yangın kaçış yollarının ve çekirdek modüllerinin denetimi, bu dört kuramsal sütunun kesintisiz bir veri boru hattında (pipeline) birbiri ardına çalışmasıyla gerçekleşir:
-
-```
- ┌───────────────────────────────────────────────────────────────────────────────────────────┐
- │ 1. SÜTUN: RWPE + ID-GNN (1-WL Sınırını Aşma ve Çapa Kodu)                                 │
- │ • Girdi: NetworkX Mekânsal Grafı G = (V, E)                                               │
- │ • İşlem: R = A·D⁻¹ geçiş matrisinden 6 adımlı dönüş olasılıkları: RWPE(v) ∈ R⁶            │
- │          Çapa indikatörü (Yangın Holü / Merdiven Çapası): I_anchor(v) ∈ {0.0, 1.0}        │
- │ • Çıktı: Zenginleştirilmiş Düğüm Tensörü: x̃_v = [x_v || RWPE(v) || I_anchor(v)] ∈ R¹⁷     │
- └─────────────────────────────────────────────┬─────────────────────────────────────────────┘
-                                               │
-                                               ▼
- ┌───────────────────────────────────────────────────────────────────────────────────────────┐
- │ 2. SÜTUN: GINEConv (Kapı Genişliği ve Mesafe Kenar Niteliklerini Aktarma)                 │
- │ • Girdi: Kenar Tensörü e_uv = [W_door/100, dist/20, is_fire] ∈ R³                         │
- │ • İşlem: Θ_edge ile R⁶⁴ projeksiyonu; 3 Katmanlı Artık (Residual) GINEConv Konvolüsyonu:  │
- │          h_v^(l+1) = h_v^(l) + ReLU( MLP( (1+ε)h_v^(l) + Σ ReLU(h_u^(l) + Θ·e_uv) ) )   │
- │ • Çıktı: Kapı genişliği ve yangın dayanımı emdirilmiş düğüm gösterimleri: h_v ∈ R⁶⁴      │
- └─────────────────────────────────────────────┬─────────────────────────────────────────────┘
-                                               │
-                                               ▼
- ┌───────────────────────────────────────────────────────────────────────────────────────────┐
- │ 3. SÜTUN: ORDER EMBEDDING & MAX-MARGIN LOSS (Asimetrik Koni Geometrisi)                   │
- │ • Girdi: Küme Havuzlaması: h_pool = global_add_pool(H), h_anchor                          │
- │ • İşlem: Softplus Koni Projeksiyonu: z(G) = Softplus(W_out [h_anchor || h_pool]) ∈ R₊⁶⁴    │
- │          İhlal Enerjisi: E(z_Q, z_T) = ||max(0, z_Q - z_T)||₂²                            │
- │          Eğitim Kaybı: L_order = E(z_Q, z_pos) + max(0, γ - E(z_Q, z_neg)), γ = 1.0       │
- │ • Çıktı: O(1) Sürede Skalar İhlal Enerjisi E(z_Q, z_T)                                    │
- └─────────────────────────────────────────────┬─────────────────────────────────────────────┘
-                                               │
-                        ┌──────────────────────┴──────────────────────┐
-                        ▼ [E > 0.25 (Uzak Aday)]                      ▼ [E <= 0.25 (Filtreyi Geçti)]
-                 [HİBRİT BUDAMA (O(1))]                    ┌───────────────────────────────────┐
-                 • VF2 araması baypas edilir               │ 4. SÜTUN: HİBRİT VF2 DOĞRULAMA    │
-                 • Kombinatoryel patlama önlenir           │ (ExplainableVF2Analyzer Hunisi)   │
-                 • ~200 kat hız kazancı sağlanır           └─────────────────┬─────────────────┘
-                                                                             │
-                      ┌──────────────────────────────┬───────────────────────┴───────────────────────┐
-                      ▼                              ▼                               ▼               ▼
-                 [AŞAMA 0]                      [AŞAMA 1]                       [AŞAMA 2]       [AŞAMA 3]
-              Tam Monomorfizm             Parametrik Gevşetme              Oda Rolü Gevşetme  Kısmi BFS
-              • Düğüm: Oda Tipi & Alan    • Topoloji ve Tipler Tam         • Salt İskelet Var • Fiziksel Kapı
-              • Kenar: W >= 90cm & EI60   • DOOR_WIDTH_DEFICIT             • Rol Uyuşmazlığı:   veya Merdiven
-              • Rota: Mesafe <= 30m       • ROOM_AREA_DEFICIT                BYKHY M.34 İhlali  Tamamen Yok
-              • %100 Yönetmelik Uyumu     • FIRE_DOOR_MISSING                (Doğrudan Geçiş) • CRITICAL_PATH_
-                                          • TOTAL_ROUTE_EXCEEDED                                DISCONNECTION
-```
-
-#### Dört Sütunun Kaynak Kod ve Test Süiti Karşılıkları
-
-| Sütun | Teorik İşlev | Kaynak Kod Dosyası & Sınıfı | Doğrulayan Pytest Testi |
-| :--- | :--- | :--- | :--- |
-| **1. RWPE + ID-GNN** | 1-WL sınırını aşma, simetrik koridor ve döngüleri ($C_6$ vs $2 \times C_3$) ayrıştırma | [`diagram_yonetmelik/gnn_order.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py) `compute_rwpe`, `SpatialOrderGNN` | `test_1wl_rwpe_distinguishes_c6_from_two_c3_triangles` |
-| **2. GINEConv** | Kapı net genişliği ($W$), yürüyüş mesafesi ($d$) ve EI60 sertifikasını mesaj iletimine gömme | [`diagram_yonetmelik/gnn_order.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py) `GINEConv`, `nx_subgraph_to_pyg_data` | `test_concave_l_corridor_walking_distance`, `test_full_pipeline_on_sample_dxf` |
-| **3. Order Embedding Loss** | Asimetrik kısmi sıralama ($G_Q \subseteq G_T$), pozitif koni ($\mathbb{R}_+^{64}$), max-margin sıralama kaybı ($\gamma=1.0$) | [`diagram_yonetmelik/gnn_order.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py) `violation_energy`, `OrderEmbeddingLoss` | `test_order_embedding_partial_order_and_loss` |
-| **4. Hibrit VF2 Doğrulama** | $O(1)$ nöral ön eleme ($E \le 0.25$) sonrası 3 aşamalı kademeli kısıt gevşetme ve açıklanabilir teşhis | [`diagram_yonetmelik/vf2_diagnostics.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/vf2_diagnostics.py) `ExplainableVF2Analyzer` | `test_explainable_vf2_parametric_violation`, `test_high_rise_12_story_dxf_generation_and_audit` |
-
----
-
-### 8.8. NetworkX Tabanlı Pozitif ve Sert Negatif (Hard Negative) Veri Yükleyici Mimarisi
-
-Order Embedding modelinin yangın güvenlik şablonlarını ve imar sınırlarını yüksek genelleme başarısıyla öğrenebilmesi; eğitim sırasında modele sunulan pozitif ve negatif çiftlerin kalitesine bağlıdır. Rastgele seçilmiş iki graf (örneğin bir otopark rampası ile daire banyosu) "trivial negatif" oluşturur ve modele yangın kapısı genişliği veya duman holü eksikliği hakkında hiçbir ayırt edici gradyan sağlayamaz.
-
-Platformumuzda [`diagram_yonetmelik/subgraph_dataset.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/subgraph_dataset.py) içerisinde kurgulanan `SpatialRAGSubgraphDataset` ve `SubgraphPairData` veri hattı, NetworkX mimari graflarından kontrollü **pozitif** ve **sert negatif (hard negative)** çiftleri üretir:
-
-```
-                  [NetworkX Mimari Bölge Komşuluk Grafı (RAG)]
-                                       │
-                                       ▼
-         [nx.ego_graph(G, anchor, radius=k)] ──► Çapa Merkezli Hedef Altgraf (G_u)
-                                       │
-                    ┌──────────────────┴──────────────────┐
-                    ▼                                     ▼
-        [POZİTİF ÇİFT ÜRETİMİ]                [SERT NEGATİF ÇİFT ÜRETİMİ]
-        BFS Sınırından Bağlantılı Altgraf     3 Mimari Mutasyon Stratejisi
-        Örnekleme (_sample_connected_query)   (_create_hard_negative)
-        G_q ⊆ G_u (Etiket = 1.0)               G_q ⊈ G_u (Etiket = 0.0)
-                                                          │
-                                                          ▼
-                                             ┌─────────────────────────────┐
-                                             │ VF2 YANLIŞ-NEGATİF FİLTRESİ │
-                                             │ (_is_still_subgraph)        │
-                                             │ Mimari simetri kontrolü:    │
-                                             │ Başka daldan kazara eşleşme │
-                                             │ varsa mutasyon REDDEDİLİR!  │
-                                             └──────────────┬──────────────┘
-                                                            │
-                                                            ▼
-                                             [SubgraphPairData & DataLoader]
-                                             • __inc__ ile indeks ofsetleme
-                                             • follow_batch=['x_q', 'x_u']
-                                             • split_pair_batch ile modele akış
-```
-
----
-
-#### 1. Temel Matematiksel Kural: Neden $G_q$ Üzerinden Eleman Silmek Negatif Yapmaz?
-Order Embedding uzayında öğrenilen ilişki asimetrik bir kısmi sıralamadır:
-$$G_q \subseteq G_u \iff z(G_q) \preceq z(G_u) \iff \forall i \in \{1, \dots, D\}, \quad z_q[i] \le z_u[i]$$
-
-* Eğer bir sorgu şablonu $G_q$ hedef bina bölgesinde kapsanıyorsa ($G_q \subseteq G_u$), $G_q$'dan rastgele bir kapı kenarı veya oda düğümü silindiğinde elde edilen yeni graf $G'_q$, $G_q$'nun öz-altgrafı olur ($G'_q \subset G_q$).
-* Kısmi sıralamanın geçişlilik (transitivity) aksiyomu gereği:
-  $$G'_q \subset G_q \quad \land \quad G_q \subseteq G_u \implies G'_q \subseteq G_u$$
-* **Sonuç:** Sorgudan eleman silmek onu hedef karşısında negatif yapmaz; tersine graf küçüldüğü için neredeyse her zaman $G_u$ içinde kapsanmaya devam eder! Bu nedenle sert negatif madenciliği özel mimari mutasyon kurallarıyla yapılmalıdır.
-
----
-
-#### 2. Sert Negatif Üretiminde 3 Mimari Mutasyon Stratejisi (`_create_hard_negative`)
-
-Sert negatif çift ($G_q \not\subseteq G_u$), geçerli bir pozitif çiftten yola çıkılarak şu 3 kontrollü mutasyon stratejisinden biriyle üretilir:
-
-##### Strateji 1: Hedef Grafta Kural Bozulması (`target_edge_drop`)
-* **Mantık:** Sorgu $G_q$ yönetmeliğe uygun tam bir yangın kaçış şablonu olarak sabit tutulur. Hedef altgraftan ($G_u$) kritik bir geçiş veya yangın kapısı kenarı silinir (`G_u_neg.remove_edge(u, v)`).
-* **Mimari Karşılığı:** Kat koridorundan yangın güvenlik holüne veya yangın holünden merdiven kovanına açılan kapının projede unutulması / duvara dönüştürülmesi durumudur.
-* **Sonuç:** Sorgu kesintisiz bir kaçış yolu şart koşarken hedefte bu yol fiziksel olarak koptuğu için $G_q \not\subseteq G_u$ sağlanır.
-
-##### Strateji 2: Sorgu Grafına Topolojik Kısıt Ekleme / $G_q$ Mutasyonu (`query_cycle_add`)
-* **Mantık:** Hedef bina altgrafı ($G_u$) olduğu gibi bırakılır. Sorgu grafına ($G_q$) hedefte karşılığı bulunmayan fazladan bir döngü kenarı (`door_width_cm=100.0, is_fire_resistant=True`) eklenir.
-* **Mimari Karşılığı:** Hedef kat planında tek yönde kaçış sağlanan çıkmaz bir koridor varken, sorgu grafının iki bağımsız kaçış merdivenine bağlanan dairesel bir ring koridor şart koşması durumudur.
-* **Sonuç:** $G_q$, hedefte mevcut olmayan bir topolojik döngü talep ettiği için altgraf monomorfizmi bozulur ($G_q \not\subseteq G_u$).
-
-##### Strateji 3: Mekân Tipi ve Rolünün Bozulması (`room_type_violation`)
-* **Mantık:** Sorgu grafındaki sıradan bir mekân düğümü kritik bir yangın kaçış rolüne yükseltilir (`room_type = "yangin_holu"` veya `"dis_cikis"`).
-* **Mimari Karşılığı:** Hedef binada koridor doğrudan normal bir odaya açılırken, mevzuatın bu geçiş noktasında mutlaka duman sızdırmaz bir yangın güvenlik holü beklemesidir.
-* **Sonuç:** Topolojik iskelet uyuşsa dahi düğüm öznitelik kısıtı sağlanamadığından monomorfizm bozulur.
-
-##### Garantili Negatif (Fallback Mekanizması)
-Eğer kat planındaki simetriler nedeniyle yukarıdaki 3 strateji izomorfizmi bozamazsa, çapa düğümün tipi doğrudan zıt bir fonksiyona çevrilir (`yangin_merdiveni` $\leftrightarrow$ `salon`). Bu sayede her örnekleme adımında garantili sert negatif üretilir.
-
----
-
-#### 3. VF2 Yanlış-Negatif (False-Negative) Filtresi (`_is_still_subgraph`)
-
-Mimari kat planları yüksek derecede simetrik yapılar barındırır: yan yana simetrik 2+1 daireler, koridorun iki ucundaki ikiz yangın holleri veya çift merdiven kovanları.
-
-* **Veri Zehirlenmesi Tehlikesi:** Hedef graf $G_u$'dan bir kapı kenarı silindiğinde, mimarideki simetri nedeniyle sorgu şablonu $G_q$ hedefteki *farklı bir paralel koridor veya ikinci bir merdiven dalı üzerinden* kazara hâlâ izomorfik (monomorfik) olarak bulunabilir!
-* Eğer bu durum kontrol edilmezse, gerçekte pozitif olan bir altgraf çifti modele "etiket = 0.0 (negatif)" olarak verilir. Bu durum **label noise (etiket gürültüsü)** ve **veri zehirlenmesine** yol açarak modelin koni sınırlarını öğrenmesini engeller.
-* **Çözüm:** [`diagram_yonetmelik/subgraph_dataset.py:L170-195`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/subgraph_dataset.py#L170-L195) içerisinde kurgulanan `_is_still_subgraph` metodu, mutasyona uğramış çifti anında **NetworkX VF2 (`isomorphism.GraphMatcher`)** algoritmasına sokar:
-  ```python
-  def _is_still_subgraph(self, G_q: nx.Graph, G_u: nx.Graph, anchor: int) -> bool:
-      def node_match(n1, n2):
-          return n1.get("room_type") == n2.get("room_type")
-      def edge_match(e1, e2):
-          if e1.get("is_fire_resistant", False) and not e2.get("is_fire_resistant", False):
-              return False
-          return True
-
-      gm = isomorphism.GraphMatcher(G_u, G_q, node_match=node_match, edge_match=edge_match)
-      for mapping in gm.subgraph_isomorphisms_iter():
-          if mapping.get(anchor) == anchor:
-              return True  # Hâlâ izomorfik! Bu mutasyon GEÇERSİZDİR.
-      return False  # Kesinlikle negatif, eğitim için onaylandı.
-  ```
-* VF2 "hâlâ altgraftır" derse yapılan mutasyon geri alınır (`rollback`) ve başka bir mutasyon stratejisi denenir. Yalnızca VF2 filtresinden geçen mutasyonlar sert negatif kabul edilir.
-
----
-
-#### 4. PyTorch Geometric Batching ve Çift Graf Veri Yükleyici (`SubgraphPairData`)
-
-PyTorch Geometric'in standart `Data` sınıfı tekil grafları yığınlar. Oysa altgraf sıralama eğitiminde her örnek iki farklı boyutta graf ($G_q$ ve $G_u$) ve tek bir skalar etiket ($y \in \{0.0, 1.0\}$) içerir.
-
-* **İndeks Karışması Problemi:** $B$ adet graf çifti bir araya getirildiğinde, $G_q$'nun kenar indeksleri $G_q$ düğüm sayısıyla, $G_u$'nun kenar indeksleri ise $G_u$ düğüm sayısıyla artırılmalıdır (offset / increment). Standart PyG bunu tek graf varsayımıyla yapamaz.
-* **Çözüm (`SubgraphPairData`):** PyG `Data` sınıfı genişletilerek `__inc__` metodu özel olarak ezilir:
-  ```python
-  class SubgraphPairData(Data):
-      def __inc__(self, key: str, value, *args, **kwargs):
-          if key == "edge_index_q":
-              return self.x_q.size(0)
-          if key == "edge_index_u":
-              return self.x_u.size(0)
-          return super().__inc__(key, value, *args, **kwargs)
-  ```
-* **DataLoader Entegrasyonu:** DataLoader başlatılırken `follow_batch=["x_q", "x_u"]` bayrağı verilir. Bu sayede PyG, mini-batch içinde her iki graf için bağımsız yığın tensörleri (`x_q_batch` ve `x_u_batch`) oluşturur:
-  ```python
-  loader = DataLoader(dataset, batch_size=16, shuffle=True, follow_batch=["x_q", "x_u"])
-  ```
-* **Batch Ayrıştırma (`split_pair_batch`):** DataLoader'dan çıkan birleşik batch, `split_pair_batch` fonksiyonuyla `SpatialOrderGNN` modelinin forward pass'ine girecek bağımsız `(q_batch, u_batch, labels)` demetine dönüştürülür.
-
----
-
-### 8.9. Projede Kullanılan NetworkX Algoritmaları, Filtreleri ve Özel Eşleyicilerin Detaylı Envanteri
-
-**DiagramYönetmelik** projesinde NetworkX kütüphanesi yalnızca statik bir veri yapısı olarak değil, mekânsal çıkarım ve kural doğrulamanın temel omurgası olarak kullanılmaktadır. Projemizde yer alan tüm algoritmalar ve kullanım alanları:
-
-| NetworkX Modülü / Algoritması | İlgili Proje Dosyası | Gerçekleştirdiği Mühendislik İşlevi |
-| :--- | :--- | :--- |
-| **`isomorphism.GraphMatcher`** | [`vf2_diagnostics.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/vf2_diagnostics.py), [`subgraph_dataset.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/subgraph_dataset.py) | **VF2 Altgraf Monomorfizmi:** `subgraph_monomorphisms_iter()` ile indüklenmemiş altgraf eşleme; `node_match` ve `edge_match` fonksiyonlarıyla kapı genişliği ($\ge 90\text{ cm}$), yangın dayanımı (EI60) ve oda tiplerini doğrulama; **Çapa Kök Kilitleme** (`mapping[q_anc] == t_anc`) ile $O(1)$ kök budaması; Kümülatif rota mesafesi ($\le 30.0\text{ m}$) denetimi. |
-| **`nx.ego_graph`** | [`gnn_order.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py) `extract_anchored_k_hop`, [`subgraph_dataset.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/subgraph_dataset.py) | **Ego-Altgraf Çıkarımı:** Çapa kaçış düğümü etrafındaki $k=2$ veya $k=3$ komşuluğundaki yerel altgrafı izole ederek GNN modeline besleme. |
-| **`nx.subgraph`** | [`subgraph_dataset.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/subgraph_dataset.py) `_sample_connected_query`, [`spminer.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/spminer.py) | **Bağlantılı Altgraf Örnekleme:** BFS sınırından (frontier) komşuluk genişletmesiyle çapa merkezli tutarlı pozitif altgraflar üretme. |
-| **`algorithms.traversal.breadth_first_search` (BFS)** | [`vf2_diagnostics.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/vf2_diagnostics.py) `_run_partial_bfs_alignment` | **Açıklanabilir Kısmi Hizalama:** VF2 monomorfizmi çöktüğünde çapa komşularını BFS ile tarayarak fiziksel kapı kopukluğu (`MISSING_DOOR_CONNECTION`) ve projede hiç çizilmemiş kaçış hacmi (`MISSING_ROOM_NODE`) tespiti. |
-| **`algorithms.shortest_paths.weighted.dijkstra_path_length`** | [`spatial_rag.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/spatial_rag.py), [`multi_floor_auditor.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/multi_floor_auditor.py), [`spminer.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/spminer.py) | **3B Geodezik Kaçış Mesafesi:** Bağımsız bölümlerin en uzak odasından yangın merdivenine ve zemin çıkışına olan engelsiz kaçış hattı uzunluklarının Dijkstra ile hesaplanması. |
-| **`algorithms.flow.edmonds_karp` ve `minimum_cut`** | [`evacuation.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/evacuation.py) | **Statik Darboğaz Kesiti:** Çok katlı 3B tahliye grafı üzerinde binanın en dar kaçış boğazını (minimum cut) ve maksimum debi kapasitesini simülasyon öncesinde hesaplama. |
-| **`algorithms.graph_hashing.weisfeiler_lehman_graph_hash`** | [`spminer.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/spminer.py) | **Topolojik Kanonikleştirme:** SPMiner'ın keşfettiği daire ve çekirdek motiflerini topolojik olarak karma (hash) koduna dönüştürüp tekilleştirme (`wl_hash`). |
-| **`contracted_nodes` & Özel Makro-Düğüm İndirgeme** | [`spminer.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/spminer.py) `ArchitecturalGraphCoarsener` | **Hiyerarşik Graf Sıkıştırma:** Tekrar eden daire modüllerini tek makro-düğüme sıkıştırırken daire içi en uzak kaçış derinliğini (`internal_max_escape_m`) ve portal kenarlarını koruma. |
-
----
-
+Deneyi yeniden çalıştırmak için depo kökünde `python -m diagram_yonetmelik.evaluate_gnn`, ardından `python -m diagram_yonetmelik.compare_spminer` çalıştırılır.
 ## 9. AutoCAD DXF Pafta İşleme Hattı, Çizim Standartları ve Uçtan Uca Simülasyon Akışı
 
 ### 9.1. DXF Dosyası Yüklendiğinde Saniyeler İçinde Gerçekleşen Otomatik Adımlar
@@ -797,7 +279,7 @@ Aşağıdaki şema, ham bir AutoCAD `.dxf` dosyasının sisteme girişinden 3B s
  ┌─────────────────────────────────────────────────────────────┐
  │ 3. ORKESTRASYON & NÖRO-SEMBOLLİK DENETİM (orchestrator.py)  │
  │  • SPMiner: Tekrar Eden Daire Planı & Çekirdek Keşfi        │
- │  • NeuroMatch: Order Embedding İhlal Enerjisi (O(1) Budama) │
+ │  • Kalibre edilmiş aday eleme (isteğe bağlı)                │
  │  • Explainable VF2: 3 Aşamalı Kademeli Gevşetme ve Teşhis  │
  │  • MultiFloorAuditor: BYKHY / PAİY / Sığınak Kural Motoru   │
  └──────────────────────────────┬──────────────────────────────┘
@@ -817,7 +299,7 @@ Aşağıdaki şema, ham bir AutoCAD `.dxf` dosyasının sisteme girişinden 3B s
  │ 6. FRONTEND ETKİLEŞİMİ      │         │ 7. RESMİ ÇIKTILAR           │
  │ • ThreeScene 3B Görselleme  │         │ • İndirilebilir DXF Dosyası │
  │ • Canlı Parçacık Simülasyonu│         │ • Mevzuat Uyum Raporu (.md) │
- │ • Dinamik BYKHY Checklist   │         │ • Kanıt JSON Dokümanı       │
+ │ • Dinamik BYKHY Checklist   │         │ • Dayanak JSON Dokümanı       │
  └─────────────────────────────┘         └─────────────────────────────┘
 ```
 
@@ -849,7 +331,7 @@ Sistemin kullanıcının çizdiği mimari projeyi sıfır hatayla tanıması iç
 > * Alanı $< 7\text{ m}^2$ olan küçük hacimler $\to$ **`banyo_wc`** veya **`antre`**
 > * Alanı $\ge 24\text{ m}^2$ olan geniş hacimler $\to$ **`salon`** olarak sınıflandırılır.
 
-#### 9.3.1. Bu Geometrik Sezgiyi Sağlayan Altyapı, Sınıflar ve Kaynak Kod Kanıtı
+#### 9.3.1. Bu Geometrik Sezgiyi Sağlayan Altyapı, Sınıflar ve Kaynak Kod Eşlemesi
 
 Bu mekanizma projemizde **iki ayrı modül** tarafından çift yönlü olarak işletilmektedir:
 
@@ -1008,7 +490,7 @@ Bir DXF paftası işlendiğinde mimar ve denetim heyeti şu somut mühendislik �
      * `TADILAT_ONERILERI` (Yeşil Katman): Optimizasyon motorunun önerdiği genişletilmiş kapı kasaları ($90\text{ cm} \to 120\text{ cm}$) ve yeni duvar sınırları yeşil çizgilerle çizilir.
    * Üst bardaki **"DXF İndir"** butonuna basılarak doğrudan AutoCAD ortamında açılabilen hazır revizyon paftası indirilir.
 
-4. **Resmi Mevzuat Uyum Raporu ve Kanıt Çıktısı:**
+4. **Resmi Mevzuat Uyum Raporu ve Dayanak Çıktısı:**
    * İmar ve itfaiye onay süreçlerinde belediyelere sunulmak üzere, resmi madde atıfları içeren Markdown formatında teknik denetim raporu üretilir.
 
 ---
@@ -1350,7 +832,7 @@ graph TD
     ORCH -->|8. Çok Katlı Denetim| MULTI
     ORCH -->|9. Tahliye Simülasyonu| EVAC
     ORCH -->|10. Karşı-Olgusal İyileştirme| OPT
-    ORCH -->|11. Mevzuat Kanıtları| REG
+    ORCH -->|11. Mevzuat Dayanakları| REG
     ORCH -->|12. DXF Revizyon Katmanı| DXF_OUT
 
     DATASET -->|Eğitim Çiftleri| GNN
@@ -1387,7 +869,7 @@ Codebase Memory grafı üzerinde yapılan derece analizi (degree centrality) son
 5. **`discover_frequent_modules` ([`spminer.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/spminer.py)) — $\text{Fan-In} = 3$:**
    * Order Embedding koni uzayında açgözlü büyümeyle tekrar eden daire/çekirdek planlarını keşfeder.
 
-Bu bilgi grafı yapısı, projenin modüler sınırlarının (boundaries) yüksek kohezyon (cohesion) ve düşük eşleşme (coupling) prensiplerine tam uyumlu olarak inşa edildiğini kanıtlamaktadır.
+Graf, modüller arasındaki çağrı ve bağımlılık ilişkilerini gösterir.
 
 ---
 
@@ -1450,8 +932,8 @@ Yukarıdaki çağrı grafında (`ORCH --> ...`) yer alan 12 temel boru hattı a�
      * Kenarlar: Kapı genişliği/100, Yürüme mesafesi/20, Yangın kapısı biti (1/0) = 3 boyut.
   3. *RWPE Hesabı:* $R = A D^{-1}$ geçiş matrisinden $m=6$ adımlı rastgele yürüyüş dönüş olasılıkları hesaplanır (1-WL sınırını aşar).
   4. *SpatialOrderGNN İleri Besleme:* 3 katmanlı `GINEConv` + `global_add_pool` + `Softplus` projeksiyonu ile $\mathbb{R}_+^{64}$ pozitif koni uzayında gömme vektörleri $z(G_q)$ ve $z(G_u)$ elde edilir.
-  5. *İhlal Enerjisi ($O(1)$ Koni Ön Eleme):* $E(z_q, z_u) = \|\max(0, z_q - z_u)\|_2^2$ hesaplanır.
-  6. *Hızlı Süzgeç:* $E \le 0.25$ ise şablonun hedefte yer alma olasılığı yüksektir $\to$ VF2'ye sevk edilir; aksi halde doğrudan elenir.
+  5. *İhlal Enerjisi (Koni Ön Eleme):* $E(z_q, z_u) = \|\max(0, z_q - z_u)\|_2^2$ hesaplanır.
+  6. Budama etkinse eşik üstündeki aday VF2 bekleyenler listesine alınır.
 * **Çıktı:** Filtrelenmiş aday çapa listesi ve nöral ihlal enerjisi skoru.
 
 ---
@@ -1460,7 +942,7 @@ Yukarıdaki çağrı grafında (`ORCH --> ...`) yer alan 12 temel boru hattı a�
 * **Kaynak Modül & Sınıf:** [`diagram_yonetmelik/vf2_diagnostics.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/vf2_diagnostics.py) (`ExplainableVF2Analyzer`)
 * **Giriş:** GNN'den gelen filtrelenmiş kaçış altgrafları ve mevzuat kaçış şablonu (`fire_query`).
 * **Alt Dalları ve 3 Aşamalı Kademeli Kısıt Gevşetme:**
-  1. *Çapa Kök Kilitleme (Root Pinning):* `mapping[q_anc] == t_anc` kontrolü ile arama uzayı doğrudan kaçış kapısına kilitlenir ($O(1)$).
+  1. *Çapa Kök Kilitleme (Root Pinning):* `mapping[q_anc] == t_anc` kontrolü ile arama uzayı doğrudan kaçış kapısına kilitlenir.
   2. *Aşama 1 (Tam Kısıtlı VF2 - `_run_strict_vf2`):* `node_match` (oda tipi ve alan $\ge \min\_alan$) + `edge_match` (kapı $\ge 90\text{ cm}$, yangın dayanımı EI60) + rota uzunluğu $\le 30.0\text{ m}$. Başarılıysa bina tam uyumludur (`is_fully_compliant = True`).
   3. *Aşama 2 (Parametrik Gevşetme - `_run_topology_and_types_vf2`):* Kapı genişliği ve yangın kapısı kısıtları gevşetilir, sadece oda tipi ve bağlantı aranır. Eşleşirse parametrik farklar taranır (`DOOR_WIDTH_DEFICIT`, `FIRE_DOOR_MISSING`, `TOTAL_ROUTE_EXCEEDED`).
   4. *Aşama 3 (İskelet Gevşetme - `_run_skeleton_only_vf2`):* Oda tipleri de gevşetilir, saf bağlantı iskeleti aranır. Eşleşirse fonksiyonel rol uyuşmazlığı taranır (`ROOM_TYPE_MISMATCH`).
@@ -1548,7 +1030,7 @@ Yukarıdaki çağrı grafında (`ORCH --> ...`) yer alan 12 temel boru hattı a�
 * **Alt Dalları ve Bilgi Çıkarımı:**
   1. *Bina Kullanım Sınıfı Eşleştirmesi (`OccupancyClassificationEngine`):* Konut, Sağlık, Eğitim, Toplanma vb. sınıfların özel parametreleri yüklenir.
   2. *Mevzuat Madde İndeksi:* BYKHY (2007/12937), PAİY, Sığınak ve Otopark Yönetmeliği maddeleri semantik ve leksikal olarak taranır.
-  3. *Kanıt Getirimi (Evidence Retrieval):* Tespit edilen her kusur kodu için (`DOOR_WIDTH_DEFICIT`, `FIRE_DOOR_MISSING`, `TOTAL_ROUTE_EXCEEDED` vb.) ilgili resmi mevzuat maddesi, fıkrası, asgari sayısal şartı ve yasal gerekçesi çekilir (`RetrievedLegalEvidence`).
+  3. *Dayanak Getirimi (Evidence Retrieval):* Tespit edilen her kusur kodu için (`DOOR_WIDTH_DEFICIT`, `FIRE_DOOR_MISSING`, `TOTAL_ROUTE_EXCEEDED` vb.) ilgili resmi mevzuat maddesi, fıkrası, asgari sayısal şartı ve yasal gerekçesi çekilir (`RetrievedLegalEvidence`).
   4. *Resmi Markdown Raporu Sentezi:* Belediye ve itfaiye onay süreçlerine sunulabilecek resmi teknik denetim raporu Markdown ve JSON formatında üretilir.
 * **Çıktı:** `official_markdown_report`, `grounded_evidence_json`.
 
@@ -1573,7 +1055,7 @@ Yukarıdaki çağrı grafında (`ORCH --> ...`) yer alan 12 temel boru hattı a�
 
 ## 12. MEVZUAT BİLGİ SİSTEMİ, HUKUKİ İNDEKS KÜTÜPHANESİ VE CANLI SENKRONİZASYON MİMARİSİ
 
-Projede mevzuat denetimi, yalnızca statik kural kontrolleriyle sınırlı kalmayıp; Türkiye Cumhuriyeti Cumhurbaşkanlığı Mevzuat Bilgi Sistemi (`mevzuat.gov.tr`) ve Resmî Gazete ile tam entegre, kriptografik SHA-256 bütünlük doğrulamalı, sıfır-404 garantili ve nöro-sembolik canlı senkronizasyonlu iki kademeli bir altyapı üzerinde çalışmaktadır.
+Denetim motoru mevzuat kaynaklarını ve yerel önbelleği kullanır.
 
 ```mermaid
 graph TD
@@ -1627,7 +1109,7 @@ Mimari kat planı grafı (RAG), VF2 monomorfizmi ve 3B hidrolik tahliye simülas
 
 | Yönetmelik | Madde No | Madde Başlığı | Doğrudan Denetlenen Sayısal Kriter / Eşik | İlişkili İhlal Kodu |
 |:---|:---|:---|:---|:---|
-| **BYKHY** | Madde 30 | Kaçış Yolları Tanımı ve Sürekliliği | %100 kesintisizlik, acil aydınlatma $\ge 10\text{ lux}$, 60 dk | `BYKHY_M30_KACIS_YOLU_KESINTILI` |
+| **BYKHY** | Madde 30 | Kaçış Yolları Tanımı ve Sürekliliği | kesintisizlik, acil aydınlatma $\ge 10\text{ lux}$, 60 dk | `BYKHY_M30_KACIS_YOLU_KESINTILI` |
 | **BYKHY** | Madde 31 & 48 | Çıkış ve Kaçış Merdiveni Sayısı (Yüksek Binalar) | $H \ge 21.50\text{ m}$ veya Kat $\ge 8$ ise min 2 merdiven; $>500$ kişide 3; $>1000$ kişide 4 | `BYKHY_M31_KACIS_MERDIVEN_SAYISI_YETERSIZ` |
 | **BYKHY** | Madde 32 & 89 | Kaçış Merdiveni Havalandırması ve Basınçlandırma | Min $1.0\text{ m}^2$ dış pencere; $H \ge 21.50\text{ m}$ ise $\ge 50\text{ Pa}$ pozitif basınç | `BYKHY_M32_MERDIVEN_BASINCLANDIRMA_EKSIK` |
 | **BYKHY** | Madde 33 & 34 | Kaçış Kapıları Boyutları ve Yangın Dayanımı | Tek kanat $\ge 90\text{ cm}$, çift kanat $\ge 140\text{ cm}$, EI60/EI90, eşik $\le 1.5\text{ cm}$ | `BYKHY_M33_KACIS_KAPISI_GENISLIK_DEFICIT` |
@@ -1657,7 +1139,7 @@ Sistem yalnızca yukarıdaki 21 çekirdek maddeyle sınırlı değildir. [`diagr
 * **Sığınak Yönetmeliği:** 19 Madde + Teknik Donatım Cetvelleri.
 * **Otopark Yönetmeliği:** 15 Madde + Ek Cetveller.
 
-Bu genişletilmiş maddelerin tamamı `HybridRegulatoryRetriever` (BM25 + N-Gram + Kısıt Filtreleme) motoru tarafından taranabilir durumdadır. Mimari planda ortaya çıkan herhangi bir özel durum (örneğin yangın pompası odası yeri, trafo dairesi ayrımı, jeneratör bacası, engelli tuvaleti ölçüleri veya yağmur suyu toplama deposu) sorgulandığında, sistem ilgili diğer mevzuat maddelerini RAG mekanizmasıyla bulup hukuki kanıt (`RetrievedLegalEvidence`) olarak raporda sunmaktadır.
+Bu genişletilmiş maddelerin tamamı `HybridRegulatoryRetriever` (BM25 + N-Gram + Kısıt Filtreleme) motoru tarafından taranabilir durumdadır. Mimari planda ortaya çıkan herhangi bir özel durum (örneğin yangın pompası odası yeri, trafo dairesi ayrımı, jeneratör bacası, engelli tuvaleti ölçüleri veya yağmur suyu toplama deposu) sorgulandığında, sistem ilgili diğer mevzuat maddelerini RAG mekanizmasıyla bulup hukuki dayanak (`RetrievedLegalEvidence`) olarak raporda sunmaktadır.
 
 ---
 
@@ -1709,7 +1191,7 @@ KACIS_YOLLARI_VE_MERDIVEN_DENETIM_MIMARISI.md belgesine Bölüm 12.1.1 olarak ek
 
 * **Neden Sadece 21 Çekirdek Madde Otomatik Test Ediliyor?** (Kapı genişlikleri, merdiven sayısı, rıht/basış/Blondel, yangın holü, diyagonal mesafe, sığınak ve otopark ölçümlerini hangi algoritmanın ve dosyanın denetlediğini gösteren teknik tablo).
 * **Geriye Kalan 270+ Madde Neden Çizimden Test Edilemez?** (İdari/hukuki hükümler, halojensiz kablo ve elektriksel özellikler, pompa debisi/Hazen-Williams gibi mekanik hesaplar ve kurumsal işletme/tatbikat kurallarının 2B CAD kat planında fiziksel olarak bulunamayacağı gerçeği).
-* **Bu 270+ Madde Sistemde Neden Tutuluyor?** (Resmi teknik raporlarda hukuki kanıt ve gerekçelendirme sağlamak; mimar "jeneratör", "trafo", "paratoner" gibi serbest aramalar yaptığında mevzuat fihristini anında önüne getirebilmek).
+* **Bu 270+ Madde Sistemde Neden Tutuluyor?** (Resmi teknik raporlarda hukuki dayanak ve gerekçelendirme sağlamak; mimar "jeneratör", "trafo", "paratoner" gibi serbest aramalar yaptığında mevzuat fihristini anında önüne getirebilmek).
 
 ---
 
@@ -1914,9 +1396,9 @@ sequenceDiagram
 5. **Kalıcı Önbellekleme (`data/mevzuat_cache.json`):**
    Senkronizasyon sonucunda tüm güncel maddeler, resmî kaynak URL'leri ve zaman damgaları diske JSON olarak kaydedilir.
 6. **Sıfır-404 ve Kesintisiz Çevrimdışı Güvencesi (Offline Fallback):**
-   Eğer denetim anında belediyede veya şantiyede internet bağlantısı yoksa ya da mevzuat.gov.tr bakım modundaysa, sistem asla hata fırlatmaz veya durmaz (`Zero-Crash Guarantee`). Doğrudan `data/mevzuat_cache.json` önbelleğindeki en son doğrulanmış veriyi veya gömülü `ALL_REGULATION_ARTICLES` veri kümesini kullanarak denetimi %100 doğrulukla tamamlar.
+   Kaynak çevrimdışıysa yerel mevzuat önbelleği kullanılır.
 
-Bu altyapı sayesinde proje; mevzuat değişikliklerini anlık olarak takip eden, hukuki dayanağını Resmî Gazete tertip ve fihrist numaralarına kadar ispatlayan, mimara hem kusuru hem de matematiksel olarak en ucuz tadilat reçetesini sunan dünyanın en gelişmiş yapay zekâ destekli imar ve yangın denetim sistemi haline getirilmiştir.
+
 
 ---
 
@@ -2404,10 +1886,10 @@ class BasementComplianceAuditor:
 
 ### 15.5. Orkestrasyon ve Çapraz Denetim Entegrasyonu
 
-Bodrum denetimi, sistemin ana boru hattında iki farklı noktada çalıştırılarak çift katmanlı garanti altına alınır:
+Bodrum denetimi iki noktada çalışır.
 
 1. **Orkestratör Seviyesi ([`diagram_yonetmelik/orchestrator.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/orchestrator.py#L256-L265)):**
-   VF2 izomorfizm denetimleri tamamlandıktan hemen sonra `self.basement_auditor.audit_basement_graph(G_3d, program)` tetiklenir. Üretilen ihlaller `CandidateDiagnosticReport` içine sarılarak resmi mevzuat kanıtı oluşturulmak üzere RAG raporlayıcısına ve DXF revizyon katmanına aktarılır.
+   VF2 izomorfizm denetimleri tamamlandıktan hemen sonra `self.basement_auditor.audit_basement_graph(G_3d, program)` tetiklenir. Üretilen ihlaller `CandidateDiagnosticReport` içine sarılarak resmi mevzuat dayanağı oluşturulmak üzere RAG raporlayıcısına ve DXF revizyon katmanına aktarılır.
 2. **Çok Katlı Bina Denetçisi ([`diagram_yonetmelik/multi_floor_auditor.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/multi_floor_auditor.py#L657-L741)):**
    Bina geneli düşey şaft, dikey yangın merdiveni sürekliliği ve katlar arası duman izolasyonu taranırken, bodrum kattaki hava kilidi (`SIGINAK_M13_HAVA_KILIDI_EKSIK`) ve otopark doğrudan bağlantı yasağı (`BYKHY_M60_OTOPARK_DOGRADAN_MERDIVEN_BAGLANTISI`) kuralları teyit edilir.
 
@@ -2431,7 +1913,7 @@ Bodrum kat denetimi sonuçları ön yüzde tam reaktif olarak mimara sunulur:
 
 ## 16. SFPE Hidrolik Tahliye & Duman Simülasyonunun Pafta Bağımlı Dinamik Hesaplama Mimarisi
 
-Kullanıcıların pafta değiştirdiğinde veya özel AutoCAD DXF dosyası yüklediğinde karşılaştığı *"tahliye simülasyonu panelindeki 78 kişi, 76.5 sn RSET, 62.0 sn ASET ve 3 kapılık darboğaz tablosunun sabit görünmesi"* problemi derinlemesine incelenmiş; simülasyon motoru, API serileştiricisi ve ön yüz paneli uçtan uca **tam dinamik (paftaya %100 duyarlı)** hale getirilmiştir.
+Tahliye paneli, yüklenen paftanın simülasyon çıktısını gösterir.
 
 ```
   Örnek 3 Katlı Yapı (8-11 Kişi)        12 Katlı Yüksek Blok (188-277 Kişi)       Özel Mimar DXF Paftası
@@ -2439,7 +1921,7 @@ Kullanıcıların pafta değiştirdiğinde veya özel AutoCAD DXF dosyası yükl
                  ▼                                      ▼                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                      3B Hücre-İletim Modeli Simülatörü (evacuation.py)                           │
-│                      - Kapı efektif genişlikleri: W_eff = W_door - 0.15m                        │
+│                      - Kapı efektif genişlikleri: W_eff = max(0.30 m, W_door - 2 × 0.15 m)                        │
 │                      - Merdiven spesifik akışı: F_stair = 1.00 kişi/(sn*m)                      │
 │                      - İki bölgeli duman modeli: Tenability kotu Z_smoke >= 1.80m               │
 └────────────────────────────────────────────────┬────────────────────────────────────────────────┘
@@ -2502,7 +1984,7 @@ Yapılan iyileştirmelerin ardından sistemdeki paftalar arasında simülasyonun
 ### 16.3. Ön Yüz Panelinde Artık Ne Görülür?
 
 1. **Canlı İlerleme Çubuğu:**
-   Paftanın gerçek nüfusu (örn: 12 katlıda `277 / 277 Kişi (%100)`, 3 katlıda `11 / 11 Kişi (%100)`) gösterilir. Simülasyon zaman çubuğu ($T$) kaydırıldıkça `evac.time_series` dizisinden o saniyedeki gerçek tahliye sayısı milisaniye hassasiyetinde çekilir.
+   Paftanın gerçek nüfusu (örn: 12 katlıda `277 / 277 Kişi`, 3 katlıda `11 / 11 Kişi`) gösterilir. Simülasyon zaman çubuğu ($T$) kaydırıldıkça `evac.time_series` dizisinden o saniyedeki gerçek tahliye sayısı milisaniye hassasiyetinde çekilir.
 2. **Dinamik ASET vs RSET Kartı:**
    * Eğer bina hızlıca tahliye oluyorsa kart yeşil arka plana (`#18261E`), yeşil alev simgesine ve `+56.0 sn Güvenli Marj` rozetine bürünür.
    * Eğer yüksek yapıdaki gibi tahliye duman süresini aşıyorsa kart kırmızı arka plana (`#221A1D`) ve `-111.7 sn Güvenlik Açığı` rozetine geçer.
@@ -2541,13 +2023,13 @@ Kullanıcının karşılaştığı `Canlı Tahliye İlerlemesi (T = 180.0s): 0 /
 3. **SFPE Sigmoid / Smoothstep Hidrolik Geri Çekilme (Fallback) Koruması:**
    Tarayıcı hafızasında eski simülasyon yanıtı kalsa dahi (`time_series` dizisinin son elemanı $\le 0$ ise), sistem otomatik olarak SFPE hidrolik akış modelini (Smoothstep / S-Eğrisi) devreye sokar:
    $$\text{Oran } r = \frac{T - 2.0}{\text{RSET} - 2.0}, \quad \text{Akış Oranı } = 3r^2 - 2r^3$$
-   Böylece $T = 169.5\text{ s}$ anında bina nüfusunun (188 veya 277 kişi) %99'unun ($186 - 188$ kişi) tahliye olduğu matematiksel ve fiziksel olarak garanti altına alınır; sayaç asla %0'da takılı kalmaz. Ayrıca panel başlığına tek tıkla canlı backend CTM simülasyonunu yeniden hesaplatan `onRefreshAudit` butonu eklenmiştir.
+   Sayaç, seçilen zaman adımındaki tahliye edilen kişi sayısını gösterir.
 
 ---
 
 ## 17. Dinamik Olarak Güncellenen Sekmelerin Mimari ve Algoritmik İşleyişi
 
-Kullanıcıların pafta seçimi değiştirmesi (Örnek 3 Katlı, 12 Katlı Yüksek Yapı, 8 Katlı Kusursuz Pafta veya özel AutoCAD DXF yükleme) durumunda ön yüzdeki analiz panellerinin statik/mock şablonlardan tamamen kurtarılıp, arka plan nöro-sembolik hesaplama motoruna %100 reaktif ve dinamik olarak bağlanması sağlanmıştır.
+Ön yüz analiz panelleri seçili paftanın çıktısını kullanır.
 
 ```
 CAD DXF Paftası (8 Katlı Kusursuz / 12 Katlı / Mimar DXF)
@@ -2827,7 +2309,7 @@ Sistem, statik veya sahte (mock) metin indirmek yerine; aktif seçili paftanın 
 | **`OPTIMIZASYON_OLCU`** | **4 (Camgöbeği)** | 0.25 mm | Continuous | Ölçülendirme, tadilat reçetesi fayda indeksi ve maliyet açıklamaları |
 | **`DENETIM_OZET_TABLOSU`** | **4 (Camgöbeği)** | **0.35 mm** | Continuous | Tablo dış çerçevesi, yatay ve dikey hücre bölüntü çizgileri |
 | **`DENETIM_OZET_TABLOSU_METIN`**| **7 (Beyaz)** | 0.20 mm | Continuous | Tablo hücre metinleri, başlıklar ve antet bilgileri |
-| **`DENETIM_ONAY_DAMGASI`** | **3 (Yeşil) / 1 (Kırmızı)** | **0.50 mm** | Continuous | Çift çerçeveli resmi mevzuat uygunluk onay damgası (%100 UYGUN / ŞERHLİ) |
+| **`DENETIM_ONAY_DAMGASI`** | **3 (Yeşil) / 1 (Kırmızı)** | **0.50 mm** | Continuous | Çift çerçeveli resmi mevzuat uygunluk onay damgası (denetim özeti) |
 | **`A-WALL` / `MIMARI_DUVAR`** | 7 (Beyaz) | 0.25 mm | Continuous | Kapalı mimari duvar gövdeleri ve mekan sınırları |
 | **`A-DOOR` / `MIMARI_KAPI`** | 2 (Sarı) | 0.20 mm | Continuous | Kapı kanadı, blok referansı ve açılış yönü yayları |
 | **`A-TEXT` / `MAHAL_ETIKET`** | 3 (Yeşil) | 0.20 mm | Continuous | Türkçe mahal etiketleri, net alanlar ($m^2$) ve kat seviyeleri |
@@ -2840,7 +2322,7 @@ Sistem, statik veya sahte (mock) metin indirmek yerine; aktif seçili paftanın 
    * **Toplam Varlık:** 435 CAD Varlığı (Entity).
    * **İhlal Katmanı (`DENETIM_IHLALLERI`):** **0 Varlık** (Çizim tamamen temiz onaylanmıştır).
    * **Revizyon Katmanı (`OPTIMIZASYON_ONERILERI`):** 32 Varlık (8 müdahale adımı için 0.55 bombeli bulutlar).
-   * **Onay Cetveli (`DENETIM_OZET_TABLOSU`):** 100 Varlık (Yeşil çift çerçeveli `[ %100 YÖNETMELİĞE TAM UYGUN — KUSURSUZ MİMARİ PAFTA ]` onay damgası, 7 uygunluk maddesi ve TMMOB/İtfaiye onay anteti).
+   * **Denetim cetveli:** Gözlenen ihlalleri ve inceleme durumunu gösterir.
 2. **12 Katlı Yüksek Yapı (`12_KATLI_YUKSEK_YAPI_DENETLENMIS_IHLALLI_PAFTA.dxf`):**
    * **Toplam Varlık:** 889 CAD Varlığı (Entity).
    * **İhlal Katmanı (`DENETIM_IHLALLERI`):** **192 Varlık** (Mimarın çizimi üzerine eklenen 160 kırmızı kısıt çerçevesi, lider oku ve 32 kat seviyeli MTEXT balonu).
@@ -2876,7 +2358,7 @@ Geliştirilen ilk DXF üretim motorunda, paftanın AutoCAD, Autodesk Viewer, Lib
  │                      [YENİ KUSURSUZ MİMARİ PAFTA]                      │
  │ • 4 Sütun x 2 Satır Profesyonel Izgara Düzeni (172m x 62m Standart)    │
  │ • Çift Duvar, 40x40cm Kolon, ÇIKIŞ Oklu Merdiven, Asansör Çekirdeği    │
- │ • appsettings.update_extents() + zoom.extents() ile %100 Otomatik Zoom │
+ │ • appsettings.update_extents() + zoom.extents() ile Otomatik Zoom │
  │ • Kuzey Oku, 1:100 Çizgisel Ölçek, Lejant, Antet ve Onay Cetveli       │
  └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -2967,7 +2449,7 @@ Yapılan testler sonucunda elde edilen nihai pafta parametreleri:
 | **Çizim Sınırları ($X_{\min}, Y_{\min} \dots X_{\max}, Y_{\max}$)** | $(0, 0) \dots (1281085, 540040)$ [12.8 km] | **$(0.0, 0.0) \dots (17200.0, 6200.0)$ [172m x 62m]** |
 | **Orijinde Üst Üste Binen ATTRIB** | 85 Adet (Yığılma) | **0 Adet (Sıfır Çakışma)** |
 | **Toplam CAD Varlığı (Entity)** | 435 Varlık | **1124 Varlık (Tam Mimari Detay)** |
-| **Mevzuat İhlal Sayısı** | 18 İhlal (Koordinat hatası kaynaklı) | **0 İhlal (%100 KUSURSUZ UYGUN)** |
+| **Mevzuat İhlal Sayısı** | 18 İhlal (Koordinat hatası kaynaklı) | **0 İhlal (örnek pafta)** |
 | **Tespit Edilen Kat Sayısı** | Dikey kule | **8 Kat (Bodrum, Zemin, Kat 1..6)** |
 | **Çıktı Dosyaları** | `8_KATLI_KUSURSUZ...dxf` | `8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf` |
 | **Görsel Önizleme** | Bulunmuyor | `perfect_pafta_preview.png` |
@@ -3017,7 +2499,7 @@ Sistemimiz yalnızca örnek veya şablon binalarla sınırlı olmayıp, kullanı
                                      ▼
  7. Görünüm Sınırları & Otomatik Odaklanma (Extents & Viewport Normalization)
     ├── Bounding Box otomatik hesabı (0,0 ile çizim sınırları arası mühürleme)
-    └── ezdxf.appsettings.update_extents() + zoom.extents() ile %100 tam ekrana sığdırma
+    └── ezdxf.appsettings.update_extents() + zoom.extents() ile tam ekrana sığdırma
                                      │
                                      ▼
              [Tek Tıkla İndirilebilir: DENETLENMIS_MIMARI_PAFTA.dxf]
@@ -3054,7 +2536,7 @@ Sistemimiz yalnızca örnek veya şablon binalarla sınırlı olmayıp, kullanı
 Sisteme harici bir mimari proje yüklerken yapay zekâ analizinin ve denetim motorunun en yüksek doğrulukla çalışması için önerilen pratikler:
 
 1. **Mahal Metinleri (Room Labels):**
-   * Odaların içine veya sınırlarına yakın konumlara `Salon`, `Yatak Odası`, `Mutfak`, `Kat Koridoru`, `Yangın Merdiveni`, `Yangın Güvenlik Holü`, `Sığınak`, `Kapalı Otopark` gibi standart Türkçe metinlerin (`TEXT` veya `MTEXT`) yazılmış olması, semantik sınıflandırma doğruluğunu %100'e ulaştırır.
+   * Oda etiketleri ilgili poligonların içine yerleştirildiğinde ayrıştırıcı oda türünü belirlemek için bu metinleri kullanır.
 2. **Kapı Blokları ve Kaçış Açıklıkları:**
    * Kapıların `K_90`, `K_120`, `KAPI_100`, `EI60` gibi blok isimleri veya blok nitelikleriyle (Attribute) tanımlanması, net kaçış yolu genişliği ve yangın dayanım süresi hesaplamalarını doğrudan devreye sokar.
 3. **Çok Katlı Paftalarda Kat Ayrımı:**
@@ -3067,7 +2549,7 @@ Sisteme harici bir mimari proje yüklerken yapay zekâ analizinin ve denetim mot
 
 ## BÖLÜM 20: OpenCV Bilgisayarlı Görü Plan Analizi ve 2B Termal Isı Haritası Motoru (`cv_analyzer.py`)
 
-Raster kat planı görsellerinin (PNG, JPG, JPEG) taranması, kapalı mekan poligonlarının çıkarılması, kapı açıklıklarının yakalanması ve tahliye darboğazlarının termal ısı haritası olarak görselleştirilmesi; [`FloorplanImageAnalyzer`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/cv_analyzer.py) sınıfı tarafından **%100 gerçek bilgisayarlı görü (Computer Vision) algoritmaları** ile yürütülmektedir. Bu modülde herhangi bir statik şablon veya mock veri kullanılmamaktadır.
+Raster kat planı görsellerinin (PNG, JPG, JPEG) taranması, kapalı mekan poligonlarının çıkarılması, kapı açıklıklarının yakalanması ve tahliye darboğazlarının termal ısı haritası olarak görselleştirilmesi; [`FloorplanImageAnalyzer`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/cv_analyzer.py) sınıfı tarafından **gerçek bilgisayarlı görü (Computer Vision) algoritmaları** ile yürütülmektedir. Bu modülde herhangi bir statik şablon veya mock veri kullanılmamaktadır.
 
 ```
  [Raster Kat Planı Görseli (PNG / JPG)]
@@ -3205,7 +2687,7 @@ flowchart TD
 
 4. **BYKHY Madde 89 Pozitif Fark Basıncı Koruması (+50 Pa):**
    * Kaçış merdiveni kovanında çalışan fanlar kapılar kapalıyken $+50\text{ Pa}$, kapı açıldığında kapı kesitinde en az $1.0\text{ m/s}$ pozitif hava hızı oluşturur.
-   * Bu sayede kat koridorundaki duman basıncı merdiven kovanına giremez; topolojik graf üzerinde merdiven kovanı duman yayılımından %100 izole edilir.
+   * Duman yayılımı, graf kenarları ve simülasyon varsayımlarıyla modellenir.
 
 ---
 
@@ -3258,7 +2740,7 @@ DiagramYönetmelik mimari motoru, harici yazılımların (AutoCAD, Revit, ArchiC
  [POST /api/audit/dxf] ──────────► CAD DXF Dosyası Yükleme & 3B RAG Denetimi
  [POST /api/audit/image] ────────► PNG/JPG Raster Kat Planı & OpenCV Görü Analizi
  [POST /api/audit/sample-image] ──► OpenCV Test Görselini Otomatik İşleme
- [POST /api/audit/compliant-8-story] ──► %100 Yönetmeliğe Uygun 8 Katlı Modeli Üretme
+ [POST /api/audit/compliant-8-story] ──► Yönetmeliğe Uygun 8 Katlı Modeli Üretme
                  │
                  ▼
  [GET /api/download/annotated-pdf] ──► 1/100 Vektörel PDF Paftası İndirme (A0)
@@ -3643,8 +3125,8 @@ DiagramYönetmelik motoru, yüklenen ham DXF paftasını denetleyip üzerine ona
 
 | Katman Adı | ACI İndeksi | RGB Karşılığı | AutoCAD Görünümü | Beyaz Kağıt / LibreOffice Görünümü | Açıklama |
 |---|---|---|---|---|---|
-| `A-WALL-EXT` (Dış Duvar) | **ACI 8** | `RGB(128, 128, 128)` | Koyu Gri | Koyu Gri (%100 Okunur) | Taşıyıcı dış cephe ve perde duvarlar |
-| `A-WALL-INT` (İç Duvar) | **ACI 250** | `RGB(51, 51, 51)` | Neredeyse Siyah | Kömür Grisi (%100 Okunur) | Mahal bölme duvarları ve yangın zonları |
+| `A-WALL-EXT` (Dış Duvar) | **ACI 8** | `RGB(128, 128, 128)` | Koyu Gri | Koyu Gri (Okunur) | Taşıyıcı dış cephe ve perde duvarlar |
+| `A-WALL-INT` (İç Duvar) | **ACI 250** | `RGB(51, 51, 51)` | Neredeyse Siyah | Kömür Grisi (Okunur) | Mahal bölme duvarları ve yangın zonları |
 | `A-DOOR` (Kapılar) | **ACI 2** | `RGB(255, 255, 0)` | Parlak Sarı | Koyu Altın Sarısı | Kapı kasaları ve kaçış yönü yayları |
 | `DENETIM_IHLALLERI` | **ACI 1** | `RGB(255, 0, 0)` | Canlı Kırmızı | Canlı Kırmızı (Evrensel Uyarı) | Mevzuata aykırı kapı, koridor ve merdivenler |
 | `OPTIMIZASYON_ONERILERI` | **ACI 3** | `RGB(0, 255, 0)` | Canlı Yeşil | Canlı Zümrüt Yeşili | Revcloud (0.55 yay) ve genişletme sınırları |
