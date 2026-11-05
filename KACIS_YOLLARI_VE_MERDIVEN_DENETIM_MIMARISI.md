@@ -210,25 +210,68 @@ Platformumuzda denetlenen ve arayüzde dinamik kontrol listesi ([FireChecklistPa
 
 ---
 
-## 8. GNN ile aday eleme ve yapısal denetim
+## 8. Hibrit Mimari: Karar Katmanı, Nöral Hızlandırma ve Geçiş Kapıları
 
-### Bina düzeyinde eğitim, kalibrasyon ve test
+### 8.1. Katmanlar ve sorumluluklar
 
-GNN yalnızca adayları eler. Kaçış çekirdeği için olumlu karar çapa eşleşmesine, VF2 monomorfizmine ve geometrik koşullara dayanır. Budama varsayılan olarak kapalıdır. Etkinleştirildiğinde ağırlık dosyasının SHA-256 özeti, komşuluk yarıçapı ve rota mesafesi kalibrasyonla eşleşmelidir. Eşik üstündeki aday ayrı listelenir ve mevzuat maddesi almaz.
+| Katman | Bileşenler | Görevi | Uygunluk kararı verir mi? |
+|---|---|---|---|
+| Girdi | CAD, OpenCV, 3B RAG | Planı grafa çevirir | Hayır |
+| Nöral hızlandırma | RWPE, SpatialOrderGNN, NeuroMatch dizini | Çok binalı altgraf aramasında aday eler; sonuçlar VF2 ile doğrulanır | **Hayır** |
+| Keşif | SPMiner, WL ve izomorfizm | Daire tiplerini ve bina programını çıkarır | Hayır |
+| Karar | VF2, kat denetçisi, SFPE CTM, iki bölgeli duman | Uygunluk ve ihlalleri belirler | **Evet** |
+| Öneri ve sunum | Karşı-olgusal optimizasyon, DXF, WebGL | Reçete ve sonuç gösterir | Hayır |
 
-Deney 30 parametrik sentetik bina grafı kullanır. Kat ve daire sayıları, oda alanları, kapı genişlikleri ve koridor uzunlukları tohumla değişir. Her tekrarda 18 bina eğitim, 6 bina doğrulama ve 6 bina test için ayrılır. Ayrıştırılmış `sample_building.dxf` yalnızca teste eklenir. Çiftler bu ayrımdan sonra üretilir. Etiket, uygulamadaki çapa ve geometri kısıtlarıyla VF2 sonucudur. Dört eğitim turundan sonra doğrulamadaki pozitiflerin en çok yüzde birini eleyen en küçük gözlenen pozitif enerji eşik olarak alınır. Eşitlikte aday VF2’ye gider.
+**Temel kural:** Her yangın kaçış çekirdeği VF2'den geçer. GNN enerjisi `record_gnn_energy=True` ile yalnızca ölçüm olarak kaydedilebilir, adayı elemez. Tahliye simülatörü GNN çıktısı almaz.
 
-| Tohum | Test AUROC | Elenen pozitif / pozitif | Elenen negatif / negatif |
-|---:|---:|---:|---:|
-| 17 | 0,5104 | 0 / 16 | 2 / 12 |
-| 41 | 0,4881 | 0 / 18 | 2 / 14 |
-| 73 | 0,4545 | 4 / 11 | 2 / 13 |
+Sistem bir ön denetim aracıdır; mesleki değerlendirmenin ve ilgili idarenin onayının yerini tutmaz. Ölçülemeyen kontrol listesi maddeleri "Ölçülmedi" olarak gösterilir ve uygun sayılmaz.
 
-Dağıtım için önceden seçilen tohum 17 ve eşik 1,1130144596’dır. Doğrulamadaki 14 pozitifin hiçbiri elenmedi. Tohum 73’te testteki 11 eşleşmenin 4’ü kaybedildi. Küçük örneklem, ortak sentetik üretici ve bağımsız saha etiketi eksikliği nedeniyle bu oranlar başka binalara taşınamaz. Eğitim kaybı ayrı kaydedilir. Tam ölçümler ve enerji çeyreklikleri `data/gnn_eval_metrics.json`, ağırlık sürümü ve eşik `data/gnn_calibration.json` içindedir.
+### 8.2. GNN görevi
 
-SPMiner sezgisel komşu seçimi için gömme normunu ve alanı kullanır. GNN bir küme önerir. Üye kabulünde çapa ve oda tiplerini içeren WL özeti ile etiketli izomorfizm kontrol edilir. Destek, kabul edilen çapa sayısıdır. Merkeze ortalama kosinüs benzerliği yalnızca küme içi benzerliği betimler. Dağıtım tohumunun yedi test binasında tek üyeli kümeler dahil WL ile 53, GNN ile 53 küme bulundu. Yapısal kontrolde ilk GNN önerisi 7 kez reddedildi. Daire tipi referans etiketleri bulunmadığından ARI ve NMI ölçülmedi.
+Model, bir sorgu altgrafının çapası korunarak hedefte **yapı ve oda tipi** bakımından bulunup bulunmadığını öğrenir. Girdi; 18 oda tipi, 6 boyutlu RWPE ve çapa bitidir. Kapı genişliği, alan ve mesafe gibi sayısal mevzuat eşikleri bilinçli olarak modele verilmez, kural katmanında kalır.
 
-Deneyi yeniden çalıştırmak için depo kökünde `python -m diagram_yonetmelik.evaluate_gnn`, ardından `python -m diagram_yonetmelik.compare_spminer` çalıştırılır.
+RWPE, düğümün başladığı yere dönme olasılıklarını kodlar. `(R³)vv > 0` düğümün üçgen bir döngüde olduğunu gösterir ve C6 ile 2×C3 ayrımını sağlar. `(R⁶)vv > 0` ise 6'lı döngünün kanıtı **değildir**: dört düğümlü döngüde ve döngüsüz yollarda da pozitiftir. `E(z_Q, z_T) = 0` da öğrenilmiş bir yaklaşımdır, altgraf kapsamasının matematiksel kanıtı değildir.
+
+### 8.3. Ölçümler
+
+Deney 60 parametrik sentetik binayı bina bazında ayırır (36 eğitim, 12 doğrulama, 12 test) ve üç örnek paftayı yalnızca testte kullanır. Eğitimde 4.000, doğrulama ve testte 1.000 çift, tohum başına 10 tur kullanılır. **Sonuçlar gerçek proje paftalarıyla doğrulanmamıştır.**
+
+| Tohum | Test AUROC (RWPE'li) | Test AUROC (RWPE'siz) | Elenen gerçek altgraf / pozitif | NeuroMatch aday eleme (%) | Hazır dizinle hız | Kaçırılan eşleşme (60 sorgu) |
+|---:|---:|---:|---:|---:|---:|---:|
+| 17 | 0,787 | 0,828 | 1 / 533 | 25,7 | 1,02× | 0 |
+| 41 | 0,788 | 0,796 | 1 / 500 | 27,1 | 1,42× | 0 |
+| 73 | 0,908 | 0,956 | 0 / 463 | 20,4 | 0,97× | 0 |
+
+Dizin kurma süresi dahil edildiğinde hız 0,32–0,42× kalır, yani tek seferlik aramada tam VF2 daha hızlıdır. Üç tohumun ikisinde testte 1 gerçek altgraf elendi: kalibrasyon, görülmemiş binalarda sıfır hata garantisi vermez. Yangın kararının VF2'de kalmasının nedeni budur.
+
+### 8.4. Geçiş kapıları
+
+Bir özellik ancak aşağıdaki koşulları sağlarsa varsayılan olarak açılır. Güncel sonuçlar `data/gnn_gates.json` dosyasındadır.
+
+| Özellik | Koşul | Sonuç | Durum |
+|---|---|---|---|
+| NeuroMatch araması | Kaçırılan eşleşme 0, en az %30 eleme, net hız kazancı | Eleme %20–27, hız 0,97–1,42× | **Geçmedi**, deneysel |
+| Nöral SPMiner | WL'ye karşı ölçülebilir üstünlük | Son karar WL'de; 15 binanın 15'inde aynı sonuç | **Geçmedi**, kapalı |
+| RWPE | RWPE'siz modele karşı en az 0,01 AUROC kazancı | Ortalama −0,033 AUROC; ama daha az yanlış eleme (1, 1, 0 ve 6, 3, 1) | **Geçmedi**, modelde deneysel olarak duruyor |
+| Graf sıkıştırma | Kaçış mesafesi hiçbir dairede kısa çıkmaz | En kötü hata 0,0 m | **Geçti**, yalnızca gösterimde |
+| Yangın çekirdeği budaması | Yok | Karar her zaman VF2 | **Kapalı** |
+
+Yangın çekirdeğinde hız kazancı beklenmez: şablon 3–4 düğümlüdür ve bina başına tam VF2 milisaniyeler sürer.
+
+Deneyi yeniden çalıştırmak için depo kökünde:
+
+```bash
+python -m diagram_yonetmelik.evaluate_gnn
+```
+
+### 8.5. Tahliye ve duman modeli
+
+- Yürüme süresi koridorda 1,19 m/sn, merdivende 0,85 m/sn sabit hızla hesaplanır. Tepki süresi ve yoğunluğa bağlı hız henüz yoktur.
+- Çıkışsız bina, çıkış yolu olmayan kişi ve süre tavanında (900 sn) bitmeyen tahliye uygun sayılmaz.
+- Duman kritik kotu 1,80 m'dir. Yangın başlangıcı verilmezse en kalabalık oda seçilir. Her bölgenin son doluluk zamanı kendi ASET değeriyle karşılaştırılır ve sonuç uygunluk kararına girer.
+- Korunumlu hol, merdiven ve çıkışların dumandan etkilenmediği varsayılır. Alçalma katsayısı sadeleştirilmiştir ve doğrulanmamıştır.
+- Optimizör en kritik darboğazı açgözlü biçimde iyileştirir, sonucu kötüleştirmeyen adımları geriye dönük budamayla çıkarır ve her adımın ölçülen süre etkisini raporlar. En ucuz reçete garantisi vermez.
+
 ## 9. AutoCAD DXF Pafta İşleme Hattı, Çizim Standartları ve Uçtan Uca Simülasyon Akışı
 
 ### 9.1. DXF Dosyası Yüklendiğinde Saniyeler İçinde Gerçekleşen Otomatik Adımlar
@@ -1977,7 +2020,7 @@ Yapılan iyileştirmelerin ardından sistemdeki paftalar arasında simülasyonun
 | **Kritik Duman Kotu (ASET)** | **65.0 sn** | **61.8 sn** | İki bölgeli duman tabakası alçalma formülü |
 | **Güvenlik Dengesi** | **+56.0 sn Güvenli Marj** (Yeşil) | **-111.7 sn Güvenlik Açığı** (Kırmızı) | $\text{Marj} = \text{ASET} - \text{RSET}$ |
 | **Kritik Darboğaz Kapıları** | **1 Kapı** (Daire Antresi ➔ Kat Koridoru) | **77 Kapı** (Tüm katların yangın holü ve merdiven kapıları) | Her kapının hidrolik debi ve kuyruk ölçümü |
-| **Optimizasyon Reçetesi** | 5 adımda kapı genişletme | 8 adımda şaft ve çift yangın holü revizyonu | Açgözlü rollout ile minimum maliyetli tadilat |
+| **Optimizasyon Reçetesi** | 5 adımda kapı genişletme | 8 adımda şaft ve çift yangın holü revizyonu | Açgözlü iyileştirme ve geriye dönük budama ile tadilat |
 
 ---
 
@@ -2032,7 +2075,7 @@ Kullanıcının karşılaştığı `Canlı Tahliye İlerlemesi (T = 180.0s): 0 /
 Ön yüz analiz panelleri seçili paftanın çıktısını kullanır.
 
 ```
-CAD DXF Paftası (8 Katlı Kusursuz / 12 Katlı / Mimar DXF)
+CAD DXF Paftası (8 Katlı Örnek / 12 Katlı / Mimar DXF)
                        │
                        ▼
           [FastAPI Backend - api.py]
@@ -2167,12 +2210,12 @@ SPMiner (Frequent Subgraph Mining), büyük bina graflarını tekrarlayan mimari
 
 ---
 
-### 17.4. 8 Katlı Kusursuz Pafta Motoru ve İmar-Yangın Denetimi (`FireAuditPanel.tsx`)
+### 17.4. 8 Katlı Örnek Pafta Motoru ve İmar-Yangın Denetimi (`FireAuditPanel.tsx`)
 
 **Kaynak Dosya:** [`frontend/src/components/Panels/FireAuditPanel.tsx`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/frontend/src/components/Panels/FireAuditPanel.tsx)  
 **Backend:** [`diagram_yonetmelik/api.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/api.py#L390-L420)
 
-12 Katlı Yapıda tespit edilen **312 ihlal**, 8 Katlı Kusursuz Pafta seçildiğinde matematiksel kurallar ile **0 İhlale** indirilmiştir:
+12 katlı örnekte güncel denetim 81 ihlal, 8 katlı örnek paftada 0 kural ihlali kaydeder. 8 katlı örnek, tahliye süresi ve kritik darboğaz ölçütlerinden geçmez:
 
 #### A. Matematiksel İhlal Sıfırlama Kriterleri
 
@@ -2201,7 +2244,7 @@ SPMiner (Frequent Subgraph Mining), büyük bina graflarını tekrarlayan mimari
 
 ### 17.5. Paftalar Arası Karşılaştırma Matrisi ve Hesaplamalı Sistem Mimarisi
 
-| Analiz Kriteri | Örnek 3 Katlı Model | 12 Katlı Yüksek Yapı | 8 Katlı Kusursuz Pafta | Matematiksel Formülasyon / Algoritma |
+| Analiz Kriteri | Örnek 3 Katlı Model | 12 Katlı Yüksek Yapı | 8 Katlı Örnek Pafta | Matematiksel Formülasyon / Algoritma |
 | :--- | :---: | :---: | :---: | :--- |
 | **Toplam Mekan (Poligon)** | 16 Mekan | 190 Mekan | **109 Mekan** | Gauss-Green Shoelace / Shapely PSLG minimal faces |
 | **Köprülenen Kapı (Kenar)** | 18 Kapı | 321 Geçit | **158 Geçit** | $\delta_{\text{door}} \le 1.50\text{ m}$ Öklid eşik toleransı |
@@ -2210,8 +2253,8 @@ SPMiner (Frequent Subgraph Mining), büyük bina graflarını tekrarlayan mimari
 | **Merdiven Yürüme Faktörü** | 2.2x SFPE | 2.2x SFPE | **2.2x SFPE (6.6m/kat)** | $w(e_{\text{vert}}) = 2.2 \times \Delta H$ (SFPE Handbook / BYKHY M.39) |
 | **Yangın Asansörü İzolasyonu** | İzole (M.62) | İzole (M.62) | **İzole (M.62 - 8 Kabin)** | $\text{usable\_in\_fire} = \text{False} \implies w(e) = \infty$ |
 | **SPMiner Makro-Modülleri** | 2 Modül | 28 Modül | **16 Modül (Kat Başına 2)** | Order Embedding $\mathcal{E}(M, G) \le \epsilon$ & WL-Hash tekilleştirme |
-| **Mevzuat İhlal Sayısı** | 4 İhlal | 312 İhlal | **0 İHLAL (KUSURSUZ)** | VF2 subgraph isomorphism $\mathcal{F}(s, u, v) = \text{True}$ |
-| **DXF Pafta Dışa Aktarımı** | Desteklenir | Desteklenir | **Kusursuz İmar & Yangın DXF** | AutoCAD R2018 DXF katman blok yapısı |
+| **Mevzuat İhlal Sayısı** | 20 İhlal | 81 İhlal | **0 Kural İhlali** | VF2 subgraph isomorphism $\mathcal{F}(s, u, v) = \text{True}$ |
+| **DXF Pafta Dışa Aktarımı** | Desteklenir | Desteklenir | **Denetlenmiş DXF** | AutoCAD R2018 DXF katman blok yapısı |
 
 
 
@@ -2226,7 +2269,7 @@ SPMiner (Frequent Subgraph Mining), büyük bina graflarını tekrarlayan mimari
 * **Backend DXF Motoru:** [`diagram_yonetmelik/dxf_annotator.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/dxf_annotator.py)
 * **DXF Üretim ve Dışa Aktarım API:** [`diagram_yonetmelik/api.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/api.py#L408-L422) & [`diagram_yonetmelik/orchestrator.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/orchestrator.py#L188-L200)
 
-Sistem, statik veya sahte (mock) metin indirmek yerine; aktif seçili paftanın (Örnek 3 Katlı, 12 Katlı Yüksek Yapı veya 8 Katlı Kusursuz Pafta) mimari geometrisini analiz ederek **ezdxf** altyapısıyla gerçek zamanlı native AutoCAD DXF formatında (AC1024 - R2010/R2018) çizim dokümanı üretir.
+Sistem, statik veya sahte (mock) metin indirmek yerine; aktif seçili paftanın (Örnek 3 Katlı, 12 Katlı Yüksek Yapı veya 8 Katlı Örnek Pafta) mimari geometrisini analiz ederek **ezdxf** altyapısıyla gerçek zamanlı native AutoCAD DXF formatında (AC1024 - R2010/R2018) çizim dokümanı üretir.
 
 ```
 +---------------------------------------------------------------------------------------------------+
@@ -2318,7 +2361,7 @@ Sistem, statik veya sahte (mock) metin indirmek yerine; aktif seçili paftanın 
 
 #### C. Dinamik DXF Çıktı Tablosu ve Model Karşılaştırması
 
-1. **8 Katlı Kusursuz Pafta (`8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf`):**
+1. **8 Katlı Örnek Pafta (`8_KATLI_KUSURSUZ_YONETMELIK_UYGUN_MIMARI_PAFTA.dxf`):**
    * **Toplam Varlık:** 435 CAD Varlığı (Entity).
    * **İhlal Katmanı (`DENETIM_IHLALLERI`):** **0 Varlık** (Çizim tamamen temiz onaylanmıştır).
    * **Revizyon Katmanı (`OPTIMIZASYON_ONERILERI`):** 32 Varlık (8 müdahale adımı için 0.55 bombeli bulutlar).
@@ -2355,7 +2398,7 @@ Geliştirilen ilk DXF üretim motorunda, paftanın AutoCAD, Autodesk Viewer, Lib
                                      │
                                      ▼ ÇÖZÜM
  ┌────────────────────────────────────────────────────────────────────────┐
- │                      [YENİ KUSURSUZ MİMARİ PAFTA]                      │
+ │                      [YENİ ÖRNEK MİMARİ PAFTA]                      │
  │ • 4 Sütun x 2 Satır Profesyonel Izgara Düzeni (172m x 62m Standart)    │
  │ • Çift Duvar, 40x40cm Kolon, ÇIKIŞ Oklu Merdiven, Asansör Çekirdeği    │
  │ • appsettings.update_extents() + zoom.extents() ile Otomatik Zoom │
@@ -2443,7 +2486,7 @@ Yeni nesil pafta motorunda her kat planı 1/100 uygulama projesi standartlarına
 
 Yapılan testler sonucunda elde edilen nihai pafta parametreleri:
 
-| Metrik | Eski Çıktı (Hatalı) | Yeni Kusursuz Pafta (Düzeltilmiş) |
+| Metrik | Eski Çıktı (Hatalı) | Yeni Örnek Pafta (Düzeltilmiş) |
 | :--- | :---: | :---: |
 | **Görsel Durum (LibreOffice Draw)** | Boş sayfa, merkezde sarı leke | **Mükemmel 4x2 mimari pafta, tam zoom** |
 | **Çizim Sınırları ($X_{\min}, Y_{\min} \dots X_{\max}, Y_{\max}$)** | $(0, 0) \dots (1281085, 540040)$ [12.8 km] | **$(0.0, 0.0) \dots (17200.0, 6200.0)$ [172m x 62m]** |
@@ -3083,7 +3126,7 @@ Kameranın hem konumu ($\vec{P}_{\text{cam}}$) hem de baktığı hedef odak nokt
 
 ```typescript
 // Kamera Uçuş Döngüsü Uygulaması
-const flightDuration = 1200; // 1.2 saniye
+const flightDuration = 1200; // 1.2 saniye (tasarım hedefi; güncel kodda süre kare hızına bağlıdır, 60 FPS'te yaklaşık 0,4 sn) (tasarım hedefi; güncel kodda süre kare hızına bağlıdır, 60 FPS'te yaklaşık 0,4 sn)
 const startTime = performance.now();
 
 function animateFlight() {
