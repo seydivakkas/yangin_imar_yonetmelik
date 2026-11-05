@@ -107,6 +107,10 @@ export interface BuildingEvacuationReport {
   total_evacuation_time_sec?: number;
   max_flow_rate_pers_s?: number;
   total_occupants?: number;
+  total_persons_evacuated?: number;
+  trapped_persons?: number;
+  has_exit?: boolean;
+  evacuation_completed?: boolean;
   bottleneck_doors?: EdgeBottleneckRecord[];
   bottlenecks_ranked?: EdgeBottleneckRecord[];
   smoke_hazard_timeline?: SmokeZoneState[];
@@ -151,7 +155,7 @@ export interface DiagramYonetmelikPipelineOutput {
     total_rooms: number;
     total_doors: number;
     verified_cores: number;
-    latency: Record<string, number>;
+    latency: Record<string, number | boolean | string>;
   };
   program?: {
     total_apartments: number;
@@ -166,6 +170,7 @@ export interface DiagramYonetmelikPipelineOutput {
   violations?: any[];
   evacuation?: any;
   optimization?: any;
+  spminer_compression_ratio?: number;
   report_markdown?: string;
   evidence_json?: any;
   dxf_export_info?: {
@@ -305,6 +310,7 @@ export type BuildingOccupancyClass =
   | 'endustri_depo';
 
 export interface ChecklistVerificationItem {
+  status?: 'sonuclandi' | 'olculmedi';
   item_id: string;
   category_id: string;
   title_tr: string;
@@ -319,6 +325,8 @@ export interface ChecklistVerificationItem {
 }
 
 export interface ComprehensiveBuildingChecklistReport {
+  measured_checks?: number;
+  unmeasured_checks?: number;
   building_occupancy: BuildingOccupancyClass;
   occupancy_title: string;
   sprinkler_enabled: boolean;

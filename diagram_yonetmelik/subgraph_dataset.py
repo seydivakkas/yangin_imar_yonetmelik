@@ -86,56 +86,12 @@ def nx_subgraph_to_pair_tensors(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     NetworkX alt grafını ve çapa düğümünü alır;
-    [One-Hot Oda Tipi + Normalize Alan + RWPE + ID-GNN Çapa Biti] içeren PyG tensörlerine dönüştürür.
+    [Oda Tipi + RWPE + Çapa Biti] içeren PyG tensörlerine dönüştürür.
     """
-    nodes = list(G.nodes())
-    node_map = {n: i for i, n in enumerate(nodes)}
-    num_nodes = len(nodes)
-
-    # 1. Düğüm Özellikleri: One-hot room_type (9) + area_m2 (1) = 10 boyut
-    node_feats = []
-    for n in nodes:
-        r_type = G.nodes[n].get("room_type", "oda")
-        r_idx = ROOM_TO_IDX.get(r_type, 1)
-        one_hot = torch.zeros(NUM_ROOM_TYPES, dtype=torch.float32)
-        one_hot[r_idx] = 1.0
-
-        area_norm = float(G.nodes[n].get("area_m2", 15.0)) / 100.0
-        feat = torch.cat([one_hot, torch.tensor([area_norm], dtype=torch.float32)])
-        node_feats.append(feat)
-
-    x_base = torch.stack(node_feats, dim=0) if node_feats else torch.zeros((0, NUM_ROOM_TYPES + 1))
-
-    # 2. Kenar İndeksleri ve Özellikleri (Yönsüz graf -> çift yönlü kenarlar)
-    edge_src, edge_dst, edge_attrs = [], [], []
-    for u, v, edata in G.edges(data=True):
-        if u not in node_map or v not in node_map:
-            continue
-        u_idx, v_idx = node_map[u], node_map[v]
-        door_width = float(edata.get("door_width_cm", 90.0)) / 100.0
-        dist_m = float(edata.get("distance_m", 5.0)) / 20.0
-        fire_door = 1.0 if edata.get("is_fire_resistant", False) else 0.0
-        e_feat = [door_width, dist_m, fire_door]
-
-        edge_src.extend([u_idx, v_idx])
-        edge_dst.extend([v_idx, u_idx])
-        edge_attrs.extend([e_feat, e_feat])
-
-    if edge_src:
-        edge_index = torch.tensor([edge_src, edge_dst], dtype=torch.long)
-        edge_attr = torch.tensor(edge_attrs, dtype=torch.float32)
-    else:
-        edge_index = torch.empty((2, 0), dtype=torch.long)
-        edge_attr = torch.empty((0, 3), dtype=torch.float32)
-
-    # 3. 1-WL Sınırını Aşmak İçin RWPE + ID-GNN Çapa Kimlik Biti
-    rwpe = compute_rwpe(edge_index, num_nodes=num_nodes, walk_steps=walk_steps)
-    anchor_flag = torch.zeros((num_nodes, 1), dtype=torch.float32)
-    if anchor_node in node_map:
-        anchor_flag[node_map[anchor_node], 0] = 1.0
-
-    x_enriched = torch.cat([x_base, rwpe, anchor_flag], dim=-1)
-    return x_enriched, edge_index, edge_attr
+    data = nx_subgraph_to_pyg_data(G, anchor_node=anchor_node, walk_steps=walk_steps)
+    if PYG_AVAILABLE:
+        return data.x, data.edge_index, data.edge_attr
+    return data["x"], data["edge_index"], data["edge_attr"]
 
 
 # =====================================================================
@@ -205,19 +161,14 @@ class SpatialRAGSubgraphDataset(Dataset):
 
     def _is_still_subgraph(self, G_q: nx.Graph, G_u: nx.Graph, anchor: int) -> bool:
         """
-        Sert negatif mutasyonundan sonra G_q'nun kazara G_u içinde başka bir simetrik
-        dal ile eşleşip eşleşmediğini (yanlış negatif) VF2 ile kontrol eder.
+        Sert negatif mutasyonundan sonra G_q'nun çapa korunarak G_u içinde hâlâ
+        bulunup bulunmadığını yalnızca yapı ve oda tipine göre VF2 ile kontrol eder.
         """
         def node_match(n1, n2):
             return n1.get("room_type") == n2.get("room_type")
 
-        def edge_match(e1, e2):
-            if e1.get("is_fire_resistant", False) and not e2.get("is_fire_resistant", False):
-                return False
-            return True
-
-        gm = isomorphism.GraphMatcher(G_u, G_q, node_match=node_match, edge_match=edge_match)
-        for mapping in gm.subgraph_isomorphisms_iter():
+        gm = isomorphism.GraphMatcher(G_u, G_q, node_match=node_match)
+        for mapping in gm.subgraph_monomorphisms_iter():
             if mapping.get(anchor) == anchor:
                 return True
         return False

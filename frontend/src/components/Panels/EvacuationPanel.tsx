@@ -33,25 +33,28 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
   showBottleneckBadges = true,
   setShowBottleneckBadges,
 }) => {
-  const evac = data?.evacuation || data?.evacuation_report;
-  const program = data?.program;
-  const isZeroViolation = data?.violations && data.violations.length === 0;
+  const evac: any = data?.evacuation || data?.evacuation_report;
+  if (!evac) {
+    return (
+      <div className="p-4 rounded-lg border border-[var(--ui-border)] text-[14px] text-[var(--ui-text-muted)]">
+        Tahliye simülasyonu için önce bir pafta denetleyin.
+      </div>
+    );
+  }
   
   // Dinamik nüfus ve tahliye süreleri
-  const totalOccupants = evac?.total_occupants ?? evac?.total_persons_evacuated ?? program?.est_persons ?? 64;
-  const totalTime = evac?.total_evacuation_time_s ?? evac?.baseline_time_sec ?? (isZeroViolation ? 48.2 : 76.5);
-  const aset = evac?.critical_aset_sec ?? 62.0;
-  const safetyMargin = evac?.safety_margin_s ?? Number((aset - totalTime).toFixed(1));
-  const isSafe = safetyMargin >= 0;
+  const totalOccupants = evac?.total_occupants ?? evac?.total_persons_evacuated ?? 0;
+  const totalTime = evac?.total_evacuation_time_s ?? evac?.baseline_time_sec ?? 0;
+  const hasAset = evac?.critical_aset_sec !== null && evac?.critical_aset_sec !== undefined;
+  const aset: number = evac?.critical_aset_sec ?? 0;
+  const safetyMargin: number = evac?.safety_margin_s ?? 0;
+  const isIncomplete = evac?.evacuation_completed === false;
+  const trappedPersons = evac?.trapped_persons ?? 0;
+  const isSafe = evac?.aset_compliant !== false && !isIncomplete;
   const maxLimitTime = Math.max(180, Math.ceil(totalTime));
 
   // Dinamik darboğaz kapıları
-  const rawBottlenecks = evac?.bottlenecks || evac?.bottleneck_doors || [];
-  const bottlenecks = rawBottlenecks.length > 0 ? rawBottlenecks : (isZeroViolation ? [] : [
-    { door_id: 'D_1_yangin_holu', flow_capacity_pers_s: 1.17, peak_queue_length: 14, total_waiting_time_s: 19.4, is_spillback_trigger: true },
-    { door_id: 'D_0_yangin_holu', flow_capacity_pers_s: 1.17, peak_queue_length: 12, total_waiting_time_s: 16.2, is_spillback_trigger: true },
-    { door_id: 'D_0_dis_cikis', flow_capacity_pers_s: 1.82, peak_queue_length: 6, total_waiting_time_s: 7.8, is_spillback_trigger: false },
-  ]);
+  const bottlenecks: any[] = evac?.bottlenecks || evac?.bottleneck_doors || [];
 
   // Zaman serisine göre veya orantılı dinamik tahliye olan kişi sayısı
   let evacuatedCount = 0;
@@ -70,28 +73,17 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
       }
     }
     const maxPtsVal = pts[pts.length - 1][1];
-    if (maxPtsVal > 0 && totalOccupants > 0 && maxPtsVal !== totalOccupants) {
+    if (!isIncomplete && maxPtsVal > 0 && totalOccupants > 0 && maxPtsVal !== totalOccupants) {
       evacuatedCount = Math.min(totalOccupants, Math.round((closestVal / maxPtsVal) * totalOccupants));
     } else {
       evacuatedCount = Math.min(totalOccupants, closestVal);
     }
-  } else {
-    // SFPE Hidrolik Akış Modeli (S-Eğrisi / Smoothstep İlerleme)
-    // İlk 2 saniye reaksiyon ve kapıya yönelme gecikmesi
-    if (simulationTime <= 2.0) {
-      evacuatedCount = 0;
-    } else {
-      const effectiveT = simulationTime - 2.0;
-      const effectiveTotalT = Math.max(1.0, totalTime - 2.0);
-      const ratio = Math.min(1.0, Math.max(0.0, effectiveT / effectiveTotalT));
-      // SFPE CTM akış eğrisi: başta ivmelenme, ortada maksimum akış, sonda darboğaz sönümlenmesi
-      const smoothRatio = ratio >= 1.0 ? 1.0 : (3 * Math.pow(ratio, 2) - 2 * Math.pow(ratio, 3));
-      evacuatedCount = Math.min(totalOccupants, Math.round(smoothRatio * totalOccupants));
-    }
+  } else if (isIncomplete) {
+    evacuatedCount = evac?.total_persons_evacuated ?? 0;
   }
 
   // Eğer süre toplam tahliye süresine ulaştıysa veya aştıysa tüm kişiler tahliye olmalıdır
-  if (simulationTime >= totalTime) {
+  if (!isIncomplete && simulationTime >= totalTime) {
     evacuatedCount = totalOccupants;
   }
 
@@ -126,6 +118,16 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
         </div>
       </div>
 
+      {isIncomplete && (
+        <div role="alert" className="p-3 rounded-lg border border-[var(--ui-danger)] bg-[var(--ui-danger-subtle)] text-[var(--ui-danger)] text-[13px] font-semibold">
+          {evac?.has_exit === false
+            ? 'Binada kullanılabilir dış çıkış bulunamadı. Tahliye tamamlanamaz.'
+            : trappedPersons > 0
+            ? `${trappedPersons} kişinin yangında kullanılabilir çıkış yolu yok. Tahliye tamamlanamaz.`
+            : `Tahliye ${totalTime.toFixed(0)} sn simülasyon süresinde tamamlanamadı (${evac?.total_persons_evacuated ?? 0}/${totalOccupants} kişi çıktı).`}
+        </div>
+      )}
+
       {/* Real-time Evacuation Gauge & Interactive Simulation Controls */}
       <div className="card p-4 space-y-3.5 border border-[var(--ui-border)] bg-[var(--ui-surface)]">
         <div className="flex items-center justify-between text-[14px]">
@@ -144,7 +146,7 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
         <div className="w-full bg-[var(--ui-surface-raised)] rounded-full h-3 overflow-hidden border border-[var(--ui-border)] relative">
           <div
             className={`h-full transition-all duration-150 ${
-              simulationTime >= aset && !isSafe
+              hasAset && simulationTime >= aset && !isSafe
                 ? 'bg-gradient-to-r from-[var(--ui-primary)] to-[var(--ui-danger)]'
                 : 'bg-gradient-to-r from-[var(--ui-primary)] to-[#10B981]'
             }`}
@@ -175,7 +177,7 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
           <div className="space-y-1.5 pt-1">
             <div className="flex items-center justify-between text-[11px] text-[var(--ui-text-muted)] font-mono">
               <span>0.0 sn (Başlangıç)</span>
-              <span className={simulationTime >= aset ? 'text-[var(--ui-danger)] font-bold' : ''}>ASET: {aset.toFixed(1)} sn</span>
+              <span className={hasAset && simulationTime >= aset ? 'text-[var(--ui-danger)] font-bold' : ''}>ASET: {hasAset ? `${aset.toFixed(1)} sn` : '—'}</span>
               <span>RSET: {totalTime.toFixed(1)} sn</span>
             </div>
             <input
@@ -275,11 +277,11 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
         </div>
 
         {/* Real-time Smoke Warning Status */}
-        {simulationTime >= aset && (
+        {hasAset && simulationTime >= aset && (
           <div className="flex items-center gap-2 p-2.5 rounded-lg bg-[var(--ui-danger)]/15 border border-[var(--ui-danger)]/30 text-[12px] text-[var(--ui-danger)] animate-pulse">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span className="font-medium">
-              Kritik Duman Kotu Uyarısı: Duman tabakası {aset.toFixed(1)}. sn kotunda kaçış koridoruna inmiştir!
+              Kritik Duman Kotu Uyarısı: En dar bölgede duman {aset.toFixed(1)}. saniyede 1.80 m kotuna iner.
             </span>
           </div>
         )}
@@ -302,13 +304,15 @@ export const EvacuationPanel: React.FC<EvacuationPanelProps> = ({
           </div>
           <div className="p-3 rounded-md bg-[var(--ui-surface-raised)] border border-[var(--ui-border)]">
             <div className="text-[12px] text-[var(--ui-text-muted)]">ASET (Kritik Duman Süresi)</div>
-            <div className="text-xl font-bold font-mono text-[var(--ui-primary)] mt-0.5">{aset.toFixed(1)} sn</div>
+            <div className="text-xl font-bold font-mono text-[var(--ui-primary)] mt-0.5">{hasAset ? `${aset.toFixed(1)} sn` : '—'}</div>
           </div>
         </div>
         <p className="text-[13px] text-[var(--ui-text)] leading-relaxed">
-          {isSafe
-            ? `Tahliye ${totalTime.toFixed(1)} saniyede başarıyla tamamlanmakta olup, duman tabakasının kritik kaçış kotuna indiği ${aset.toFixed(1)}. saniyeden ${safetyMargin.toFixed(1)} saniye önce tüm kullanıcılar binayı güvenle tahliye edebilmektedir.`
-            : `Duman tabakası ${aset.toFixed(1)}. saniyede 1.80m kritik kaçış kotunun altına inmektedir. Tahliyenin (${totalTime.toFixed(1)} sn) güvenli tamamlanabilmesi için darboğazların giderilmesi ve kaçış sürelerinin kısaltılması şarttır.`}
+          {isIncomplete
+            ? 'Tahliye tamamlanamadığı için güvenli bir süre hesaplanamaz.'
+            : isSafe
+            ? `Her bölge, duman 1.80 m kotuna inmeden boşalıyor. En dar güvenlik payı ${safetyMargin.toFixed(1)} sn. Duman modeli sadeleştirilmiştir; korunumlu hol ve merdivenlerin dumandan etkilenmediğini varsayar.`
+            : `En az bir bölge, duman 1.80 m kotuna indikten ${Math.abs(safetyMargin).toFixed(1)} sn sonra boşalıyor. Darboğazların giderilmesi gerekir. Duman modeli sadeleştirilmiştir.`}
         </p>
       </div>
 

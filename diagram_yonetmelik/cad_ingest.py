@@ -20,7 +20,8 @@ class TurkishArchitecturalLabelClassifier:
     mekan ve kapı etiketlerine sınıflandırır.
     """
     RULES: List[Tuple[str, List[str]]] = [
-        ("yangin_holu",      ["yangin guvenlik hol", "yangin hol", "ygh", "y.g.h", "duman hol", "guvenlik hol"]),
+        ("teknik_saft",      ["menfez", "baca", "saft", "tesisat"]),
+        ("yangin_holu",     ["yangin guvenlik hol", "yangin hol", "ygh", "y.g.h", "duman hol", "guvenlik hol"]),
         ("yangin_merdiveni", ["yangin merdiven", "kacis merdiven", "acil cikis merdiven", "ym", "yangin kulesi"]),
         ("dis_cikis",        ["bina giris", "ana giris", "dis cikis", "acil cikis", "zemin cikis", "ruzgarlik", "tahliye cikisi"]),
         ("siginak_wc",       ["siginak wc", "siginak lavabo", "siginak tuvalet"]),
@@ -29,7 +30,9 @@ class TurkishArchitecturalLabelClassifier:
         ("engelli_otopark",  ["engelli otopark", "engelli arac"]),
         ("otopark_rampasi",  ["otopark rampa", "giris rampasi", "kapali otopark rampasi"]),
         ("kapali_otopark",   ["kapali otopark", "otopark", "bodrum otopark", "arac park"]),
-        ("kat_koridoru",     ["kat hol", "kat koridor", "ortak hol", "sirkulasyon", "ana koridor", "merdiven hol", "galeri"]),
+        ("kat_koridoru",     ["kat hol", "kat koridor", "ortak hol", "sirkulasyon", "ana koridor", "merdiven hol", "galeri", "asansor hol", "bodrum koridor", "bodrum hol"]),
+        ("yangin_asansoru",  ["itfaiye asansor", "itfaiyeci asansor", "acil durum asansor", "yangin asansor"]),
+        ("asansor",          ["asansor"]),
         ("daire_antresi",    ["daire giris", "antre", "giris hol", "gecis hol", "hol", "koridor"]),
         ("salon",            ["salon", "oturma oda", "yasam alan", "living"]),
         ("mutfak",           ["mutfak", "acik mutfak", "nis mutfak", "kitchen"]),

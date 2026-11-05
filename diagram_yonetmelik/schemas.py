@@ -92,8 +92,8 @@ class RuleViolationItem:
 class CandidateDiagnosticReport:
     anchor_node_id: int
     target_subgraph_nodes: List[int]
-    is_fully_compliant: bool
-    diagnostic_stage_reached: int
+    is_fully_compliant: Optional[bool]
+    diagnostic_stage_reached: Optional[int]
     violations: List[RuleViolationItem] = field(default_factory=list)
     partial_node_mapping: Dict[int, int] = field(default_factory=dict)
     summary_message: str = ""
@@ -115,7 +115,8 @@ class DiscoveredArchitecturalMotif:
     total_nodes: int
     clustering_method: str = "gnn_order_embedding" # "gnn_order_embedding" veya "wl_hash"
     embedding_vector: Optional[List[float]] = None
-    neural_confidence: float = 1.0
+    neural_confidence: Optional[float] = None  # Üyelerin merkeze ortalama kosinüs benzerliği
+    member_node_sets: List[List[int]] = field(default_factory=list)
 
 
 @dataclass
@@ -178,6 +179,7 @@ class SmokeZoneState:
     is_tenable: bool                # Hayatta kalınabilir mi (Z_layer >= 2.00m)
     aset_sec: float                 # Available Safe Egress Time (sn)
     rset_sec: float                 # Required Safe Egress Time (sn)
+    is_protected_zone: bool = False
 
 
 @dataclass
@@ -190,6 +192,15 @@ class BuildingEvacuationReport:
     total_persons_evacuated: int
     smoke_zone_states: Dict[int, SmokeZoneState] = field(default_factory=dict)
     time_series_evacuated: List[Tuple[float, int]] = field(default_factory=list)
+    total_persons: int = 0
+    trapped_persons: int = 0  # Çıkışa yangında kullanılabilir yolu olmayan kişiler
+    unreachable_occupied_nodes: List[int] = field(default_factory=list)
+    has_exit: bool = True
+    evacuation_completed: bool = True  # Herkes simülasyon süresi içinde çıkışa ulaştı mı?
+    fire_origin_node: Optional[Any] = None
+    critical_aset_sec: Optional[float] = None  # En dar güvenlik payına sahip bölgenin ASET değeri
+    aset_margin_sec: Optional[float] = None    # min(ASET - bölgenin son doluluk zamanı)
+    aset_compliant: bool = True
 
 
 @dataclass
@@ -204,6 +215,7 @@ class DesignInterventionStep:
     description_tr: str
     floor_level: int = 0
     spatial_coords: Optional[Tuple[float, float]] = None
+    evacuation_time_delta_sec: Optional[float] = None
 
 
 @dataclass
@@ -216,6 +228,8 @@ class CounterfactualOptimizationResult:
     total_remodeling_cost: float
     intervention_steps: List[DesignInterventionStep]
     optimized_building_graph: nx.Graph
+    baseline_trapped_persons: int = 0
+    pruned_redundant_steps: int = 0
 
 
 # =====================================================================
@@ -263,9 +277,9 @@ class RetrievedLegalEvidence:
 class PipelineConfig:
     project_title: str = "DiagramYönetmelik - Çok Katlı Mekânsal Denetim ve 3D Tahliye Motoru"
     k_hops_gnn: int = 2
-    gnn_violation_threshold: float = 0.25
-    enable_hybrid_pruning: bool = True
-    spminer_use_neural_clustering: bool = True
+    # GNN uygunluk kararına katılmaz. Bu seçenekler yalnızca keşif ve ölçüm içindir.
+    spminer_use_neural_clustering: bool = False
+    record_gnn_energy: bool = False
     spminer_neural_similarity_threshold: float = 0.80
     gnn_model_weights_path: Optional[str] = "data/spatial_order_gnn.pt"
     spminer_min_support: int = 2
@@ -294,7 +308,7 @@ class DiagramYonetmelikPipelineOutput:
     annotated_dxf_document: Optional[Any]   # ezdxf.Drawing
     official_markdown_report: str
     grounded_evidence_json: dict
-    execution_metrics: Dict[str, float]
+    execution_metrics: Dict[str, Any]
     dxf_output_path: Optional[str] = None
     cv_debug_vis: Optional[Any] = None
     cv_heatmap_vis: Optional[Any] = None

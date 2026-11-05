@@ -12,7 +12,6 @@ interface DiagnosticItem {
   query_name: string;
   floor_level: number;
   is_compliant: boolean;
-  violation_energy: number;
   candidate_subgraph_nodes: string[];
   monomorphism_relaxation_stage: number;
   root_cause_category: string;
@@ -104,138 +103,6 @@ export const FireAuditPanel: React.FC<FireAuditPanelProps> = ({
     return totalFloors >= 8;
   }, [data?.metadata?.total_floors, availableFloors]);
 
-  // Paftanın en üst katı, zemin katı ve bodrum katı
-  const topAvailableFloor = availableFloors[0] ?? 0;
-  const hasBasement = availableFloors.some((f: number) => f < 0);
-  const basementFloor = hasBasement ? availableFloors[availableFloors.length - 1] : -1;
-
-  // Yüklenen paftanın mevcut katlarına göre dinamik teşhis listesi (Fallback / Önizleme modu)
-  const dynamicFallbackDiagnostics = React.useMemo<DiagnosticItem[]>(() => {
-    const items: DiagnosticItem[] = [];
-
-    // 1. SADECE YÜKSEK BİNALARDA (8+ Kat): Çift merdiven ve pozitif basınçlandırma zorunluluğu
-    if (isHighRisePafta) {
-      items.push({
-        query_name: 'BYKHY M.31 & M.48: Yüksek Bina Çift Kaçış Merdiveni Zorunluluğu',
-        floor_level: topAvailableFloor,
-        is_compliant: false,
-        violation_energy: 2.15,
-        candidate_subgraph_nodes: [`K${topAvailableFloor}_yangin_merdiveni_1`],
-        monomorphism_relaxation_stage: 3,
-        root_cause_category: 'yetersiz_merdiven_sayisi',
-        violated_constraints: [`min_escape_stairs_count >= 2 (Yüksek Bina: ${data?.metadata?.total_floors || availableFloors.length} Kat / Yapı yüksekliği >= 21.50m)`],
-        legal_article: 'Binaların Yangından Korunması Hakkında Yönetmelik - Madde 31 & Madde 48',
-        suggested_fix: 'Kat planına yangına dayanıklı ikinci bir bağımsız kaçış merdiveni çekirdeği eklenmelidir.',
-        reg_tag: 'BYKHY'
-      });
-      items.push({
-        query_name: 'BYKHY M.32: Kaçış Merdiveni Kovanı Pozitif Basınçlandırma (50 Pa)',
-        floor_level: topAvailableFloor,
-        is_compliant: false,
-        violation_energy: 1.75,
-        candidate_subgraph_nodes: [`K${topAvailableFloor}_merdiven_kovani`],
-        monomorphism_relaxation_stage: 2,
-        root_cause_category: 'basinclandirma_eksik',
-        violated_constraints: ['pressurization_min_50_Pa (Yüksek Bina Kovan Şartı)'],
-        legal_article: 'Binaların Yangından Korunması Hakkında Yönetmelik - Madde 32 & Madde 89',
-        suggested_fix: 'Merdiven kovasına acil durum jeneratör beslemeli mekanik basınçlandırma menfezi yerleştirilmelidir.',
-        reg_tag: 'BYKHY'
-      });
-    }
-
-    // 2. TÜM BİNALARDA EN ÜST VE NORMAL KATLAR (Paftada varsa)
-    if (topAvailableFloor > 0) {
-      items.push({
-        query_name: 'PAİY M.29 & M.30: Kat Koridoru Asgari Temiz Genişliği (1.20m)',
-        floor_level: topAvailableFloor,
-        is_compliant: false,
-        violation_energy: 1.35,
-        candidate_subgraph_nodes: [`K${topAvailableFloor}_kat_koridoru`],
-        monomorphism_relaxation_stage: 1,
-        root_cause_category: 'koridor_genislik_deficit',
-        violated_constraints: ['corridor_clear_width_min_1.20m (ölçülen: 0.95m)'],
-        legal_article: 'Planlı Alanlar İmar Yönetmeliği - Madde 29 & Madde 30',
-        suggested_fix: 'Kat koridoru duvar aksı geriye çekilerek net genişlik en az 1.20m yapılmalıdır.',
-        reg_tag: 'PAIY'
-      });
-      items.push({
-        query_name: 'BYKHY M.52 & M.53: Kat Koridoru Çıkmaz Mesafe Sınırı (Maks 15m)',
-        floor_level: topAvailableFloor,
-        is_compliant: false,
-        violation_energy: 1.62,
-        candidate_subgraph_nodes: [`K${topAvailableFloor}_oda_1`, `K${topAvailableFloor}_kat_koridoru`],
-        monomorphism_relaxation_stage: 1,
-        root_cause_category: 'tek_yonlu_kacis_mesafesi_asimi',
-        violated_constraints: ['dead_end_corridor_max_15.0m (ölçülen: 20.4m)'],
-        legal_article: 'Binaların Yangından Korunması Hakkında Yönetmelik - Madde 52 & Madde 53',
-        suggested_fix: 'Koridor boyutu revize edilmeli veya ara yangın çıkış kapısı açılmalıdır.',
-        reg_tag: 'BYKHY'
-      });
-    }
-
-    // 3. ZEMİN KAT (Kat 0) DENETİM MADDELERİ
-    if (availableFloors.includes(0)) {
-      items.push({
-        query_name: 'BYKHY M.33: Zemin Kat Kaçış Kapısı Temiz Geçiş Genişliği (1.20m)',
-        floor_level: 0,
-        is_compliant: false,
-        violation_energy: 1.60,
-        candidate_subgraph_nodes: ['K0_kacis_kapisi'],
-        monomorphism_relaxation_stage: 1,
-        root_cause_category: 'kapi_temiz_genislik_deficit',
-        violated_constraints: ['door_clear_width_min_1.20m (ölçülen: 0.90m)'],
-        legal_article: 'Binaların Yangından Korunması Hakkında Yönetmelik - Madde 33',
-        suggested_fix: 'Kaçış kapısı kanadı net 1.20m temiz geçiş verecek şekilde genişletilmelidir.',
-        reg_tag: 'BYKHY'
-      });
-      items.push({
-        query_name: 'BYKHY M.33: Zemin Kat Kaçış Kapısı Dışa Açılış Yönü',
-        floor_level: 0,
-        is_compliant: true,
-        violation_energy: 0.05,
-        candidate_subgraph_nodes: ['K0_merdiven', 'K0_dis_cikis'],
-        monomorphism_relaxation_stage: 0,
-        root_cause_category: 'none',
-        violated_constraints: [],
-        legal_article: 'Binaların Yangından Korunması Hakkında Yönetmelik - Madde 33',
-        suggested_fix: 'Mevzuata uygun: Kaçış kapısı tahliye istikametinde dışarı doğru açılıyor.',
-        reg_tag: 'BYKHY'
-      });
-    }
-
-    // 4. BODRUM KAT (Varsa: -1, -2 vb.)
-    if (hasBasement) {
-      items.push({
-        query_name: 'Sığınak M.13: Çift Kapılı Sızdırmaz Hava Kilidi (Airlock min 1.50 m²)',
-        floor_level: basementFloor,
-        is_compliant: false,
-        violation_energy: 2.10,
-        candidate_subgraph_nodes: [`B${Math.abs(basementFloor)}_siginak_girisi`],
-        monomorphism_relaxation_stage: 3,
-        root_cause_category: 'hava_kilidi_eksik',
-        violated_constraints: ['cift_kapili_hava_kilidi_zorunlu (ölçülen: tek kapı)'],
-        legal_article: 'Sığınak Yönetmeliği - Madde 13',
-        suggested_fix: 'Sığınak giriş kapısı önüne en az 1.50 m² alanlı çift kapılı sızdırmaz hava kilidi eklenmelidir.',
-        reg_tag: 'SIGINAK'
-      });
-      items.push({
-        query_name: 'BYKHY M.60 & Otopark M.6: Kapalı Otopark Doğrudan Merdiven Geçiş Yasağı',
-        floor_level: basementFloor,
-        is_compliant: false,
-        violation_energy: 2.40,
-        candidate_subgraph_nodes: [`B${Math.abs(basementFloor)}_otopark`, `B${Math.abs(basementFloor)}_yangin_merdiveni`],
-        monomorphism_relaxation_stage: 3,
-        root_cause_category: 'otopark_dogrudan_kapi',
-        violated_constraints: ['otoparktan_merdivene_dogrudan_gecis_yasaktir'],
-        legal_article: 'Otopark Yönetmeliği & BYKHY Madde 60',
-        suggested_fix: 'Otopark ile merdiven arasına yangına en az 60 dk dayanıklı yangın güvenlik holü yapılmalıdır.',
-        reg_tag: 'OTOPARK'
-      });
-    }
-
-    return items;
-  }, [availableFloors, isHighRisePafta, topAvailableFloor, hasBasement, basementFloor, data?.metadata?.total_floors]);
-
   // Live backend data conversion — Sadece paftada gerçekten bulunan katların ihlallerini göster
   const activeDiagnostics: DiagnosticItem[] = React.useMemo(() => {
     if (data && data.violations !== undefined) {
@@ -258,7 +125,6 @@ export const FireAuditPanel: React.FC<FireAuditPanelProps> = ({
             query_name: `${codeStr.replace(/_/g, ' ')}`,
             floor_level: typeof v.floor_level === 'number' ? v.floor_level : 0,
             is_compliant: false,
-            violation_energy: v.severity === 'CRITICAL' ? 2.5 : v.severity === 'MAJOR' ? 1.6 : 0.9,
             candidate_subgraph_nodes: v.target_node != null ? [`Düğüm #${v.target_node}`] : v.target_edge ? [`Kenar (${v.target_edge[0]}→${v.target_edge[1]})`] : ['Bina Geneli'],
             monomorphism_relaxation_stage: 1,
             root_cause_category: codeStr.toLowerCase(),
@@ -269,8 +135,8 @@ export const FireAuditPanel: React.FC<FireAuditPanelProps> = ({
           };
         });
     }
-    return dynamicFallbackDiagnostics;
-  }, [data, data?.violations, availableFloors, dynamicFallbackDiagnostics]);
+    return [];
+  }, [data, data?.violations, availableFloors]);
 
   const filteredDiagnostics: DiagnosticItem[] = activeDiagnostics.filter((d: DiagnosticItem) => {
     const matchesFloor = selectedFloorFilter === 'all' || d.floor_level === selectedFloorFilter;
@@ -456,7 +322,7 @@ export const FireAuditPanel: React.FC<FireAuditPanelProps> = ({
             <span className={`${filteredDiagnostics.filter((d: DiagnosticItem) => !d.is_compliant).length > 0 ? 'text-[var(--ui-danger)]' : 'text-[var(--ui-success)]'} font-bold`}>
               {filteredDiagnostics.filter((d: DiagnosticItem) => !d.is_compliant).length} İhlal
             </span>{' '}
-            / {filteredDiagnostics.length === 0 ? '0 İhlal (Kusursuz)' : `${filteredDiagnostics.length} Kural`}
+            / {filteredDiagnostics.length === 0 ? '0 bulgu' : `${filteredDiagnostics.length} Kural`}
           </span>
         </div>
 
@@ -466,16 +332,7 @@ export const FireAuditPanel: React.FC<FireAuditPanelProps> = ({
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-[var(--ui-text)] font-bold text-[16px]">Mevzuata %100 Uygun - Sıfır İhlal</div>
-              <div className="text-[13px] text-[var(--ui-text-muted)] max-w-lg mx-auto mt-1">
-                Yapılan nöro-sembolik denetim ve alt-graf izomorfizma analizlerinde; Yangın (BYKHY), İmar (PAİY), Sığınak ve Otopark yönetmeliklerine aykırı hiçbir bulgu tespit edilmemiştir. Bina mevzuat şartlarını eksiksiz sağlamaktadır.
-              </div>
-            </div>
-            <div className="pt-2 flex items-center justify-center gap-2 flex-wrap">
-              <span className="badge badge-success text-[12px]">BYKHY 2 Bağımsız Yangın Merdiveni Tam</span>
-              <span className="badge badge-success text-[12px]">EI90 Yangın Güvenlik Holleri Tam</span>
-              <span className="badge badge-success text-[12px]">Sığınak Hava Kilidi & Şaftı Tam</span>
-              <span className="badge badge-success text-[12px]">Otopark Geçiş Koruması Tam</span>
+              <div className="text-[var(--ui-text)] font-bold text-[16px]">Uygulanan denetimlerde ihlal kaydedilmedi</div>
             </div>
           </div>
         ) : filteredDiagnostics.length === 0 ? (
@@ -532,7 +389,7 @@ export const FireAuditPanel: React.FC<FireAuditPanelProps> = ({
 
                 <div className="text-right shrink-0">
                   <span className={`badge ${!diag.is_compliant ? 'badge-danger' : 'badge-success'} text-[12px] font-mono`}>
-                    E: {diag.violation_energy.toFixed(2)}
+                    {!diag.is_compliant ? 'İhlal' : 'Uygun'}
                   </span>
                 </div>
               </div>

@@ -67,9 +67,6 @@ class OrderEmbeddingLoss(nn.Module):
         super().__init__()
         self.margin = margin
 
-    def violation_energy(self, z_q: torch.Tensor, z_u: torch.Tensor) -> torch.Tensor:
-        return violation_energy(z_q, z_u)
-
     def forward(
         self,
         z_q: torch.Tensor,
@@ -95,8 +92,12 @@ class OrderEmbeddingLoss(nn.Module):
 # =====================================================================
 ROOM_TYPE_ORDER = [
     "salon", "oda", "kat_koridoru", "yangin_holu",
-    "yangin_merdiveni", "dis_cikis", "siginak", "kapali_otopark", "banyo_wc"
+    "yangin_merdiveni", "dis_cikis", "siginak", "kapali_otopark", "banyo_wc",
+    "daire_antresi", "mutfak", "asansor", "yangin_asansoru", "teknik_saft",
+    "siginak_holu", "siginak_wc", "engelli_otopark", "otopark_rampasi",
 ]
+NUM_ROOM_TYPES = len(ROOM_TYPE_ORDER)
+RWPE_DIM = 6
 
 class SpatialOrderGNN(nn.Module):
     """
@@ -105,15 +106,15 @@ class SpatialOrderGNN(nn.Module):
     """
     def __init__(
         self,
-        node_in_dim: int = 10,     # 9 tip one-hot + 1 alan
-        edge_in_dim: int = 3,      # kapı genişliği, mesafe, yangın dayanımı
-        rwpe_dim: int = 6,
+        node_in_dim: int = NUM_ROOM_TYPES,  # Oda tipi one-hot
+        edge_in_dim: int = 2,               # Geçiş var, düşey geçiş
+        rwpe_dim: int = RWPE_DIM,
         hidden_dim: int = 64,
         emb_dim: int = 64,
         num_layers: int = 3
     ):
         super().__init__()
-        # Girdi boyutu: [Node Feats (10) || RWPE (6) || Çapa Biti (1)] = 17
+        # Girdi: [Oda tipi || RWPE || Çapa biti]. Sayısal mevzuat eşikleri bilinçli olarak girdi değildir.
         total_in_dim = node_in_dim + rwpe_dim + 1
 
         self.node_proj = nn.Linear(total_in_dim, hidden_dim)
@@ -138,9 +139,6 @@ class SpatialOrderGNN(nn.Module):
             nn.Linear(hidden_dim, emb_dim),
             nn.Softplus()  # R_+^d pozitif ortant garantisi
         )
-
-    def violation_energy(self, z_q: torch.Tensor, z_u: torch.Tensor) -> torch.Tensor:
-        return violation_energy(z_q, z_u)
 
     def forward(
         self,
@@ -200,8 +198,7 @@ class SpatialOrderGNN(nn.Module):
         if anchor_node is None or anchor_node not in G:
             anchor_node = list(G.nodes())[0]
 
-        effective_walk_steps = getattr(self, "rwpe_dim", 6)
-        data = nx_subgraph_to_pyg_data(G, anchor_node=anchor_node, walk_steps=effective_walk_steps)
+        data = nx_subgraph_to_pyg_data(G, anchor_node=anchor_node, walk_steps=walk_steps)
         dev = next(self.parameters()).device
         self.eval()
         with torch.no_grad():
@@ -251,51 +248,37 @@ def nx_subgraph_to_pyg_data(
     node_to_idx = {n: i for i, n in enumerate(nodes)}
     num_nodes = len(nodes)
 
-    # 1. Düğüm Özellikleri
+    # 1. Düğüm Özellikleri: yalnızca oda tipi ve çapa
     x_list = []
     anchor_mask = torch.zeros(num_nodes, dtype=torch.bool)
-
     for i, n in enumerate(nodes):
-        d = subgraph.nodes[n]
-        rtype = d.get("room_type", "oda")
-        one_hot = [1.0 if rtype == rt else 0.0 for rt in ROOM_TYPE_ORDER]
-        area_norm = float(d.get("area_m2", 15.0)) / 100.0
-        is_anchor = 1.0 if n == anchor_node else 0.0
+        rtype = subgraph.nodes[n].get("room_type", "oda")
+        if rtype not in ROOM_TYPE_ORDER:
+            rtype = "oda"
+        x_list.append([1.0 if rtype == rt else 0.0 for rt in ROOM_TYPE_ORDER])
         if n == anchor_node:
             anchor_mask[i] = True
-        x_list.append(one_hot + [area_norm, is_anchor])
+    type_tensor = torch.tensor(x_list, dtype=torch.float32)
 
-    x_tensor = torch.tensor(x_list, dtype=torch.float32)
-
-    # 2. Kenar Özellikleri
-    edges = list(subgraph.edges())
+    # 2. Kenar Özellikleri: yalnızca topoloji
     edge_index_list = []
     edge_attr_list = []
-
-    for u, v in edges:
-        ed = subgraph[u][v]
+    for u, v in subgraph.edges():
         ui, vi = node_to_idx[u], node_to_idx[v]
-        w_norm = float(ed.get("door_width_cm", 90.0)) / 100.0
-        dist_norm = float(ed.get("distance_m", 5.0)) / 20.0
-        fire_val = 1.0 if ed.get("is_fire_resistant", False) else 0.0
-
-        edge_index_list.append([ui, vi])
-        edge_attr_list.append([w_norm, dist_norm, fire_val])
-        # Çift yönlü kenar
-        edge_index_list.append([vi, ui])
-        edge_attr_list.append([w_norm, dist_norm, fire_val])
+        attr = [1.0, 1.0 if subgraph[u][v].get("is_vertical", False) else 0.0]
+        edge_index_list.extend([[ui, vi], [vi, ui]])
+        edge_attr_list.extend([attr, attr])
 
     if edge_index_list:
         edge_index = torch.tensor(edge_index_list, dtype=torch.long).t().contiguous()
         edge_attr = torch.tensor(edge_attr_list, dtype=torch.float32)
     else:
         edge_index = torch.empty((2, 0), dtype=torch.long)
-        edge_attr = torch.empty((0, 3), dtype=torch.float32)
+        edge_attr = torch.empty((0, 2), dtype=torch.float32)
 
-    # 3. RWPE Hesabı
+    # 3. RWPE ve çapa biti
     rwpe = compute_rwpe(edge_index, num_nodes, walk_steps=walk_steps)
-    # [one-hot (9) + area (1) || RWPE (6) || anchor (1)]
-    full_x = torch.cat([x_tensor[:, :10], rwpe, x_tensor[:, 10:11]], dim=-1)
+    full_x = torch.cat([type_tensor, rwpe, anchor_mask.float().unsqueeze(1)], dim=-1)
 
     if PYG_AVAILABLE:
         return Data(

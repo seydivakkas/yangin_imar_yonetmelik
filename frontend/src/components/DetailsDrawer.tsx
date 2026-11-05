@@ -155,15 +155,15 @@ export const DetailsDrawer: React.FC<DetailsDrawerProps> = ({ selectedElement, o
                 <span className="text-[10px] text-[var(--ui-text-muted)] block font-medium">Hedef Kriter:</span>
                 <span className="font-semibold text-xs text-[var(--ui-text)]">{details.target_value_str}</span>
               </div>
-              <div className={`p-2 rounded border ${details.is_compliant ? 'bg-[var(--ui-bg)] border-[var(--ui-border)]' : 'bg-[var(--ui-danger-subtle)] border-[var(--ui-danger)]'}`}>
+              <div className={`p-2 rounded border ${details.is_compliant || details.status === 'olculmedi' ? 'bg-[var(--ui-bg)] border-[var(--ui-border)]' : 'bg-[var(--ui-danger-subtle)] border-[var(--ui-danger)]'}`}>
                 <span className="text-[10px] text-[var(--ui-text-muted)] block font-medium">Mevcut Durum:</span>
-                <span className={`font-semibold text-xs ${details.is_compliant ? 'text-[var(--ui-success)]' : 'text-[var(--ui-danger)]'}`}>
+                <span className={`font-semibold text-xs ${details.status === 'olculmedi' ? 'text-[var(--ui-text-muted)]' : details.is_compliant ? 'text-[var(--ui-success)]' : 'text-[var(--ui-danger)]'}`}>
                   {details.actual_value_str}
                 </span>
               </div>
             </div>
 
-            {!details.is_compliant && details.design_remedy_tr && (
+            {!details.is_compliant && details.status !== 'olculmedi' && details.design_remedy_tr && (
               <div className="p-2.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs">
                 <strong className="text-amber-400 font-semibold block mb-0.5">Mimar Çözüm Önerisi:</strong>
                 <span>{details.design_remedy_tr}</span>

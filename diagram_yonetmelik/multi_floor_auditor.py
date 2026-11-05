@@ -8,6 +8,7 @@ from diagram_yonetmelik.schemas import (
     CandidateDiagnosticReport,
     BuildingProgramSummary,
 )
+from diagram_yonetmelik.vf2_diagnostics import fire_hall_area_limits
 
 
 class MultiFloorComprehensiveAuditor:
@@ -226,23 +227,41 @@ class MultiFloorComprehensiveAuditor:
                         spatial_coords=stair_pt
                     ))
 
-            # Yangın holü alan kontrolü (Min 3.0 m², Maks 6.0 m² konut standardı)
+            # Yangın holü alan kontrolü (BYKHY M.34: genel 3-6 m², acil durum asansörü önünde 6-10 m²)
             for hall_node in floor_fire_halls:
                 area = float(G_fl.nodes[hall_node].get("area_m2", 0.0))
                 hall_pt = G_fl.nodes[hall_node].get("anchor_point")
-                if area < 3.0:
+                hall_min, hall_max = fire_hall_area_limits(G_fl, hall_node)
+                if area < hall_min:
                     floor_violations.append(RuleViolationItem(
                         violation_code="BYKHY_M34_YANGIN_HOLU_ALAN_YETERSIZ",
                         target_node_id=hall_node,
-                        expected_value=3.0,
+                        expected_value=hall_min,
                         actual_value=round(area, 2),
                         diagnostic_stage=1,
                         severity="CRITICAL",
                         description_tr=(
                             f"Kat {fl}: Yangın güvenlik holü alanı ({area:.2f} m²) yönetmelikteki "
-                            f"asgari 3.0 m² sınırının altındadır."
+                            f"asgari {hall_min:.1f} m² sınırının altındadır."
                         ),
-                        remedy_recommendation_tr=f"Hol sınırları en az 3.0 m² olacak şekilde genişletilmelidir (+{3.0 - area:.2f} m²).",
+                        remedy_recommendation_tr=f"Hol sınırları en az {hall_min:.1f} m² olacak şekilde genişletilmelidir (+{hall_min - area:.2f} m²).",
+                        regulation_reference="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 34",
+                        floor_level=fl,
+                        spatial_coords=hall_pt
+                    ))
+                elif area > hall_max:
+                    floor_violations.append(RuleViolationItem(
+                        violation_code="BYKHY_M34_YANGIN_HOLU_ALAN_FAZLA",
+                        target_node_id=hall_node,
+                        expected_value=hall_max,
+                        actual_value=round(area, 2),
+                        diagnostic_stage=1,
+                        severity="CRITICAL",
+                        description_tr=(
+                            f"Kat {fl}: Yangın güvenlik holü alanı ({area:.2f} m²) yönetmelikteki "
+                            f"azami {hall_max:.1f} m² sınırının üzerindedir."
+                        ),
+                        remedy_recommendation_tr=f"Hol taban alanı en fazla {hall_max:.1f} m² olacak şekilde küçültülmelidir (-{area - hall_max:.2f} m²).",
                         regulation_reference="Binaların Yangından Korunması Hakkında Yönetmelik - Madde 34",
                         floor_level=fl,
                         spatial_coords=hall_pt

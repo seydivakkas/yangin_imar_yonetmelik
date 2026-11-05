@@ -40,12 +40,7 @@ export const SpminerPanel: React.FC<SpminerPanelProps> = ({ data, onSelectMacroN
     return Math.max(...macroNodes.map((m) => m.internal_exit_depth_m || 0));
   }, [macroNodes]);
 
-  const compressionRatio = useMemo(() => {
-    const totalOriginalRooms = data?.metadata?.total_rooms || (data?.nodes?.length || 28);
-    const macroCount = macroNodes.length;
-    if (totalOriginalRooms <= 0 || macroCount <= 0) return 60;
-    return Math.round(((totalOriginalRooms - macroCount) / totalOriginalRooms) * 100);
-  }, [data, macroNodes]);
+  const compressionRatio = Math.round((data?.spminer_compression_ratio ?? 0) * 100);
 
   // Filtrelenmiş liste
   const filteredNodes = useMemo(() => {

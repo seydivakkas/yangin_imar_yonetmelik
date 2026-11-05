@@ -1,4 +1,5 @@
 import copy
+import logging
 import time
 from typing import Dict, List, Tuple, Optional, Any
 import ezdxf
@@ -23,7 +24,7 @@ from diagram_yonetmelik.gnn_order import (
     extract_anchored_k_hop,
 )
 from diagram_yonetmelik.spminer import ArchitecturalSPMiner, ArchitecturalGraphCoarsener
-from diagram_yonetmelik.vf2_diagnostics import ExplainableVF2Analyzer
+from diagram_yonetmelik.vf2_diagnostics import ExplainableVF2Analyzer, fire_candidates
 from diagram_yonetmelik.basement_audit import BasementComplianceAuditor
 from diagram_yonetmelik.multi_floor_auditor import MultiFloorComprehensiveAuditor
 from diagram_yonetmelik.evacuation import (
@@ -53,21 +54,16 @@ class DiagramYonetmelikPipeline:
         self.cad_parser = DXFFloorplanParser()
         self.cv_analyzer = FloorplanImageAnalyzer()
         self.rag_3d_builder = MultiFloor3DRAGBuilder()
-        self.gnn = SpatialOrderGNN()
-        if self.config.gnn_model_weights_path:
-            self.gnn.load_weights(self.config.gnn_model_weights_path)
-        self.gnn.eval()
+        self.gnn = self._load_optional_gnn()
         self.spminer = ArchitecturalSPMiner(
             gnn_model=self.gnn,
             min_support=self.config.spminer_min_support,
-            use_neural_clustering=self.config.spminer_use_neural_clustering,
+            use_neural_clustering=self.config.spminer_use_neural_clustering and self.gnn is not None,
             neural_similarity_threshold=self.config.spminer_neural_similarity_threshold
         )
         self.vf2_analyzer = ExplainableVF2Analyzer(
             max_escape_distance_m=self.config.max_escape_route_distance_m,
-            gnn_model=self.gnn,
-            energy_threshold=self.config.gnn_violation_threshold,
-            enable_hybrid_pruning=self.config.enable_hybrid_pruning
+            gnn_model=self.gnn if self.config.record_gnn_energy else None
         )
         self.basement_auditor = BasementComplianceAuditor()
         self.multi_floor_auditor = MultiFloorComprehensiveAuditor(
@@ -85,6 +81,29 @@ class DiagramYonetmelikPipeline:
             prefer_local_llm=self.config.prefer_local_llm,
             llm_endpoint=self.config.local_llm_endpoint
         )
+
+    def _load_optional_gnn(self) -> Optional[SpatialOrderGNN]:
+        """GNN yalnızca istenirse yüklenir; uygunluk kararı buna bağlı değildir."""
+        if not (self.config.spminer_use_neural_clustering or self.config.record_gnn_energy):
+            return None
+        gnn = SpatialOrderGNN()
+        path = self.config.gnn_model_weights_path
+        if path and gnn.load_weights(path):
+            return gnn.eval()
+        logging.getLogger(__name__).warning("GNN ağırlıkları yüklenemedi (%s); GNN özellikleri devre dışı.", path)
+        return None
+
+    def _review_fire_candidates(self, graph, metrics):
+        start = time.perf_counter()
+        verified, diagnostics = [], []
+        for query, target, anchor in fire_candidates(graph, self.vf2_analyzer, self.config.k_hops_gnn):
+            report = self.vf2_analyzer.explain_candidate(query, target, anchor)
+            if report.is_fully_compliant:
+                verified.append(anchor)
+            else:
+                diagnostics.append(report)
+        metrics.update(stage4_vf2_sec=time.perf_counter() - start, vf2_candidates=len(verified) + len(diagnostics))
+        return verified, diagnostics
 
     def run_full_pipeline(
         self,
@@ -122,36 +141,8 @@ class DiagramYonetmelikPipeline:
         # -------------------------------------------------------------
         # AŞAMA 4: GNN + VF2 YANGIN KAÇIŞ DENETİMİ
         # -------------------------------------------------------------
-        t0 = time.perf_counter()
-        verified_cores: List[int] = []
-        diagnostic_reports: List[CandidateDiagnosticReport] = []
-
-        # Her katta öncelikle yangın güvenlik holleri çapa adayıdır
-        # Yangın holü bulunmayan katlarda merdivenler aday alınır
-        floors_in_g = set(d.get("floor_level", 0) for _, d in G_3d.nodes(data=True))
-        candidate_anchors: List[int] = []
-        for fl in floors_in_g:
-            fl_halls = [n for n, d in G_3d.nodes(data=True) if d.get("floor_level") == fl and d.get("room_type") == "yangin_holu"]
-            if fl_halls:
-                candidate_anchors.extend(fl_halls)
-            else:
-                fl_stairs = [n for n, d in G_3d.nodes(data=True) if d.get("floor_level") == fl and d.get("room_type") == "yangin_merdiveni"]
-                if fl_stairs:
-                    candidate_anchors.extend(fl_stairs)
-
-        for anc in candidate_anchors:
-            fl = G_3d.nodes[anc].get("floor_level", 0)
-            sub = extract_anchored_k_hop(G_3d, anc, k_hops=self.config.k_hops_gnn)
-            has_exit = any(G_3d.nodes[x].get("room_type") == "dis_cikis" for x in sub.nodes())
-            fire_query = self.vf2_analyzer.build_standard_fire_core_query(include_exit=(fl == 0 and has_exit))
-            report = self.vf2_analyzer.explain_candidate(fire_query, sub, anc)
-            if report.is_fully_compliant:
-                verified_cores.append(anc)
-            else:
-                diagnostic_reports.append(report)
-        metrics["stage4_gnn_vf2_sec"] = round(time.perf_counter() - t0, 3)
-        metrics["gnn_hybrid_pruning_enabled"] = 1.0 if self.config.enable_hybrid_pruning else 0.0
-        metrics["spminer_neural_clustering_enabled"] = 1.0 if self.config.spminer_use_neural_clustering else 0.0
+        verified_cores, diagnostic_reports = self._review_fire_candidates(G_3d, metrics)
+        metrics["spminer_neural_clustering_enabled"] = 1.0 if self.spminer.use_neural_clustering else 0.0
 
         # -------------------------------------------------------------
         # AŞAMA 5: HER KAT İÇİN VE BİNA GENELİ KAPSAMLI MEVZUAT DENETİMİ
@@ -276,6 +267,7 @@ class DiagramYonetmelikPipeline:
         doors: List[DoorGeometryInput],
         base_dxf: Optional[Drawing] = None
     ) -> DiagramYonetmelikPipelineOutput:
+        start = time.perf_counter()
         dxf_doc = base_dxf or ezdxf.new('R2010')
         scale = 1.0
 
@@ -283,17 +275,8 @@ class DiagramYonetmelikPipeline:
         G_3d = rag_3d.G_3d
         motifs, program = self.spminer.discover_frequent_modules(G_3d)
 
-        fire_query = self.vf2_analyzer.build_standard_fire_core_query()
-        verified_cores = []
-        diagnostics = []
-
-        for anc in [n for n, d in G_3d.nodes(data=True) if d.get("room_type") in ("yangin_holu", "yangin_merdiveni", "kat_koridoru")]:
-            sub = extract_anchored_k_hop(G_3d, anc, k_hops=self.config.k_hops_gnn)
-            rep = self.vf2_analyzer.explain_candidate(fire_query, sub, anc)
-            if rep.is_fully_compliant:
-                verified_cores.append(anc)
-            else:
-                diagnostics.append(rep)
+        metrics = {}
+        verified_cores, diagnostics = self._review_fire_candidates(G_3d, metrics)
 
         basement_viols = self.basement_auditor.audit_basement_graph(G_3d, program)
         if basement_viols:
@@ -337,5 +320,5 @@ class DiagramYonetmelikPipeline:
             annotated_dxf_document=annotated_doc,
             official_markdown_report=report_md,
             grounded_evidence_json=ev_json,
-            execution_metrics={"total_pipeline_latency_sec": 0.05}
+            execution_metrics=dict(metrics, total_pipeline_latency_sec=time.perf_counter() - start)
         )

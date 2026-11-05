@@ -1,0 +1,68 @@
+{
+  "note": "Olcumler sentetik binalar ve uretilmis ornek paftalarla yapildi; gercek proje verisiyle yinelenmelidir.",
+  "fire_core_pruning": {
+    "enabled": false,
+    "reason": "Uygunluk karari her zaman VF2 ile verilir."
+  },
+  "neuromatch_search": {
+    "passed": false,
+    "missed_matches": [
+      0,
+      0,
+      0
+    ],
+    "candidate_pruned_rate": [
+      0.25679804460739386,
+      0.27135325131810195,
+      0.20377062058130402
+    ],
+    "speedup_with_ready_index": [
+      1.0190541259999304,
+      1.4154097271588288,
+      0.9746842744070314
+    ],
+    "speedup_including_index_build": [
+      0.31843403920049784,
+      0.4225193610434466,
+      0.350692314716044
+    ],
+    "test_positive_pruned_rate": [
+      0.001876172607879925,
+      0.002,
+      0.0
+    ]
+  },
+  "neural_spminer": {
+    "passed": false,
+    "reason": "Son karar WL ve izomorfizmde oldugu icin noral kumeleme dogruluk ustunlugu saglayamaz.",
+    "same_result_buildings": [
+      15,
+      15,
+      15
+    ],
+    "buildings": [
+      15,
+      15,
+      15
+    ]
+  },
+  "rwpe": {
+    "passed": false,
+    "mean_test_auroc_gain": -0.03268305307139666
+  },
+  "coarsening": {
+    "passed": true,
+    "worst_distance_error_m": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "model_quality": {
+    "test_auroc": [
+      0.7870624440060905,
+      0.7876320000000001,
+      0.9075175661924699
+    ]
+  }
+}

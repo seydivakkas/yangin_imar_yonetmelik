@@ -313,6 +313,7 @@ class ChecklistVerificationItem:
     severity: str                   # 'CRITICAL', 'MAJOR', 'WARNING', 'INFO'
     design_remedy_tr: str
     details: Dict[str, Any] = field(default_factory=dict)
+    status: str = "sonuclandi"      # 'sonuclandi' veya 'olculmedi'
 
 
 @dataclass
@@ -329,6 +330,30 @@ class ComprehensiveBuildingChecklistReport:
     compliance_score_percent: float
     categories: Dict[str, List[ChecklistVerificationItem]]
     critical_violations: List[ChecklistVerificationItem]
+    measured_checks: int = 0
+    unmeasured_checks: int = 0
+
+
+CHECKLIST_REQUIRED_MEASUREMENTS: Dict[str, Tuple[str, ...]] = {
+    "CHK-1.1": ("stairs_count",),
+    "CHK-1.2": ("dead_end_m",),
+    "CHK-1.3": ("travel_distance_m",),
+    "CHK-2.1": ("door_width_cm",),
+    "CHK-2.2": ("corridor_width_cm", "corridor_height_cm"),
+    "CHK-2.3": ("stair_flight_width_cm",),
+    "CHK-3.1": ("stair_riser_cm", "stair_tread_cm"),
+    "CHK-3.2": ("headroom_cm",),
+    "CHK-3.3": ("landing_steps",),
+    "CHK-3.4": ("has_spiral_stairs", "has_balanced_stairs"),
+    "CHK-4.1": ("fire_wall_minutes", "fire_door_minutes"),
+    "CHK-4.2": ("has_safety_hall", "safety_hall_area_m2", "has_pressurization"),
+    "CHK-4.3": ("has_banned_equipment_in_shaft",),
+    "CHK-4.4": ("has_horizontal_compartment",),
+    "CHK-5.1": ("stairs_distance_ratio",),
+    "CHK-5.2": ("direct_exterior_exit_ratio",),
+    "CHK-5.3": ("ground_floor_exit_distance_m",),
+    "CHK-5.4": ("doors_unlocked_and_outward",),
+}
 
 
 def evaluate_building_checklist(
@@ -347,7 +372,8 @@ def evaluate_building_checklist(
     is_high_rise = (building_height_m >= profile.pressurization_threshold_height_m) or (total_floors >= 8)
     data = measured_data or {}
 
-    # Ölçülen veya varsayılan değerler
+    # Aşağıdaki varsayılanlar yalnızca hesabın çalışmasını sağlar. Ölçümü gelmeyen her madde
+    # raporlanmadan önce 'ölçülmedi' işaretlenir, bu değerler hiçbir zaman sonuç olarak gösterilmez.
     actual_stairs_count = int(data.get("stairs_count", 2 if is_high_rise else 1))
     actual_dead_end_m = float(data.get("dead_end_m", 12.0))
     actual_travel_dist_m = float(data.get("travel_distance_m", 24.5))
@@ -709,11 +735,23 @@ def evaluate_building_checklist(
     for cat_items in categories.values():
         all_items.extend(cat_items)
 
+    for item in all_items:
+        missing = [key for key in CHECKLIST_REQUIRED_MEASUREMENTS.get(item.item_id, ()) if data.get(key) is None]
+        if missing:
+            item.status = "olculmedi"
+            item.is_compliant = False
+            item.severity = "INFO"
+            item.actual_value_str = "Ölçülmedi"
+            item.details = {**item.details, "missing_measurements": missing}
+
+    measured_items = [it for it in all_items if it.status != "olculmedi"]
     total_checks = len(all_items)
-    passed_checks = sum(1 for it in all_items if it.is_compliant)
-    failed_checks = total_checks - passed_checks
-    score = round((passed_checks / max(1, total_checks)) * 100.0, 1)
-    critical_viols = [it for it in all_items if not it.is_compliant and it.severity in ("CRITICAL", "MAJOR")]
+    measured_checks = len(measured_items)
+    passed_checks = sum(1 for it in measured_items if it.is_compliant)
+    failed_checks = measured_checks - passed_checks
+    # Skor yalnızca ölçülen maddeler üzerinden hesaplanır; ölçülmeyen madde uygun sayılmaz.
+    score = round((passed_checks / measured_checks) * 100.0, 1) if measured_checks else 0.0
+    critical_viols = [it for it in measured_items if not it.is_compliant and it.severity in ("CRITICAL", "MAJOR")]
 
     return ComprehensiveBuildingChecklistReport(
         building_occupancy=occupancy_type,
@@ -727,5 +765,7 @@ def evaluate_building_checklist(
         failed_checks=failed_checks,
         compliance_score_percent=score,
         categories=categories,
-        critical_violations=critical_viols
+        critical_violations=critical_viols,
+        measured_checks=measured_checks,
+        unmeasured_checks=total_checks - measured_checks
     )

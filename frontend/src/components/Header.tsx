@@ -149,14 +149,14 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={onRunHighRiseAudit}
             disabled={isLoading}
             className="btn btn-secondary btn-sm inline-flex items-center gap-1.5"
-            title="12 Katlı Yüksek Yapı Analiz Şablonunu Çalıştır (312 İhlalli Başlangıç Senaryosu)"
+            title="12 Katlı Yüksek Yapı Analiz Şablonunu Çalıştır"
           >
             {loadingAction === 'high_rise' ? (
               <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
             ) : (
               <Layers className="w-4 h-4 text-[var(--ui-text-muted)]" />
             )}
-            <span>{loadingAction === 'high_rise' ? 'Hesaplanıyor...' : '12 Katlı (312 İhlal)'}</span>
+            <span>{loadingAction === 'high_rise' ? 'Hesaplanıyor...' : '12 Katlı Örnek Pafta'}</span>
           </button>
         )}
 
@@ -169,14 +169,14 @@ export const Header: React.FC<HeaderProps> = ({
               backgroundColor: '#059669',
               border: '1px solid #047857',
             }}
-            title="312 İhlalin Tümü Çözümlenmiş Kusursuz 8 Katlı Paftayı Yükle ve Canlı İncele"
+            title="8 Katlı Örnek Paftayı Yükle ve Denetle"
           >
             {loadingAction === 'compliant_8' ? (
               <Loader2 className="w-4 h-4 animate-spin text-white" />
             ) : (
               <ShieldCheck className="w-4 h-4 text-white" />
             )}
-            <span>{loadingAction === 'compliant_8' ? '8 Kat Doğrulanıyor...' : '8 Katlı Kusursuz Pafta'}</span>
+            <span>{loadingAction === 'compliant_8' ? '8 Kat Denetleniyor...' : '8 Katlı Örnek Pafta'}</span>
           </button>
         )}
 

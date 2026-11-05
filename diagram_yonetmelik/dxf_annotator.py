@@ -313,10 +313,7 @@ class DXFAuditTableAnnotator:
         ], close=True, dxfattribs={"layer": stamp_layer, "color": stamp_color, "lineweight": 25})
 
         if is_compliant:
-            stamp_text = (
-                r"{\C3\b[ %100 YÖNETMELİĞE TAM UYGUN — KUSURSUZ MİMARİ PAFTA ]}\P"
-                + r"{\C7BYKHY Yangın, PAİY İmar, Sığınak ve Otopark Yönetmeliklerinin Tüm Maddeleri Eksiksiz Sağlanmıştır.}"
-            )
+            stamp_text = "Uygulanan denetimlerde ihlal kaydedilmedi."
         else:
             stamp_text = (
                 f"{{\\C1\\b[ DİKKAT: {len(all_violations)} ADET MEVZUAT İHLALİ TESPİT EDİLDİ ]}}\\P"
@@ -379,15 +376,7 @@ class DXFAuditTableAnnotator:
         table_rows_data = []
 
         if is_compliant:
-            table_rows_data = [
-                ("1", "BYKHY M.48 & M.39", "Tüm Katlar", "YANGIN", "UYGUN: 19.8m ayrık çift merdiven >= 14.83m (1/3 diyagonal)"),
-                ("2", "BYKHY M.34", "Kat Koridorları", "YANGIN", "UYGUN: 4.5 m² yangın holü ve EI90 yangın kapıları mevcut"),
-                ("3", "BYKHY M.89", "Şaft Kovanları", "MEKANİK", "UYGUN: +50 Pa pozitif basınçlandırma standardı sağlandı"),
-                ("4", "PAİY M.28", "Bodrum / Odalar", "İMAR", "UYGUN: 2.25 m² ışıklık kesiti >= 1.50 m² asgari şart"),
-                ("5", "Sığınak Yön. M.8", "Bodrum Kat", "İMAR / KBRN", "UYGUN: 114.0 m² sığınak >= 72.0 m² zorunlu alan + Airlock"),
-                ("6", "Otopark Yönetmeliği", "Bodrum Kat", "OTOPARK", "UYGUN: 315.0 m² otopark, yangın koridorundan tecritli"),
-                ("7", "BYKHY M.62", "Asansör Kovanı", "ASANSÖR", "UYGUN: Yangın anında kaçış dışı, acil durum kurtarma uyumlu")
-            ]
+            table_rows_data = [("-", "-", "Bina", "ÖZET", "Denetlenen kurallarda ihlal kaydedilmedi")]
         else:
             for idx, (code, loc, sev, desc) in enumerate(all_violations[:10], start=1):
                 table_rows_data.append((str(idx), code, loc, sev, desc[:48]))

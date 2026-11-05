@@ -10,51 +10,7 @@ interface RegulatoryReportPanelProps {
 export const RegulatoryReportPanel: React.FC<RegulatoryReportPanelProps> = ({ data, onOpenArticle }) => {
   const [copied, setCopied] = useState(false);
 
-  const reportText = data?.regulatory_official_report || `
-# DİAGRAMYÖNETMELİK RESMİ MEVZUAT UYUMLULUK VE TAHLİYE DENETİM RAPORU
-
-**Yapı Adı:** Atakent Konut A Blok  
-**Denetim Tarihi:** 2026-10-24  
-**Denetim Kapsamı:** Binaların Yangından Korunması Hakkında Yönetmelik (BYKHY), Planlı Alanlar İmar Yönetmeliği (PAİY), Sığınak Yönetmeliği, Otopark Yönetmeliği.
-
----
-
-### 1. MEVZUAT İHLAL TESPİTLERİ (GNN + VF2 ÇIKTILARI)
-
-1. **Yangın Güvenlik Holü Kapı Genişliği Yetersizliği**
-   - **Mevzuat Maddesi:** BYKHY Madde 31 & Madde 33.
-   - **Gereksinim:** Yangın güvenlik holü kapılarının temiz geçiş genişliği en az **1.20 m** olmalıdır.
-   - **Mevcut Durum:** 0.90 m genişlik tespit edilmiştir.
-   - **Risk:** Hidrolik tahliyede 1.17 kişi/s akış sınırına ve 14 kişilik spillback kuyruklaşmasına yol açmaktadır.
-   - **Öneri:** Kapı kanadının 1.20 m'ye genişletilmesi gereklidir.
-
-2. **Kapalı Otoparktan Yangın Merdivenine Doğrudan Kapı Açılması**
-   - **Mevzuat Maddesi:** Otopark Yönetmeliği & BYKHY Madde 60.
-   - **Gereksinim:** Kapalı otopark alanlarından yangın merdivenlerine ve asansör kovalarına doğrudan kapı açılamaz; duman sızdırmaz yangın güvenlik holü oluşturulmalıdır.
-   - **Mevcut Durum:** K-1 Otopark alanından doğrudan yangın merdivenine kapı açılmıştır.
-   - **Risk:** Araç yangını durumunda merdiven kovasına zehirli gaz dolumu ve dikey kaçışın felç olması.
-   - **Öneri:** Geçiş arasına yangın güvenlik holü yerleştirilmesi.
-
-3. **Sığınak Hava Kilidi Eksikliği**
-   - **Mevzuat Maddesi:** Sığınak Yönetmeliği Madde 9 & 13.
-   - **Gereksinim:** Serpinti sığınaklarında en az 1.5 m² alanlı ve sızdırmaz çift kapılı hava kilidi bulunmalıdır.
-   - **Mevcut Durum:** Sığınak doğrudan bodrum koridoruna bağlanmaktadır.
-
----
-
-### 2. SFPE HİDROLİK TAHLİYE VE İKİ-BÖLGELİ DUMAN MODELİ BULGULARI
-
-- **Mevcut Toplam Tahliye Süresi (RSET):** 76.5 saniye
-- **Kullanılabilir Güvenli Tahliye Süresi (ASET):** 62.0 saniye
-- **Güvenlik Marjı:** -14.5 saniye (Kritik Tehlike)
-- **Karşı-Olgusal Tasarım Optimizasyonu Sonrası:**
-  - Revize RSET: **58.0 saniye**
-  - Güvenlik Marjı: **+4.0 saniye (GÜVENLİ)**
-  - Toplam Tahmini Müdahale Maliyeti: **14.500 TL**
-
----
-*DiagramYönetmelik Nöro-Sembolik Denetim Sistemi tarafından otomatik üretilmiştir.*
-`;
+  const reportText = data?.report_markdown || data?.regulatory_official_report || '';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(reportText);
@@ -79,6 +35,7 @@ export const RegulatoryReportPanel: React.FC<RegulatoryReportPanelProps> = ({ da
         </div>
         <button
           onClick={handleCopy}
+          disabled={!reportText}
           className="btn btn-outline text-[13px] py-1.5 px-3 flex items-center gap-1.5 shrink-0"
           title="Raporu Panoya Kopyala"
         >
@@ -116,7 +73,7 @@ export const RegulatoryReportPanel: React.FC<RegulatoryReportPanelProps> = ({ da
 
       {/* Markdown Document Paper Style Container */}
       <div className="p-5 bg-[var(--ui-bg)] font-mono text-[13px] leading-relaxed text-[var(--ui-text)] space-y-3 whitespace-pre-wrap select-text border border-[var(--ui-border)] rounded-lg shadow-sm">
-        {reportText}
+        {reportText || 'Rapor için önce bir pafta denetleyin.'}
       </div>
     </div>
   );

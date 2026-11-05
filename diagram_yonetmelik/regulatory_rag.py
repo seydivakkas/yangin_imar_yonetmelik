@@ -122,6 +122,7 @@ def build_turkish_building_regulations_corpus() -> List[RegulatoryClauseChunk]:
             relevant_violation_codes=[
                 "BYKHY_M34_YANGIN_GUVENLIK_HOLU_EKSIK",
                 "BYKHY_M34_YANGIN_HOLU_ALAN_YETERSIZ",
+                "BYKHY_M34_YANGIN_HOLU_ALAN_FAZLA",
                 "ROOM_AREA_DEFICIT"
             ]
         ),
@@ -478,7 +479,7 @@ class LocalMimarLLMReportGenerator:
         ]
 
         if not all_violations:
-            md_lines.append("> [!TIP]\n> Projede yönetmelik ihlali tespit edilmemiştir. Tüm katlar ve kaçış çekirdekleri tam uygundur.")
+            md_lines.append("> [!TIP]\n> Uygulanan denetimlerde ihlal kaydedilmedi.")
         else:
             for idx, v in enumerate(all_violations, start=1):
                 ev = evidence_bundle.get(f"violation_{idx}", {})
@@ -496,6 +497,7 @@ class LocalMimarLLMReportGenerator:
             "---",
             "## 3. 3B HİDROLİK TAHLİYE SİMÜLASYONU VE KARŞI-OLGUSAL OPTİMİZASYON",
             f"- **Başlangıç Tahliye Süresi (RSET):** `{opt_result.baseline_evacuation_time_sec:.1f}` sn (Kritik Darboğaz: {opt_result.baseline_critical_bottlenecks} Adet)",
+            *([f"- **KRİTİK UYARI:** `{opt_result.baseline_trapped_persons}` kişinin yangında kullanılabilir çıkış yolu yoktur; tahliye tamamlanamaz."] if opt_result.baseline_trapped_persons > 0 else []),
             f"- **Optimize Edilmiş Tahliye Süresi:** `{opt_result.optimized_evacuation_time_sec:.1f}` sn (Kazanç: **-{opt_result.time_savings_sec:.1f} sn**)",
             f"- **Nihai Kritik Darboğaz:** `{opt_result.optimized_critical_bottlenecks}` Adet",
             f"- **Toplam Tadilat Maliyet İndeksi:** `{opt_result.total_remodeling_cost:.1f}` Birim",
@@ -511,16 +513,6 @@ class LocalMimarLLMReportGenerator:
                     f"1. **[{step.action_type}]** (Kat {step.floor_level}): {step.description_tr} "
                     f"*(Maliyet: {step.cost_index:.1f}, Fayda Skoru: {step.marginal_benefit_score:.1f})*"
                 )
-
-        md_lines.extend([
-            "",
-            "---",
-            "## 4. SONUÇ VE MÜHENDİSLİK KANAATİ",
-            "Yapılan nöro-sembolik kat bazlı graf analizi ve SFPE hidrolik kalabalık simülasyonu sonucunda, "
-            "önerilen tadilat adımlarının uygulanması kaydıyla projenin **BYKHY (Yangın)**, "
-            "**Planlı Alanlar İmar Yönetmeliği**, **Sığınak** ve **Otopark** yönetmeliklerine "
-            "tam uygunluk sağlayacağı değerlendirilmiştir."
-        ])
 
         report_markdown = "\n".join(md_lines)
         return report_markdown, evidence_bundle
