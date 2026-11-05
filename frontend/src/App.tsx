@@ -86,6 +86,7 @@ export const App: React.FC = () => {
   const [showSmoke, setShowSmoke] = useState<boolean>(true);
   const [showRAGOverlay, setShowRAGOverlay] = useState<boolean>(false);
   const [showBottlenecks, setShowBottlenecks] = useState<boolean>(false);
+  const [showBottleneckBadges, setShowBottleneckBadges] = useState<boolean>(true);
   const [showBIMArchitecture, setShowBIMArchitecture] = useState<boolean>(true);
   const [showDoorArcs, setShowDoorArcs] = useState<boolean>(false);
   const [cadDiffMode, setCadDiffMode] = useState<'before' | 'after' | 'both'>('before');
@@ -342,6 +343,7 @@ export const App: React.FC = () => {
             showSmoke={showSmoke}
             showRAGOverlay={showRAGOverlay}
             showBottlenecks={showBottlenecks}
+            showBottleneckBadges={showBottleneckBadges}
             showBIMArchitecture={showBIMArchitecture}
             showDoorArcs={showDoorArcs}
             onToggleDoorArcs={(show) => setShowDoorArcs(show)}
@@ -377,6 +379,8 @@ export const App: React.FC = () => {
             setShowRAGOverlay={setShowRAGOverlay}
             showBottlenecks={showBottlenecks}
             setShowBottlenecks={setShowBottlenecks}
+            showBottleneckBadges={showBottleneckBadges}
+            setShowBottleneckBadges={setShowBottleneckBadges}
             showBIMArchitecture={showBIMArchitecture}
             setShowBIMArchitecture={setShowBIMArchitecture}
             showDoorArcs={showDoorArcs}
@@ -525,6 +529,8 @@ export const App: React.FC = () => {
                     onSelectElement={(el) => setSelectedElement(el)}
                     showBottlenecks={showBottlenecks}
                     setShowBottlenecks={setShowBottlenecks}
+                    showBottleneckBadges={showBottleneckBadges}
+                    setShowBottleneckBadges={setShowBottleneckBadges}
                     onRefreshAudit={() => {
                       if (pipelineData?.metadata?.total_floors && pipelineData.metadata.total_floors > 3) {
                         runHighRiseAudit();

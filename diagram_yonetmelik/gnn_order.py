@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -59,16 +60,34 @@ def violation_energy(z_q: torch.Tensor, z_u: torch.Tensor) -> torch.Tensor:
 class OrderEmbeddingLoss(nn.Module):
     """
     Max-margin order embedding kaybı:
-    L = E(z_q, z_pos) + max(0, margin - E(z_q, z_neg))
+    Triplet modu: L = E(z_q, z_pos) + max(0, margin - E(z_q, z_neg))
+    Pair (y) modu: L = y * E(z_q, z_u) + (1 - y) * max(0, margin - E(z_q, z_u))
     """
     def __init__(self, margin: float = 1.0):
         super().__init__()
         self.margin = margin
 
-    def forward(self, z_q: torch.Tensor, z_pos: torch.Tensor, z_neg: torch.Tensor) -> torch.Tensor:
-        loss_pos = violation_energy(z_q, z_pos)
-        loss_neg = torch.clamp(self.margin - violation_energy(z_q, z_neg), min=0.0)
-        return torch.mean(loss_pos + loss_neg)
+    def violation_energy(self, z_q: torch.Tensor, z_u: torch.Tensor) -> torch.Tensor:
+        return violation_energy(z_q, z_u)
+
+    def forward(
+        self,
+        z_q: torch.Tensor,
+        z_u: torch.Tensor,
+        z_neg: Optional[torch.Tensor] = None,
+        y: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        if z_neg is not None:
+            loss_pos = violation_energy(z_q, z_u)
+            loss_neg = torch.clamp(self.margin - violation_energy(z_q, z_neg), min=0.0)
+            return torch.mean(loss_pos + loss_neg)
+        elif y is not None:
+            energy = violation_energy(z_q, z_u)
+            pos_loss = y.view(-1) * energy
+            neg_loss = (1.0 - y.view(-1)) * torch.clamp(self.margin - energy, min=0.0)
+            return torch.mean(pos_loss + neg_loss)
+        else:
+            return torch.mean(violation_energy(z_q, z_u))
 
 
 # =====================================================================
@@ -120,6 +139,9 @@ class SpatialOrderGNN(nn.Module):
             nn.Softplus()  # R_+^d pozitif ortant garantisi
         )
 
+    def violation_energy(self, z_q: torch.Tensor, z_u: torch.Tensor) -> torch.Tensor:
+        return violation_energy(z_q, z_u)
+
     def forward(
         self,
         x: torch.Tensor,
@@ -160,6 +182,61 @@ class SpatialOrderGNN(nn.Module):
         combined = torch.cat([h_anchor, h_pool], dim=-1)
         z = self.out_head(combined)
         return z
+
+    def embed_subgraph(
+        self,
+        G: nx.Graph,
+        anchor_node: Optional[int] = None,
+        walk_steps: int = 6
+    ) -> torch.Tensor:
+        """
+        NetworkX altgrafını alır; SpatialOrderGNN üzerinden tekil
+        embedding vektörü z ∈ ℝ₊ᵈ döner [emb_dim].
+        """
+        if G.number_of_nodes() == 0:
+            dev = next(self.parameters()).device
+            return torch.zeros(self.out_head[-2].out_features, device=dev)
+
+        if anchor_node is None or anchor_node not in G:
+            anchor_node = list(G.nodes())[0]
+
+        effective_walk_steps = getattr(self, "rwpe_dim", 6)
+        data = nx_subgraph_to_pyg_data(G, anchor_node=anchor_node, walk_steps=effective_walk_steps)
+        dev = next(self.parameters()).device
+        self.eval()
+        with torch.no_grad():
+            if hasattr(data, 'x'):
+                x = data.x.to(dev)
+                edge_index = data.edge_index.to(dev)
+                edge_attr = data.edge_attr.to(dev)
+                anchor_mask = data.anchor_mask.to(dev)
+            else:
+                x = data['x'].to(dev)
+                edge_index = data['edge_index'].to(dev)
+                edge_attr = data['edge_attr'].to(dev)
+                anchor_mask = data['anchor_mask'].to(dev)
+
+            z = self.forward(x, edge_index, edge_attr, anchor_mask)
+            return z.squeeze(0)
+
+    def save_weights(self, path: str):
+        """Model ağırlıklarını belirtilen yola kaydeder."""
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        torch.save(self.state_dict(), path)
+
+    def load_weights(self, path: str) -> bool:
+        """Kayıtlı model ağırlıklarını yükler."""
+        if os.path.exists(path):
+            try:
+                dev = next(self.parameters()).device
+                state = torch.load(path, map_location=dev, weights_only=True)
+                self.load_state_dict(state)
+                self.eval()
+                return True
+            except Exception as e:
+                print(f"[SpatialOrderGNN] Ağırlık yüklenemedi ({path}): {e}")
+                return False
+        return False
 
 
 # =====================================================================

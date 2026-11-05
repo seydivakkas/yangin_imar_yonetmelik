@@ -404,8 +404,9 @@ $$\mathcal{L}_{\text{order}} = E(z_Q, z_{\text{pos}}) + \max\left(0, \gamma - E(
    $$v^* = \arg\min_{v \in \partial S} E(z(S \cup \{v\}), z(G_{\text{target}}))$$
 3. **Koridor Sızıntısı Engeli (Hub Boundary Containment):**
    Daire içi modül keşfedilirken antreden ortak kat koridoruna ve oradan yan daireye atlama (leakage) topolojik kurallarla budanır; arama dairenin ıslak ve kuru hacim sınırları içinde tutulur.
-4. **WL-Hash ile Topolojik Tekilleştirme:**
-   Keşfedilen motifler Weisfeiler-Lehman graf karma fonksiyonuyla ($H_{\text{WL}}$) taranarak aynı plan şemasına sahip daireler kümelenir.
+4. **Öğrenen Yapay Zekâ ile Nöral Kümeleme vs. Deterministik WL-Hash Geri Çekilme (Dual Mode):**
+   * **Mod 1 (Öğrenen Nöral AI Aktif):** Eğitilmiş [`SpatialOrderGNN`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py) modeli (`data/spatial_order_gnn.pt`) aday altgrafları 64 boyutlu pozitif koni uzayına ($z \in \mathbb{R}_+^{64}$) gömer. Kosinüs benzerliği ve sıralama ihlal enerjisini ($E(z_1, z_2)$) harmanlayan hibrit metrik üzerinden dinamik merkezler (running centroids) oluşturarak mimari modülleri semantik ve topolojik benzerliklerine göre gruplar. Küçük oda alanı dalgalanmaları veya oda etiket varyasyonlarında bile öğrenen yapay zekâ genelleme yaparak doğru kümelemeyi sağlar.
+   * **Mod 2 (Deterministik Geri Çekilme - GNN Kapalı):** Yapay zekâ modeli kapalı olduğunda sistem sıfır bağımlılıkla Weisfeiler-Lehman graf karma fonksiyonuna ($H_{\text{WL}}$) geri çekilir ve %100 deterministik ayrık topolojik eşleme yapar.
 5. **Kaba Taneli Graf (MacroNode Coarsening):**
    Tekrar eden bağımsız daire altgrafları tek bir "MacroNode" haline getirilerek graf sıkıştırılır. Bu sayede 12 katlı bir binada 300+ odalık karmaşık graf, 24 adet daire makro-düğümüne ve ana koridor omurgasına indirgenerek ASET/RSET tahliye simülasyonu saniyeler mertebesine hızlandırılır.
 
@@ -418,10 +419,11 @@ Bu sistem projemizde **%100 aktif olarak çalışmakta, test edilmekte ve doğru
 
 İlgili kaynak kod dosyaları ve test altyapısı:
 * **Nöral Order Koni Modeli ve RWPE:** [`diagram_yonetmelik/gnn_order.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/gnn_order.py) (`SpatialOrderGNN`, `violation_energy`, `OrderEmbeddingLoss`, `nx_subgraph_to_pyg_data`)
+* **GNN Eğitimi ve Ağırlık Dosyası:** [`diagram_yonetmelik/train_gnn.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/train_gnn.py), `data/spatial_order_gnn.pt`
 * **3 Kademeli Gevşetme ve Teşhis Motoru:** [`diagram_yonetmelik/vf2_diagnostics.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/vf2_diagnostics.py) (`ExplainableVF2Analyzer`)
 * **Uçtan Uca Boru Hattı Entegrasyonu:** [`diagram_yonetmelik/orchestrator.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/orchestrator.py) (Aşama 4: GNN + VF2 Hibrit Denetimi)
 * **Veri Yapıları ve Raporlama Şemaları:** [`diagram_yonetmelik/schemas.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/schemas.py) (`CandidateDiagnosticReport.gnn_energy`, `RuleViolationItem`)
-* **Otomatik Birim ve Entegrasyon Testleri:** [`tests/test_diagram_yonetmelik.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/tests/test_diagram_yonetmelik.py) (`TestGNNAndOrderEmbeddingMath`, `TestExplainableVF2AndBasementCompliance`, `TestEndToEndPipeline` — **17/17 test BAŞARILI**).
+* **Otomatik Birim ve Entegrasyon Testleri:** [`tests/test_diagram_yonetmelik.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/tests/test_diagram_yonetmelik.py) (`TestGNNAndOrderEmbeddingMath`, `TestExplainableVF2AndBasementCompliance`, `TestEndToEndPipeline`, `TestLearnedAIAndNeuroSymbolicDualMode` — **21/21 test %100 BAŞARILI**).
 
 Altgraf izomorfizmi (Subgraph Isomorphism) klasik hesaplama teorisinde **NP-Tam (NP-Complete)** bir problemdir. Yüzlerce mekânı ve karmaşık şaftları olan binalarda körleme VF2 monomorfizmi kombinatoryel patlamaya ($O(N!)$) yol açar. Sistemimiz bunu **iki kademeli hibrit mimari (Neural Order Screening + Explainable Structural Relaxation)** ile $O(1)$ tensör projeksiyonu ve milisaniyeler düzeyinde çözmektedir.
 

@@ -51,6 +51,7 @@ interface ThreeSceneProps {
   showSmoke: boolean;
   showRAGOverlay: boolean;
   showBottlenecks: boolean;
+  showBottleneckBadges?: boolean;
   showBIMArchitecture?: boolean;
   showDoorArcs?: boolean;
   onToggleDoorArcs?: (show: boolean) => void;
@@ -368,7 +369,7 @@ function createBottleneckHudSprite(
   const spriteMat = new THREE.SpriteMaterial({
     map: texture,
     transparent: true,
-    depthTest: false,
+    depthTest: true,
   });
   const sprite = new THREE.Sprite(spriteMat);
   sprite.scale.set(3.2, 0.95, 1.0);
@@ -483,6 +484,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   showSmoke,
   showRAGOverlay,
   showBottlenecks,
+  showBottleneckBadges = true,
   showBIMArchitecture = true,
   showDoorArcs: propShowDoorArcs = false,
   onToggleDoorArcs,
@@ -2701,20 +2703,20 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             bottleneckMap.get(doorKeyId);
 
           if (isFloorActive) {
-            // SFPE Kuyruk ve Bekleme Hesaplaması
+            // SFPE Kuyruk ve Bekleme Hesaplaması (SADECE Gerçek Simülasyon Verisi)
+            const hasRealBottleneck = Boolean(matchedBottleneck);
             const queueCount =
               matchedBottleneck?.peak_queue_length ??
-              (matchedBottleneck?.max_queue ? Math.round(matchedBottleneck.max_queue) : (isViolated ? 14 : isFire ? 4 : 1));
+              (matchedBottleneck?.max_queue ? Math.round(matchedBottleneck.max_queue) : 0);
             const waitTime =
               matchedBottleneck?.total_waiting_time_s ??
-              matchedBottleneck?.waiting_time_s ??
-              (isViolated ? 19.4 : isFire ? 5.2 : 0.8);
+              matchedBottleneck?.waiting_time_s ?? 0;
             const flowRate =
               matchedBottleneck?.flow_capacity_pers_s ??
               Number(((door.door_width_cm / 90) * 1.17).toFixed(2));
             const isSpill =
-              matchedBottleneck?.is_spillback_trigger || isViolated || queueCount >= 8;
-            const isDense = !isSpill && queueCount >= 3;
+              hasRealBottleneck && (matchedBottleneck?.is_spillback_trigger || queueCount >= 8);
+            const isDense = hasRealBottleneck && !isSpill && queueCount >= 3;
             const severityTier: 'critical' | 'moderate' | 'fluid' = isSpill
               ? 'critical'
               : isDense
@@ -2786,12 +2788,13 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             doorThermalGroup.add(haloMesh);
 
             // 3. 3B Havada Asılı HUD Billboard Bilgi Kartı (SADECE Gerçek Darboğazlarda)
-            // Ekranı onlarca kutucukla tıkamamak için akıcı/boş kapılarda kutucuk üretilmez
+            // Tüm katlar görünümündeyken ekranı boğmamak için sadece gerçek darboğazlar (spillback veya ≥ 6 kişi) gösterilir.
+            // Tek kat görünümündeyken o kata ait darboğazlar (≥ 3 kişi) gösterilir.
             const shouldShowHudCard =
-              isSpill || // Geri-Tıkanma riski
-              isViolated || // Kapı genişlik kusuru (< 90cm)
-              queueCount >= 6 || // Belirgin kuyruk birikmesi (≥ 6 kişi)
-              (activeFloor !== 'all' && isFloorActive && queueCount >= 3); // Tek kat görünümünde kuyruk ≥ 3
+              hasRealBottleneck &&
+              (activeFloor === 'all'
+                ? (isSpill || queueCount >= 6)
+                : (isFloorActive && (isSpill || queueCount >= 3)));
 
             let hudSprite: THREE.Sprite | undefined = undefined;
             if (shouldShowHudCard) {
@@ -2804,6 +2807,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
               hudSprite = createBottleneckHudSprite(titleText, subText, severityTier);
               hudSprite.position.set(0, 2.45, 0);
+              hudSprite.visible = showBottlenecks && showBottleneckBadges;
               doorThermalGroup.add(hudSprite);
             }
 
@@ -3625,10 +3629,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     activeFloor,
     explodedZ,
     wallHeightMode,
-    // simulationTime excluded to prevent rebuilding entire 3D building every frame
+    // simulationTime and showBottlenecks excluded to prevent rebuilding entire 3D building every toggle
     showSmoke,
     showRAGOverlay,
-    showBottlenecks,
     showBIMArchitecture,
     showDoorArcs,
     cadDiffMode,
@@ -3657,7 +3660,12 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     if (bottleneckGroupRef.current) {
       bottleneckGroupRef.current.visible = showBottlenecks;
     }
-  }, [showBottlenecks]);
+    bottleneckVisualsRef.current.forEach((bv) => {
+      if (bv.sprite) {
+        bv.sprite.visible = Boolean(showBottlenecks && showBottleneckBadges);
+      }
+    });
+  }, [showBottlenecks, showBottleneckBadges]);
 
   // Handler functions for UI actions
   const handleResetToIsometric = () => {

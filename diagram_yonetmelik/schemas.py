@@ -113,6 +113,9 @@ class DiscoveredArchitecturalMotif:
     wl_hash: str
     matched_anchor_nodes: List[int]
     total_nodes: int
+    clustering_method: str = "gnn_order_embedding" # "gnn_order_embedding" veya "wl_hash"
+    embedding_vector: Optional[List[float]] = None
+    neural_confidence: float = 1.0
 
 
 @dataclass
@@ -261,6 +264,10 @@ class PipelineConfig:
     project_title: str = "DiagramYönetmelik - Çok Katlı Mekânsal Denetim ve 3D Tahliye Motoru"
     k_hops_gnn: int = 2
     gnn_violation_threshold: float = 0.25
+    enable_hybrid_pruning: bool = True
+    spminer_use_neural_clustering: bool = True
+    spminer_neural_similarity_threshold: float = 0.80
+    gnn_model_weights_path: Optional[str] = "data/spatial_order_gnn.pt"
     spminer_min_support: int = 2
     max_escape_route_distance_m: float = 30.0
     target_evacuation_time_sec: float = 65.0

@@ -275,11 +275,32 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
                     "motif_id": c_idx
                 })
 
+    discovered_motifs_data = []
+    for m in motifs:
+        room_types = (
+            [m.motif_graph.nodes[n].get("room_type", "oda") for n in m.motif_graph.nodes()]
+            if hasattr(m, "motif_graph") and m.motif_graph
+            else [m.root_room_type]
+        )
+        discovered_motifs_data.append({
+            "motif_id": m.motif_id,
+            "root_room_type": m.root_room_type,
+            "room_types": room_types,
+            "frequency": m.support,
+            "support": m.support,
+            "node_count": m.total_nodes,
+            "clustering_method": getattr(m, "clustering_method", "gnn_order_embedding"),
+            "neural_confidence": getattr(m, "neural_confidence", 1.0),
+            "has_embedding": bool(getattr(m, "embedding_vector", None) is not None),
+        })
+
     spminer_dict = {
         "macro_nodes": spminer_macro_nodes,
         "total_macro_nodes": len(spminer_macro_nodes),
         "compression_ratio": round((len(nodes_data) - len(spminer_macro_nodes)) / max(1, len(nodes_data)) * 100, 1),
-        "apartment_modules": output.building_program.apartment_types_breakdown
+        "apartment_modules": output.building_program.apartment_types_breakdown,
+        "discovered_motifs": discovered_motifs_data,
+        "clustering_method": discovered_motifs_data[0]["clustering_method"] if discovered_motifs_data else "gnn_order_embedding",
     }
 
     # -------------------------------------------------------------
@@ -478,7 +499,9 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
             "total_rooms": output.building_3d_result.total_rooms,
             "total_doors": output.building_3d_result.total_doors,
             "verified_cores": output.verified_escape_cores,
-            "latency": output.execution_metrics
+            "latency": output.execution_metrics,
+            "gnn_hybrid_pruning_enabled": output.execution_metrics.get("gnn_hybrid_pruning_enabled", True),
+            "spminer_neural_clustering_enabled": output.execution_metrics.get("spminer_neural_clustering_enabled", True),
         },
         "program": {
             "total_apartments": output.building_program.total_apartments,

@@ -475,3 +475,115 @@ class TestSubgraphDatasetAndDataLoader:
         assert u_b.x.shape[1] == 17
 
 
+class TestLearnedAIAndNeuroSymbolicDualMode:
+    def test_gnn_model_checkpoint_and_embedding_inference(self):
+        import os
+        import torch
+        from diagram_yonetmelik.gnn_order import SpatialOrderGNN, OrderEmbeddingLoss
+        from diagram_yonetmelik.subgraph_dataset import build_sample_architectural_rag
+
+        checkpoint_path = "data/spatial_order_gnn.pt"
+        assert os.path.exists(checkpoint_path), "GNN model ağırlık dosyası bulunamadı!"
+
+        model = SpatialOrderGNN(node_in_dim=10, edge_in_dim=3, rwpe_dim=6, hidden_dim=64)
+        loaded = model.load_weights(checkpoint_path)
+        assert loaded is True, "Model ağırlıkları başarıyla yüklenmeli!"
+
+        rag = build_sample_architectural_rag()
+        z_sub = model.embed_subgraph(rag, anchor_node="salon_1", walk_steps=2)
+
+        z_list = z_sub.tolist() if hasattr(z_sub, "tolist") else list(z_sub)
+        assert len(z_list) == 64
+        # Order embedding ReLU kısıtı: Tüm boyutlar non-negative olmalıdır
+        assert all(val >= 0.0 for val in z_list)
+
+        # Violation energy testi: Subgraph kendine karşı sıfır enerji vermeli
+        loss_fn = OrderEmbeddingLoss(margin=1.0)
+        t_z = z_sub.unsqueeze(0) if z_sub.dim() == 1 else z_sub
+        e_self = loss_fn.violation_energy(t_z, t_z).item()
+        assert e_self == 0.0
+
+    def test_spminer_neural_clustering_vs_wl_hash_fallback(self):
+        import os
+        from diagram_yonetmelik.gnn_order import SpatialOrderGNN
+        from diagram_yonetmelik.spminer import ArchitecturalSPMiner
+        from diagram_yonetmelik.subgraph_dataset import build_sample_architectural_rag
+
+        rag = build_sample_architectural_rag()
+
+        # 1. Learned AI Mode (GNN Order Embedding)
+        gnn = SpatialOrderGNN(node_in_dim=10, edge_in_dim=3, rwpe_dim=6, hidden_dim=64)
+        if os.path.exists("data/spatial_order_gnn.pt"):
+            gnn.load_weights("data/spatial_order_gnn.pt")
+
+        miner_ai = ArchitecturalSPMiner(
+            gnn_model=gnn,
+            min_support=1,
+            max_motif_nodes=5,
+            use_neural_clustering=True,
+            neural_similarity_threshold=0.75
+        )
+        motifs_ai = miner_ai.extract_frequent_motifs(rag)
+        assert len(motifs_ai) > 0
+        for m in motifs_ai:
+            assert m.clustering_method == "gnn_order_embedding"
+            assert m.neural_confidence > 0.0
+            assert m.embedding_vector is not None
+            assert len(m.embedding_vector) == 64
+
+        # 2. Deterministic Fallback Mode (WL-Hash)
+        miner_det = ArchitecturalSPMiner(
+            gnn_model=None,
+            min_support=1,
+            max_motif_nodes=5,
+            use_neural_clustering=False
+        )
+        motifs_det = miner_det.extract_frequent_motifs(rag)
+        assert len(motifs_det) > 0
+        for m in motifs_det:
+            assert m.clustering_method == "wl_hash"
+
+    def test_hybrid_pruning_and_physical_evacuation_safety_proof(self):
+        import ezdxf
+        from diagram_yonetmelik.orchestrator import DiagramYonetmelikPipeline
+        from diagram_yonetmelik.schemas import PipelineConfig
+
+        doc_ai = ezdxf.readfile("sample_building.dxf")
+        doc_det = ezdxf.readfile("sample_building.dxf")
+
+        # Mode A: Neural AI Pruning + Neural Clustering
+        cfg_ai = PipelineConfig(
+            enable_hybrid_pruning=True,
+            spminer_use_neural_clustering=True,
+            target_evacuation_time_sec=180.0
+        )
+        orch_ai = DiagramYonetmelikPipeline(cfg_ai)
+        out_ai = orch_ai.run_full_pipeline(doc_ai)
+
+        # Mode B: Deterministic Fallback (GNN Off, 100% Exact VF2 + WL-Hash)
+        cfg_det = PipelineConfig(
+            enable_hybrid_pruning=False,
+            spminer_use_neural_clustering=False,
+            target_evacuation_time_sec=180.0
+        )
+        orch_det = DiagramYonetmelikPipeline(cfg_det)
+        out_det = orch_det.run_full_pipeline(doc_det)
+
+        # FİZİKSEL TAHLİYE VE MEVZUAT GÜVENLİK İSPATI:
+        # İster Yapay Zeka (GNN/SPMiner) açık olsun, ister kapalı olsun;
+        # Fiziksel tahliye süresi ve mevzuat doğrulaması birebir aynı çıkmalıdır.
+        assert out_ai.baseline_evacuation_report.total_evacuation_time_sec == \
+               out_det.baseline_evacuation_report.total_evacuation_time_sec
+        assert out_ai.baseline_evacuation_report.is_compliance_achieved == \
+               out_det.baseline_evacuation_report.is_compliance_achieved
+        assert out_ai.baseline_evacuation_report.critical_bottleneck_count == \
+               out_det.baseline_evacuation_report.critical_bottleneck_count
+        assert len(out_ai.verified_escape_cores) == len(out_det.verified_escape_cores)
+
+        # AI modunda Stage 4 execution metric teyidi
+        assert "gnn_hybrid_pruning_enabled" in out_ai.execution_metrics
+        assert bool(out_ai.execution_metrics["gnn_hybrid_pruning_enabled"]) is True
+        assert bool(out_det.execution_metrics["gnn_hybrid_pruning_enabled"]) is False
+
+
+

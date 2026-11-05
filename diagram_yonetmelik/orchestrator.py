@@ -54,12 +54,20 @@ class DiagramYonetmelikPipeline:
         self.cv_analyzer = FloorplanImageAnalyzer()
         self.rag_3d_builder = MultiFloor3DRAGBuilder()
         self.gnn = SpatialOrderGNN()
+        if self.config.gnn_model_weights_path:
+            self.gnn.load_weights(self.config.gnn_model_weights_path)
         self.gnn.eval()
-        self.spminer = ArchitecturalSPMiner(gnn_model=self.gnn, min_support=self.config.spminer_min_support)
+        self.spminer = ArchitecturalSPMiner(
+            gnn_model=self.gnn,
+            min_support=self.config.spminer_min_support,
+            use_neural_clustering=self.config.spminer_use_neural_clustering,
+            neural_similarity_threshold=self.config.spminer_neural_similarity_threshold
+        )
         self.vf2_analyzer = ExplainableVF2Analyzer(
             max_escape_distance_m=self.config.max_escape_route_distance_m,
             gnn_model=self.gnn,
-            energy_threshold=self.config.gnn_violation_threshold
+            energy_threshold=self.config.gnn_violation_threshold,
+            enable_hybrid_pruning=self.config.enable_hybrid_pruning
         )
         self.basement_auditor = BasementComplianceAuditor()
         self.multi_floor_auditor = MultiFloorComprehensiveAuditor(
@@ -142,6 +150,8 @@ class DiagramYonetmelikPipeline:
             else:
                 diagnostic_reports.append(report)
         metrics["stage4_gnn_vf2_sec"] = round(time.perf_counter() - t0, 3)
+        metrics["gnn_hybrid_pruning_enabled"] = 1.0 if self.config.enable_hybrid_pruning else 0.0
+        metrics["spminer_neural_clustering_enabled"] = 1.0 if self.config.spminer_use_neural_clustering else 0.0
 
         # -------------------------------------------------------------
         # AŞAMA 5: HER KAT İÇİN VE BİNA GENELİ KAPSAMLI MEVZUAT DENETİMİ

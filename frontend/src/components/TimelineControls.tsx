@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, RotateCcw, Eye, Flame, Network, Layers, Maximize2, Split, Building } from 'lucide-react';
+import { Play, Pause, RotateCcw, Eye, Flame, Network, Layers, Maximize2, Split, Building, Tag } from 'lucide-react';
 import { CameraPreset, WallHeightMode } from '../types/pipeline';
 
 interface TimelineControlsProps {
@@ -23,6 +23,8 @@ interface TimelineControlsProps {
   setShowRAGOverlay: (r: boolean) => void;
   showBottlenecks: boolean;
   setShowBottlenecks: (b: boolean) => void;
+  showBottleneckBadges?: boolean;
+  setShowBottleneckBadges?: (b: boolean) => void;
   showBIMArchitecture?: boolean;
   setShowBIMArchitecture?: (b: boolean) => void;
   showDoorArcs?: boolean;
@@ -55,6 +57,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   setShowRAGOverlay,
   showBottlenecks,
   setShowBottlenecks,
+  showBottleneckBadges = true,
+  setShowBottleneckBadges,
   showBIMArchitecture = true,
   setShowBIMArchitecture,
   showDoorArcs = false,
@@ -217,6 +221,21 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
             <Flame className={`w-3.5 h-3.5 ${showBottlenecks ? 'animate-pulse text-white' : 'text-amber-400'}`} />
             <span>{showBottlenecks ? 'Termal Akış: AÇIK' : 'Termal Akış: KAPALI'}</span>
           </button>
+
+          {showBottlenecks && setShowBottleneckBadges && (
+            <button
+              onClick={() => setShowBottleneckBadges(!showBottleneckBadges)}
+              className={`px-2 py-1 rounded flex items-center gap-1 text-[11px] font-medium transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                showBottleneckBadges
+                  ? 'bg-amber-600/90 text-white border border-amber-400/60 shadow-sm'
+                  : 'text-[var(--ui-text-muted)] bg-[var(--ui-surface-raised)] border border-[var(--ui-border)] hover:text-white'
+              }`}
+              title="3B Sahne Üzerindeki Darboğaz Bilgi Kutucuklarını (HUD Kartları) Göster / Gizle"
+            >
+              <Tag className="w-3 h-3" />
+              <span>{showBottleneckBadges ? 'Kutucuklar: AÇIK' : 'Kutucuklar: KAPALI'}</span>
+            </button>
+          )}
 
           {setShowDoorArcs && (
             <button
