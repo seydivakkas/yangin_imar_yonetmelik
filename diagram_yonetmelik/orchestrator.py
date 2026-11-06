@@ -38,7 +38,8 @@ from diagram_yonetmelik.dxf_annotator import (
 )
 from diagram_yonetmelik.regulatory_rag import (
     HybridRegulatoryRetriever,
-    LocalMimarLLMReportGenerator,
+    RegulatoryComplianceReportGenerator,
+    LocalRegulatoryReportGenerator,
 )
 
 
@@ -83,10 +84,8 @@ class DiagramYonetmelikPipeline:
         self.opt_annotator = DXFOptimizationAnnotator()
         self.table_annotator = DXFAuditTableAnnotator()
         self.retriever = HybridRegulatoryRetriever()
-        self.report_gen = LocalMimarLLMReportGenerator(
-            retriever=self.retriever,
-            prefer_local_llm=self.config.prefer_local_llm,
-            llm_endpoint=self.config.local_llm_endpoint
+        self.report_gen = RegulatoryComplianceReportGenerator(
+            retriever=self.retriever
         )
 
     def _load_optional_gnn(self) -> Optional[SpatialOrderGNN]:

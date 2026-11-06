@@ -315,9 +315,9 @@ Bunun için **hibrit nöro-sembolik yerel RAG** hattı kurulur. Toplam skor üç
 **Üç katman:**
 1. **Sembolik filtre:** `violation_code`, `action_type`, `room_type` ile yanlış yönetmeliğe (tr_imar/tr_yangin) veya yanlış mekân tipine ait maddelerin havuza girmesini engeller.
 2. **Hibrit indeks:** SentenceTransformer (ör. BAAI/bge-m3) + karakter/kelime N-gram TF-IDF; EI60, EI90, duman sızdırmaz, kaçış mesafesi gibi teknik terimleri ve semantik bağlamı eşleştirir.
-3. **Kanıt-kilitli yerel LLM (Ollama/vLLM):** Doğrulanmış (ihlal, madde, optimizasyon) üçlülerini salt-okunur kabul eder; sayıları ve madde numaralarını değiştirmeden resmi teknik rapor diline dönüştürür.
+3. **Kanıt-kilitli deterministik rapor motoru:** Doğrulanmış (ihlal, madde, optimizasyon) üçlülerini salt-okunur şablonlara bağlar; sayıları ve madde numaralarını kesin değerleriyle resmi teknik rapor metnine işler.
 
-**Motor bileşenleri:** BYKHY (tr_yangin) ve Planlı Alanlar İmar Yönetmeliği (tr_imar) maddelerini içeren yapılandırılmış yerel mevzuat indeksi; `sentence-transformers` varsa yoğun vektör modeli, yoksa sıfır bağımlılıklı L2-normalize TF-IDF/N-gram vektör motoru; yerel Ollama/vLLM istemcisi; sunucu kapalıyken devreye giren deterministik resmi rapor sentezleyicisi.
+**Motor bileşenleri:** BYKHY (tr_yangin) ve Planlı Alanlar İmar Yönetmeliği (tr_imar) maddelerini içeren yapılandırılmış yerel mevzuat indeksi; `sentence-transformers` varsa yoğun vektör modeli, yoksa sıfır bağımlılıklı L2-normalize TF-IDF/N-gram vektör motoru; deterministik resmi teknik rapor sentezleyicisi.
 
 **Ayrıştırma hassasiyeti:** Aynı `ROOM_AREA_DEFICIT` kodu mekân tipine göre farklı maddeye bağlanır. `yangin_holu` için tr_yangin — BYKHY Madde 34 (1) (yangın güvenlik holü taban alanı 3 m²’den az, 6 m²’den fazla olamaz) getirilir. `salon` için tr_imar — Planlı Alanlar İmar Yönetmeliği Madde 29 (1) (oturma odası en az 12.00 m², dar kenarı 3.00 m) getirilir; yangın yönetmeliği elenir.
 

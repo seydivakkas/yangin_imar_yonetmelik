@@ -1,6 +1,6 @@
 """
 GEO-05: 3B Duvar Yerleşimi ve Yay Geometrisi Test Süiti (GEO-T01 - GEO-T16).
-MimarLLM_v2 Bölüm 7 gereksinimlerine göre tüm geometrik durumları deterministik olarak test eder.
+DiagramYönetmelik Bölüm 7 gereksinimlerine göre tüm geometrik durumları deterministik olarak test eder.
 """
 import math
 import pytest

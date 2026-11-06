@@ -355,43 +355,69 @@ class ExplainableVF2Analyzer:
     def _run_partial_bfs_alignment(self, Q: nx.Graph, T: nx.Graph, q_anc: int, t_anc: int) -> Tuple[List[RuleViolationItem], Dict[int, int]]:
         items = []
         mapping = {q_anc: t_anc}
+        visited_q = {q_anc}
+        queue = [q_anc]
 
-        # Çapa komşularını tara
-        for q_neighbor in Q.neighbors(q_anc):
-            req_type = Q.nodes[q_neighbor].get("room_type")
-            matched_t = None
-            for t_neighbor in T.neighbors(t_anc):
-                if T.nodes[t_neighbor].get("room_type") == req_type:
-                    matched_t = t_neighbor
-                    break
-            if matched_t is not None:
-                mapping[q_neighbor] = matched_t
-            else:
-                # İlgili mekan kat planında var mı ama kapı mı kopuk?
-                found_in_T = [n for n, d in T.nodes(data=True) if d.get("room_type") == req_type]
-                if found_in_T:
-                    items.append(RuleViolationItem(
-                        violation_code="MISSING_DOOR_CONNECTION",
-                        target_node_id=found_in_T[0],
-                        expected_value=f"Kapı bağlantısı: {t_anc} <-> {found_in_T[0]}",
-                        actual_value="Bağlantı Yok",
-                        diagnostic_stage=3,
-                        severity="CRITICAL",
-                        description_tr=f"'{req_type}' mevcuttur ancak çapa mekana doğrudan kapı bağlantısı bulunmuyor.",
-                        remedy_recommendation_tr="Duvar üzerinde yönetmeliğe uygun yangın geçiş kapısı açılmalıdır.",
-                        regulation_reference="BYKHY Madde 34 / 38"
-                    ))
+        while queue:
+            curr_q = queue.pop(0)
+            curr_t = mapping.get(curr_q)
+
+            for q_neighbor in Q.neighbors(curr_q):
+                if q_neighbor in visited_q:
+                    continue
+                visited_q.add(q_neighbor)
+                req_type = Q.nodes[q_neighbor].get("room_type")
+
+                if curr_t is not None:
+                    matched_t = None
+                    for t_neighbor in T.neighbors(curr_t):
+                        if T.nodes[t_neighbor].get("room_type") == req_type and t_neighbor not in mapping.values():
+                            matched_t = t_neighbor
+                            break
+
+                    if matched_t is not None:
+                        mapping[q_neighbor] = matched_t
+                        queue.append(q_neighbor)
+                    else:
+                        found_in_T = [n for n, d in T.nodes(data=True) if d.get("room_type") == req_type and n not in mapping.values()]
+                        if found_in_T:
+                            items.append(RuleViolationItem(
+                                violation_code="MISSING_DOOR_CONNECTION",
+                                target_node_id=found_in_T[0],
+                                expected_value=f"Kapı bağlantısı: {curr_t} <-> {found_in_T[0]}",
+                                actual_value="Bağlantı Yok",
+                                diagnostic_stage=3,
+                                severity="CRITICAL",
+                                description_tr=f"'{req_type}' mevcuttur ancak ilgili kaçış mekanına doğrudan kapı bağlantısı bulunmuyor.",
+                                remedy_recommendation_tr="Duvar üzerinde yönetmeliğe uygun yangın geçiş kapısı açılmalıdır.",
+                                regulation_reference="BYKHY Madde 34 / 38"
+                            ))
+                            mapping[q_neighbor] = found_in_T[0]
+                            queue.append(q_neighbor)
+                        else:
+                            items.append(RuleViolationItem(
+                                violation_code="MISSING_ROOM_NODE",
+                                expected_value=req_type,
+                                actual_value="Yok",
+                                diagnostic_stage=3,
+                                severity="CRITICAL",
+                                description_tr=f"Katta zorunlu '{req_type}' hacmi hiç çizilmemiş.",
+                                remedy_recommendation_tr=f"Kat planına bağımsız yangın kaçışına hizmet eden bir '{req_type}' projelendirilmelidir.",
+                                regulation_reference="BYKHY Madde 34"
+                            ))
                 else:
-                    items.append(RuleViolationItem(
-                        violation_code="MISSING_ROOM_NODE",
-                        expected_value=req_type,
-                        actual_value="Yok",
-                        diagnostic_stage=3,
-                        severity="CRITICAL",
-                        description_tr=f"Katta zorunlu '{req_type}' hacmi hiç çizilmemiş.",
-                        remedy_recommendation_tr=f"Kat planına bağımsız yangın kaçışına hizmet eden bir '{req_type}' projelendirilmelidir.",
-                        regulation_reference="BYKHY Madde 34"
-                    ))
+                    found_in_T = [n for n, d in T.nodes(data=True) if d.get("room_type") == req_type and n not in mapping.values()]
+                    if not found_in_T:
+                        items.append(RuleViolationItem(
+                            violation_code="MISSING_ROOM_NODE",
+                            expected_value=req_type,
+                            actual_value="Yok",
+                            diagnostic_stage=3,
+                            severity="CRITICAL",
+                            description_tr=f"Katta zorunlu '{req_type}' hacmi hiç çizilmemiş.",
+                            remedy_recommendation_tr=f"Kat planına bağımsız yangın kaçışına hizmet eden bir '{req_type}' projelendirilmelidir.",
+                            regulation_reference="BYKHY Madde 34"
+                        ))
         return items, mapping
 
 

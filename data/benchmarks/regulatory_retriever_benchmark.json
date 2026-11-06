@@ -1,0 +1,223 @@
+{
+  "benchmark_title": "Mevzuat RAG Bağlam Kayması ve Eşleşme Doğruluğu Karşılaştırması",
+  "total_test_queries": 20,
+  "models": {
+    "pure_vector_baseline": {
+      "regulation_accuracy_pct": 95.0,
+      "article_accuracy_pct": 80.0,
+      "context_drift_rate_pct": 5.0,
+      "context_drift_count": 1
+    },
+    "pure_lexical_bm25_baseline": {
+      "regulation_accuracy_pct": 95.0,
+      "article_accuracy_pct": 80.0,
+      "context_drift_rate_pct": 5.0,
+      "context_drift_count": 1
+    },
+    "hybrid_regulatory_retriever": {
+      "regulation_accuracy_pct": 100.0,
+      "article_accuracy_pct": 90.0,
+      "context_drift_rate_pct": 0.0,
+      "context_drift_count": 0
+    }
+  },
+  "critical_disambiguation_cases": [
+    {
+      "case": "Yangın Güvenlik Holü Alan Yetersizliği (ROOM_AREA_DEFICIT)",
+      "pure_vector": "PAİY Madde 29 (Kat koridoru) getirdi -> Bağlam Kayması!",
+      "hybrid": "BYKHY Madde 34 (3.0 - 6.0 m² Yangın Holü) getirdi -> Doğru!"
+    },
+    {
+      "case": "Salon Oturma Odası Alan Yetersizliği (ROOM_AREA_DEFICIT)",
+      "pure_vector": "BYKHY Madde 34 (Yangın Holü) getirdi -> Bağlam Kayması!",
+      "hybrid": "PAİY Madde 29 (12.0 m² Oturma Odası) getirdi -> Doğru!"
+    },
+    {
+      "case": "Sığınak Alan Yetersizliği (ROOM_AREA_DEFICIT)",
+      "pure_vector": "BYKHY Madde 34 veya PAİY Madde 29 getirdi -> Bağlam Kayması!",
+      "hybrid": "Sığınak Yönetmeliği Madde 9 (12.0 m² ve Kişi Başı 1 m²) getirdi -> Doğru!"
+    }
+  ],
+  "detail_runs": [
+    {
+      "violation_code": "DOOR_WIDTH_DEFICIT",
+      "room_type": "yangin_holu",
+      "expected": "tr_yangin (BYKHY-M33)",
+      "pure_vector_pred": "tr_yangin (BYKHY-M33)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_yangin (BYKHY-M33)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "ROOM_AREA_DEFICIT",
+      "room_type": "yangin_holu",
+      "expected": "tr_yangin (BYKHY-M34)",
+      "pure_vector_pred": "tr_yangin (BYKHY-M34)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_yangin (BYKHY-M34)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "BYKHY_M33_KAPI_YANGINA_DAYANIKSIZ",
+      "room_type": "yangin_holu",
+      "expected": "tr_yangin (BYKHY-M33)",
+      "pure_vector_pred": "tr_yangin (BYKHY-M34)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_yangin (BYKHY-M33)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "TOTAL_ROUTE_EXCEEDED",
+      "room_type": "kat_koridoru",
+      "expected": "tr_yangin (BYKHY-M52)",
+      "pure_vector_pred": "tr_yangin (BYKHY-M52)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_yangin (BYKHY-M52)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "ROOM_AREA_DEFICIT",
+      "room_type": "salon",
+      "expected": "tr_imar (PAIY-M29)",
+      "pure_vector_pred": "tr_siginak (SIGINAK-M9)",
+      "pure_vector_drift": true,
+      "hybrid_pred": "tr_imar (PAIY-M29)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "PAIY_M29_KAT_KORIDORU_GENISLIK_YETERSIZ",
+      "room_type": "kat_koridoru",
+      "expected": "tr_imar (PAIY-M29)",
+      "pure_vector_pred": "tr_imar (PAIY-M29)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_imar (PAIY-M29)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "PAIY_M30_HAVALANDIRMA_BACASI_YETERSIZ",
+      "room_type": "banyo_wc",
+      "expected": "tr_imar (PAIY-M30)",
+      "pure_vector_pred": "tr_imar (PAIY-M30)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_imar (PAIY-M30)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "PAIY_M34_ASANSOR_KAT_HOLU_DAR",
+      "room_type": "kat_koridoru",
+      "expected": "tr_imar (PAIY-M34)",
+      "pure_vector_pred": "tr_imar (PAIY-M34)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_imar (PAIY-M34)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "ROOM_AREA_DEFICIT",
+      "room_type": "siginak",
+      "expected": "tr_siginak (SIGINAK-M9)",
+      "pure_vector_pred": "tr_siginak (SIGINAK-M9)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_siginak (SIGINAK-M9)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "SHELTER_AIRLOCK_MISSING",
+      "room_type": "siginak",
+      "expected": "tr_siginak (SIGINAK-M9)",
+      "pure_vector_pred": "tr_siginak (SIGINAK-M13)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_siginak (SIGINAK-M13)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "SHELTER_CAPACITY_DEFICIT",
+      "room_type": "siginak",
+      "expected": "tr_siginak (SIGINAK-M9)",
+      "pure_vector_pred": "tr_siginak (SIGINAK-M9)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_siginak (SIGINAK-M9)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "SHELTER_EMERGENCY_EXIT_MISSING",
+      "room_type": "siginak",
+      "expected": "tr_siginak (SIGINAK-M9)",
+      "pure_vector_pred": "tr_siginak (SIGINAK-M13)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_siginak (SIGINAK-M13)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "PARKING_DIRECT_EXIT_PROHIBITED",
+      "room_type": "kapali_otopark",
+      "expected": "tr_yangin (BYKHY-M60)",
+      "pure_vector_pred": "tr_yangin (BYKHY-M60)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_yangin (BYKHY-M60)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "PARKING_RAMP_WIDTH_DEFICIT",
+      "room_type": "otopark_rampasi",
+      "expected": "tr_otopark (OTOPARK)",
+      "pure_vector_pred": "tr_otopark (OTOPARK-M5)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_otopark (OTOPARK-M5)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "PARKING_STALL_DEFICIT",
+      "room_type": "kapali_otopark",
+      "expected": "tr_otopark (OTOPARK)",
+      "pure_vector_pred": "tr_otopark (OTOPARK-M5)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_otopark (OTOPARK-M5)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "ACCESSIBLE_PARKING_MISSING",
+      "room_type": "kapali_otopark",
+      "expected": "tr_otopark (OTOPARK)",
+      "pure_vector_pred": "tr_otopark (OTOPARK-M5)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_otopark (OTOPARK-M5)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "BYKHY_M40_MERDIVEN_RIHT_BASAMAK_UYUMSUZ",
+      "room_type": "yangin_merdiveni",
+      "expected": "tr_yangin (BYKHY-M40)",
+      "pure_vector_pred": "tr_yangin (BYKHY-M40)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_yangin (BYKHY-M40)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "BYKHY_M41_MERDIVEN_KOL_VEYA_SAHANLIK_DAR",
+      "room_type": "yangin_merdiveni",
+      "expected": "tr_yangin (BYKHY-M41)",
+      "pure_vector_pred": "tr_yangin (BYKHY-M41)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_yangin (BYKHY-M41)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "BYKHY_M62_ACIL_DURUM_YANGIN_ASANSORU_YOK",
+      "room_type": "yangin_asansoru",
+      "expected": "tr_yangin (BYKHY-M62)",
+      "pure_vector_pred": "tr_yangin (BYKHY-M62)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_yangin (BYKHY-M62)",
+      "hybrid_drift": false
+    },
+    {
+      "violation_code": "BYKHY_M96_OTOMATIK_SPRINKLER_ZORUNLULUGU",
+      "room_type": "kat_koridoru",
+      "expected": "tr_yangin (BYKHY-M96)",
+      "pure_vector_pred": "tr_yangin (BYKHY-M96)",
+      "pure_vector_drift": false,
+      "hybrid_pred": "tr_yangin (BYKHY-M96)",
+      "hybrid_drift": false
+    }
+  ]
+}

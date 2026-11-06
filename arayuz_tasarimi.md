@@ -1,6 +1,6 @@
-# MimarLLM — Arayüz ve Sayfa Tasarımı (v0.1)
+# DiagramYönetmelik — Arayüz ve Sayfa Tasarımı (v0.1)
 
-> Kaynak: `proje_tamamı_bu_.txt`. Arayüz, `MimarLLMCompliancePipeline` içindeki **9 aşamalı akışı** ve `grounded_evidence_json` / `audit_trail.json` çıktısını kullanıcıya gösterecek şekilde kurgulanmıştır.
+> Kaynak: `proje_tamamı_bu_.txt`. Arayüz, `DiagramYonetmelikPipeline` içindeki **9 aşamalı akışı** ve `grounded_evidence_json` / `audit_trail.json` çıktısını kullanıcıya gösterecek şekilde kurgulanmıştır.
 > Örnek sayılar (28 oda, 26 kapı, 76.5 sn → 58.0 sn vb.) dosyadaki uçtan uca örnekten alınmıştır ve wireframe'lerde sahte veri olarak kullanılır.
 
 ---
@@ -21,7 +21,7 @@
 ## 2. Bilgi mimarisi (site haritası)
 
 ```
-MimarLLM
+DiagramYönetmelik
 ├── 0. Projeler (giriş / liste)
 │
 └── Proje Çalışma Alanı
@@ -52,7 +52,7 @@ Tüm proje sayfalarında sabit kalan çerçeve:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ ☰  MimarLLM  /  Proje: Atakent Konut A Blok   [v3 ▾]    🔍  ⟳ Çalıştır  👤│  ← Üst bar
+│ ☰  DiagramYönetmelik  /  Proje: Atakent Konut A Blok   [v3 ▾]    🔍  ⟳ Çalıştır  👤│  ← Üst bar
 ├────────┬─────────────────────────────────────────────────────┬───────────┤
 │        │  [Aşama durum şeridi: ①✓ ②✓ ③✓ ④✓ ⑤✓ ⑥✓ ⑦✓ ⑧✓ ⑨✓]   │           │
 │ SOL    ├─────────────────────────────────────────────────────┤  SAĞ      │
@@ -399,7 +399,7 @@ Her satır "ölçülen / gerekli" biçiminde ilerleme çubuklu; ihlalli satıra 
 │ RESMİ RAPOR ÖNİZLEME (Markdown)                                      │
 │ # Mimari Uygunluk Denetim Raporu …                                   │
 │ ## 1. Yangın  …                                                      │
-│ [⬇ .md] [⬇ .pdf] [⬇ audit_trail.json]   LLM: ◉Yerel(Ollama) ○Deterministik│
+│ [⬇ .md] [⬇ .pdf] [⬇ audit_trail.json]   Motor: ◉ Deterministik Sentezleyici   │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -541,7 +541,7 @@ DXF çıktısındaki renkler arayüzdeki renklerle **aynı**dır; kullanıcı ik
 | **Yükleniyor** | İskelet ekran, aşama içi canlı log satırı |
 | **Sonuç yok** (ör. hiç motif bulunamadı) | "Bu binada tekrar eden modül bulunamadı. Destek eşiğini düşürmeyi deneyin → [Ayarlar]" |
 | **Hata** | Kırmızı bant + kısa neden + "Ayrıntı" (log) + **[Tekrar dene]** |
-| **Ollama kapalı** | Rapor sekmesinde sarı bant: "Yerel LLM erişilemiyor, deterministik sentezleyici kullanıldı" |
+| **Mevzuat İndeksi Boş** | Rapor sekmesinde sarı bant: "Mevzuat indeksinde madde bulunamadı, genel şablon kullanıldı" |
 | **Şüpheli CAD** | CAD sekmesinde: "Kapalı poligon yok, LINE-soup kurtarma kullanıldı (güven: orta)" |
 
 ---
@@ -588,7 +588,7 @@ PATCH /api/projects/{id}/templates/{tid} # şablon düzenleme
 
 1. **Teknoloji:** Streamlit (hızlı prototip) mı, FastAPI + React (üretim) mı? Dosya, her ikisini de destekleyecek JSON sözleşmesi öngörüyor.
 2. **Tek kullanıcı mı, ekip mi?** Ekip ise yorum, onay/ret iş akışı ve rol bazlı yetki gerekir.
-3. **Çalıştırma yeri:** Hesaplar tarayıcıdan bağımsız sunucuda mı (GPU + Ollama), yoksa masaüstü uygulamada mı?
+3. **Çalıştırma yeri:** Hesaplar tarayıcıdan bağımsız sunucuda mı (GPU/CPU), yoksa masaüstü uygulamada mı?
 4. **Optimizasyon önerisi kimin kararı?** Sadece öneri mi, yoksa "kabul et" ile DXF'e kalıcı yazılsın mı?
 5. **Tahliye 3B görünümü:** WebGL ile tam 3B mi, yoksa kat-kat 2B yeterli mi?
 6. **Maliyet birimleri:** Kapı/şaft/hol genişletme birim fiyatları nereden gelecek (sabit tablo, kullanıcı girişi, şehir bazlı)?

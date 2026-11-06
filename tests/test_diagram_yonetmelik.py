@@ -48,7 +48,8 @@ from diagram_yonetmelik.evacuation import (
 from diagram_yonetmelik.regulatory_rag import (
     build_turkish_building_regulations_corpus,
     HybridRegulatoryRetriever,
-    LocalMimarLLMReportGenerator,
+    RegulatoryComplianceReportGenerator,
+    LocalRegulatoryReportGenerator,
 )
 from diagram_yonetmelik.orchestrator import DiagramYonetmelikPipeline
 from diagram_yonetmelik.sample_generator import (
@@ -967,3 +968,8 @@ class TestSpminerAndNeuroMatchRoles:
         strict.add_graphs({"bina": graph})
         none_left = strict.search(query, anchor)
         assert none_left["verified"] == 0 and none_left["matches"] == []
+
+    def test_regulatory_report_generator_naming_and_alias(self):
+        assert RegulatoryComplianceReportGenerator is LocalRegulatoryReportGenerator
+        gen = RegulatoryComplianceReportGenerator()
+        assert gen.retriever is not None

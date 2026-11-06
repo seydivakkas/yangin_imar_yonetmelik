@@ -1,0 +1,210 @@
+{
+  "benchmark_title": "Açıklanabilir VF2 Kademeli Teşhis Hunisi vs Klasik İkili VF2",
+  "total_scenarios": 8,
+  "metrics": {
+    "binary_vf2_baseline": {
+      "root_cause_diagnosis_accuracy_pct": 12.5,
+      "actionable_remedy_generation_rate_pct": 0.0,
+      "isolated_defect_types_count": 0,
+      "description": "Klasik VF2 sadece True/False döner; hatanın yerini, nedenini ve çözümünü raporlayamaz."
+    },
+    "explainable_vf2_analyzer": {
+      "root_cause_diagnosis_accuracy_pct": 100.0,
+      "actionable_remedy_generation_rate_pct": 100.0,
+      "isolated_defect_types_count": 7,
+      "description": "3 Aşamalı Kademeli Gevşetme Hunisi: Parametrik kusurları, mekân rol uyuşmazlıklarını ve topolojik kopuklukları ayrı ayrı teşhis eder."
+    }
+  },
+  "results": [
+    {
+      "scenario_name": "Senaryo 0: Kusursuz Yangın Kaçış Çekirdeği",
+      "binary_vf2": {
+        "is_compliant": true,
+        "root_cause": "UYGUN",
+        "violations_detected": 0,
+        "actionable_remedy": null
+      },
+      "explainable_vf2": {
+        "is_compliant": true,
+        "diagnostic_stage": 0,
+        "summary": "Kaçış çekirdeği sorgudaki topolojik ve geometrik koşulları karşıladı.",
+        "violations": []
+      }
+    },
+    {
+      "scenario_name": "Senaryo 1: Parametrik Kusur (Dar Kapı 75 cm)",
+      "binary_vf2": {
+        "is_compliant": false,
+        "root_cause": "BİLİNMİYOR (İkili Reddetme)",
+        "violations_detected": 0,
+        "actionable_remedy": null
+      },
+      "explainable_vf2": {
+        "is_compliant": false,
+        "diagnostic_stage": 1,
+        "summary": "Topolojik bağlantı tam fakat 1 adet parametrik kusur tespit edildi.",
+        "violations": [
+          {
+            "code": "DOOR_WIDTH_DEFICIT",
+            "description": "Kapı net genişliği yetersiz (75 cm < 90 cm)",
+            "remedy": "Kapı kasası en az 90 cm genişletilmelidir.",
+            "expected": "90.0",
+            "actual": "75.0"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "Senaryo 2: Parametrik Kusur (Yangın Kapısı EI60 Eksik)",
+      "binary_vf2": {
+        "is_compliant": false,
+        "root_cause": "BİLİNMİYOR (İkili Reddetme)",
+        "violations_detected": 0,
+        "actionable_remedy": null
+      },
+      "explainable_vf2": {
+        "is_compliant": false,
+        "diagnostic_stage": 1,
+        "summary": "Topolojik bağlantı tam fakat 1 adet parametrik kusur tespit edildi.",
+        "violations": [
+          {
+            "code": "FIRE_DOOR_MISSING",
+            "description": "Kaçış güzergahındaki kapıda yangın dayanımı (EI60/EI90) eksik.",
+            "remedy": "Kapı yangına ve dumana en az 60 dakika dayanıklı sertifikalı kapı ile değiştirilmelidir.",
+            "expected": "True",
+            "actual": "False"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "Senaryo 3: Parametrik Kusur (Yangın Holü 2.2 m² < 3.0 m²)",
+      "binary_vf2": {
+        "is_compliant": false,
+        "root_cause": "BİLİNMİYOR (İkili Reddetme)",
+        "violations_detected": 0,
+        "actionable_remedy": null
+      },
+      "explainable_vf2": {
+        "is_compliant": false,
+        "diagnostic_stage": 1,
+        "summary": "Topolojik bağlantı tam fakat 1 adet parametrik kusur tespit edildi.",
+        "violations": [
+          {
+            "code": "BYKHY_M34_YANGIN_HOLU_ALAN_YETERSIZ",
+            "description": "Yangın güvenlik holü alanı (2.20 m²) izin verilen 3.0-6.0 m² aralığının dışındadır.",
+            "remedy": "Hol taban alanı 3.0-6.0 m² aralığına getirilmelidir.",
+            "expected": "3.0",
+            "actual": "2.2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "Senaryo 4: Çoklu Parametrik Kusur (Dar Kapı + EI60 Yok + Hol Dar)",
+      "binary_vf2": {
+        "is_compliant": false,
+        "root_cause": "BİLİNMİYOR (İkili Reddetme)",
+        "violations_detected": 0,
+        "actionable_remedy": null
+      },
+      "explainable_vf2": {
+        "is_compliant": false,
+        "diagnostic_stage": 1,
+        "summary": "Topolojik bağlantı tam fakat 3 adet parametrik kusur tespit edildi.",
+        "violations": [
+          {
+            "code": "BYKHY_M34_YANGIN_HOLU_ALAN_YETERSIZ",
+            "description": "Yangın güvenlik holü alanı (2.00 m²) izin verilen 3.0-6.0 m² aralığının dışındadır.",
+            "remedy": "Hol taban alanı 3.0-6.0 m² aralığına getirilmelidir.",
+            "expected": "3.0",
+            "actual": "2.0"
+          },
+          {
+            "code": "DOOR_WIDTH_DEFICIT",
+            "description": "Kapı net genişliği yetersiz (70 cm < 90 cm)",
+            "remedy": "Kapı kasası en az 90 cm genişletilmelidir.",
+            "expected": "90.0",
+            "actual": "70.0"
+          },
+          {
+            "code": "FIRE_DOOR_MISSING",
+            "description": "Kaçış güzergahındaki kapıda yangın dayanımı (EI60/EI90) eksik.",
+            "remedy": "Kapı yangına ve dumana en az 60 dakika dayanıklı sertifikalı kapı ile değiştirilmelidir.",
+            "expected": "True",
+            "actual": "False"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "Senaryo 5: Fonksiyon Uyuşmazlığı (Merdiven yerine Depo)",
+      "binary_vf2": {
+        "is_compliant": false,
+        "root_cause": "BİLİNMİYOR (İkili Reddetme)",
+        "violations_detected": 0,
+        "actionable_remedy": null
+      },
+      "explainable_vf2": {
+        "is_compliant": false,
+        "diagnostic_stage": 2,
+        "summary": "Mekan fonksiyon uyuşmazlığı: Şablon iskeleti bulundu ancak 1 odanın tipi hatalı.",
+        "violations": [
+          {
+            "code": "ROOM_TYPE_MISMATCH",
+            "description": "Mekan fonksiyon uyuşmazlığı: Beklenen 'yangin_merdiveni' yerine 'depo' tespit edildi.",
+            "remedy": "Bu mekan plan tadilatıyla 'yangin_merdiveni' fonksiyonuna tahsis edilmeli.",
+            "expected": "yangin_merdiveni",
+            "actual": "depo"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "Senaryo 6: Topolojik Kusur (Yangın Merdivenine Kapı Açılmamış)",
+      "binary_vf2": {
+        "is_compliant": false,
+        "root_cause": "BİLİNMİYOR (İkili Reddetme)",
+        "violations_detected": 0,
+        "actionable_remedy": null
+      },
+      "explainable_vf2": {
+        "is_compliant": false,
+        "diagnostic_stage": 3,
+        "summary": "Ağır topolojik kusur: Zorunlu kapı bağlantısı veya mekan kat planında mevcut değil.",
+        "violations": [
+          {
+            "code": "MISSING_DOOR_CONNECTION",
+            "description": "'yangin_merdiveni' mevcuttur ancak ilgili kaçış mekanına doğrudan kapı bağlantısı bulunmuyor.",
+            "remedy": "Duvar üzerinde yönetmeliğe uygun yangın geçiş kapısı açılmalıdır.",
+            "expected": "Kapı bağlantısı: 20 <-> 30",
+            "actual": "Bağlantı Yok"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "Senaryo 7: Topolojik Kusur (Katta Dış Çıkış Hacmi Hiç Yok)",
+      "binary_vf2": {
+        "is_compliant": false,
+        "root_cause": "BİLİNMİYOR (İkili Reddetme)",
+        "violations_detected": 0,
+        "actionable_remedy": null
+      },
+      "explainable_vf2": {
+        "is_compliant": false,
+        "diagnostic_stage": 3,
+        "summary": "Ağır topolojik kusur: Zorunlu kapı bağlantısı veya mekan kat planında mevcut değil.",
+        "violations": [
+          {
+            "code": "MISSING_ROOM_NODE",
+            "description": "Katta zorunlu 'dis_cikis' hacmi hiç çizilmemiş.",
+            "remedy": "Kat planına bağımsız yangın kaçışına hizmet eden bir 'dis_cikis' projelendirilmelidir.",
+            "expected": "dis_cikis",
+            "actual": "Yok"
+          }
+        ]
+      }
+    }
+  ]
+}

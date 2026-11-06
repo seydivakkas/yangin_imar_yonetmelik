@@ -1,4 +1,4 @@
-# MimarLLM_v2 / DiagramYönetmelik — UI/UX Yeniden Tasarım Ana Ajan Görev Planı
+# DiagramYönetmelik — UI/UX Yeniden Tasarım Ana Ajan Görev Planı
 
 > **Belge türü:** AI kodlama ajanı için uygulanabilir ana görev ve kabul sözleşmesi  
 > **Öncelik:** P1 — Okunabilirlik, tasarım tutarlılığı, kullanım akışı  

@@ -1153,7 +1153,7 @@ Yukarıdaki çağrı grafında (`ORCH --> ...`) yer alan 12 temel boru hattı a�
 ---
 
 #### Aşama 11: Hibrit Mevzuat RAG ve Resmi Raporlama (`ORCH --> REG`)
-* **Kaynak Modül & Sınıf:** [`diagram_yonetmelik/regulatory_rag.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/regulatory_rag.py) (`HybridRegulatoryRetriever`, `LocalMimarLLMReportGenerator`), [`diagram_yonetmelik/occupancy_rules.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/occupancy_rules.py)
+* **Kaynak Modül & Sınıf:** [`diagram_yonetmelik/regulatory_rag.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/regulatory_rag.py) (`HybridRegulatoryRetriever`, `RegulatoryComplianceReportGenerator`), [`diagram_yonetmelik/occupancy_rules.py`](file:///c:/Users/seydieryilmaz/Desktop/gemini_yang%C4%B1n_imari/diagram_yonetmelik/occupancy_rules.py)
 * **Giriş:** Tüm ihlal raporları, bina programı özeti ve bina kullanım sınıfı.
 * **Alt Dalları ve Bilgi Çıkarımı:**
   1. *Bina Kullanım Sınıfı Eşleştirmesi (`OccupancyClassificationEngine`):* Konut, Sağlık, Eğitim, Toplanma vb. sınıfların özel parametreleri yüklenir.

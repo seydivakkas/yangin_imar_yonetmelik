@@ -88,6 +88,7 @@ class RuleViolationItem:
     regulation_reference: str = ""  # 'BYKHY Madde 34', 'Planlı Alanlar Madde 29', vb.
     floor_level: int = 0
     spatial_coords: Optional[Tuple[float, float]] = None
+    room_type: Optional[str] = None
 
 
 @dataclass
@@ -226,6 +227,7 @@ class DesignInterventionStep:
     description_tr: str
     floor_level: int = 0
     spatial_coords: Optional[Tuple[float, float]] = None
+    room_type: Optional[str] = None
     evacuation_time_delta_sec: Optional[float] = None
     feasibility_status: str = "UYGULANABILIR"  # 'UYGULANABILIR', 'RETTEDILDI_TASIYICI_CAKISMA', 'STATIK_KONTROL_YAPILMADI'
     rejection_reason: Optional[str] = None
@@ -302,9 +304,6 @@ class PipelineConfig:
     spminer_min_support: int = 2
     max_escape_route_distance_m: float = 30.0
     target_evacuation_time_sec: float = 65.0
-    prefer_local_llm: bool = False
-    local_llm_endpoint: str = "http://localhost:11434/v1/chat/completions"
-    local_llm_model: str = "qwen2.5:14b"
     max_wall_thickness_m: float = 0.35
     default_unit_scale_to_m: float = 0.01  # varsayılan cm -> m
     default_floor_height_m: float = 3.0

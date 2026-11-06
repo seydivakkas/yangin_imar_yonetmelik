@@ -88,7 +88,8 @@ from diagram_yonetmelik.regulatory_rag import (
     build_turkish_building_regulations_corpus,
     build_siginak_and_otopark_corpus,
     HybridRegulatoryRetriever,
-    LocalMimarLLMReportGenerator,
+    RegulatoryComplianceReportGenerator,
+    LocalRegulatoryReportGenerator,
 )
 
 from diagram_yonetmelik.orchestrator import (

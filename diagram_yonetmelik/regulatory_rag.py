@@ -269,8 +269,8 @@ def build_turkish_building_regulations_corpus() -> List[RegulatoryClauseChunk]:
             ),
             legal_mandatory_status="ZORUNLU",
             numerical_limits={"min_corridor_width_m": 1.20, "min_ceiling_height_m": 2.40},
-            relevant_room_types=["kat_koridoru", "koridor"],
-            relevant_violation_codes=["PAIY_M29_KAT_KORIDORU_GENISLIK_YETERSIZ"]
+            relevant_room_types=["kat_koridoru", "koridor", "salon", "oda", "daire_antresi"],
+            relevant_violation_codes=["PAIY_M29_KAT_KORIDORU_GENISLIK_YETERSIZ", "ROOM_AREA_DEFICIT", "PAIY_M29_ODA_ALANI_YETERSIZ"]
         ),
         RegulatoryClauseChunk(
             chunk_id="PAIY-M30",
@@ -332,7 +332,9 @@ def build_turkish_building_regulations_corpus() -> List[RegulatoryClauseChunk]:
                 "SIGINAK_M9_SIGINAK_ALANI_BULUNAMADI",
                 "SIGINAK_M9_SIGINAK_ALANI_YETERSIZ",
                 "SHELTER_AREA_DEFICIT",
-                "SHELTER_ROOM_MISSING"
+                "SHELTER_ROOM_MISSING",
+                "ROOM_AREA_DEFICIT",
+                "SHELTER_CAPACITY_DEFICIT"
             ]
         ),
         RegulatoryClauseChunk(
@@ -347,8 +349,29 @@ def build_turkish_building_regulations_corpus() -> List[RegulatoryClauseChunk]:
             ),
             legal_mandatory_status="ZORUNLU",
             numerical_limits={"min_airlock_m2": 1.50},
-            relevant_room_types=["siginak", "hava_kilidi"],
-            relevant_violation_codes=["SIGINAK_M13_HAVA_KILIDI_EKSIK", "SHELTER_AIRLOCK_MISSING"]
+            relevant_room_types=["siginak", "hava_kilidi", "siginak_holu"],
+            relevant_violation_codes=["SIGINAK_M13_HAVA_KILIDI_EKSIK", "SHELTER_AIRLOCK_MISSING", "SHELTER_EMERGENCY_EXIT_MISSING"]
+        ),
+        RegulatoryClauseChunk(
+            chunk_id="OTOPARK-M5",
+            regulation_code="tr_otopark",
+            article_title="Otopark Yönetmeliği - Madde 5 & Madde 6",
+            clause_hierarchy="Otopark Boyutları, Araç Başı Alan, Rampa ve Manevra Yolları",
+            text_tr=(
+                "Konut yapılarında her 3 daire için en az 1 adet otopark yeri ayrılması zorunludur. "
+                "Net araç park cebi boyutları en az 2.50 m x 5.00 m (engelli araçları için 3.50 m x 5.00 m) olmalıdır. "
+                "İki yönlü araç sirkülasyon yolu genişliği en az 6.00 m, tek yönlü yolda en az 3.50 m olmalıdır. "
+                "Otopark rampası genişliği en az 2.75 m ve rampa eğimi azami %15 olmalıdır."
+            ),
+            legal_mandatory_status="ZORUNLU",
+            numerical_limits={"min_stall_w_m": 2.50, "min_stall_l_m": 5.00, "min_ramp_w_m": 2.75, "max_ramp_slope_pct": 15.0},
+            relevant_room_types=["otopark", "kapali_otopark", "otopark_rampasi", "engelli_otopark"],
+            relevant_violation_codes=[
+                "OTOPARK_M5_OTOPARK_KAPASITE_DEFICIT",
+                "PARKING_RAMP_WIDTH_DEFICIT",
+                "PARKING_STALL_DEFICIT",
+                "ACCESSIBLE_PARKING_MISSING"
+            ]
         ),
     ]
 
@@ -388,13 +411,19 @@ class HybridRegulatoryRetriever:
     def __init__(self, corpus: Optional[List[RegulatoryClauseChunk]] = None):
         self.corpus = corpus or build_turkish_building_regulations_corpus()
 
-    def retrieve_for_violation(self, violation: RuleViolationItem, top_k: int = 1) -> List[RetrievedLegalEvidence]:
+    def retrieve_for_violation(self, violation: RuleViolationItem, top_k: int = 1, room_type: Optional[str] = None) -> List[RetrievedLegalEvidence]:
         candidates = []
         v_code = violation.violation_code.upper()
         v_ref = (violation.regulation_reference or "").upper()
+        v_room = (room_type or getattr(violation, "room_type", None) or "").lower()
 
         for chunk in self.corpus:
-            # 1. Sembolik Filtreleme
+            # 1. Sembolik Filtreleme: Mekân tipi uyumu (Context Drift Engelleme)
+            if v_room and chunk.relevant_room_types:
+                chunk_rooms = [r.lower() for r in chunk.relevant_room_types]
+                if v_room not in chunk_rooms:
+                    continue
+
             matches_code = v_code in [c.upper() for c in chunk.relevant_violation_codes]
             matches_code_partial = any(chunk_code.upper() in v_code or v_code in chunk_code.upper() for chunk_code in chunk.relevant_violation_codes)
             matches_reg = bool(v_ref and any(part in chunk.article_title.upper() for part in v_ref.split() if len(part) > 2))
@@ -417,20 +446,16 @@ class HybridRegulatoryRetriever:
         return candidates[:top_k]
 
 
-class LocalMimarLLMReportGenerator:
+class RegulatoryComplianceReportGenerator:
     """
-    Resmi Denetim Raporu Sentezleyicisi.
-    Sıfır bağımlılıkla çalışan deterministik rapor motoru ve opsiyonel yerel LLM entegrasyonu.
+    Resmi Denetim ve Mevzuat İzah Raporu Sentezleyicisi.
+    Sıfır bağımlılıkla çalışan deterministik rapor motoru.
     """
     def __init__(
         self,
         retriever: Optional[HybridRegulatoryRetriever] = None,
-        prefer_local_llm: bool = False,
-        llm_endpoint: str = "http://localhost:11434/v1/chat/completions"
     ):
         self.retriever = retriever or HybridRegulatoryRetriever()
-        self.prefer_llm = prefer_local_llm
-        self.endpoint = llm_endpoint
 
     def generate_official_compliance_report(
         self,
@@ -516,6 +541,10 @@ class LocalMimarLLMReportGenerator:
 
         report_markdown = "\n".join(md_lines)
         return report_markdown, evidence_bundle
+
+
+# Geriye dönük uyumluluk takma adı
+LocalRegulatoryReportGenerator = RegulatoryComplianceReportGenerator
 
 
 # =============================================================================
