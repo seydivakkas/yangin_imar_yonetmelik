@@ -509,7 +509,7 @@ def generate_compliant_8_story_building_dxf(output_path: str = "8_KATLI_KUSURSUZ
         ("MÜELLİF: TMMOB Mimarlar Odası — Sicil: 48921", 15.0, 8),
         ("YANGIN DANIŞMANI: BYKHY 2007/2015 Akredite", 15.0, 8),
         ("DURUM: %100 YÖNETMELİĞE TAM UYGUN (0 İHLAL)", 20.0, 3),
-        ("ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR (c) 2026 Seydi Eryılmaz", 13.0, 8),
+        ("GNU General Public License v3.0 (GPL-3.0-only) (c) 2026 Seydi Eryılmaz", 13.0, 8),
     ]
     for a_idx, (txt, th, tc) in enumerate(antet_lines):
         ay = ant_box_y + ant_box_h - 80 - a_idx * 55

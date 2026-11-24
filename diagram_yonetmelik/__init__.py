@@ -1,6 +1,6 @@
 """
 DiagramYönetmelik — Nöro-Sembolik Çok Katlı Mekânsal Denetim, 3B RAG ve Yangın/Tahliye Simülasyon Motoru
-Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas) — Tüm Hakları Saklıdır.
+Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas) — GPL-3.0-only.
 """
 
 from diagram_yonetmelik.schemas import (

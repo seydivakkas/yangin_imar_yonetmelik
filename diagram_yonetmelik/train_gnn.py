@@ -4,7 +4,7 @@ DiagramYönetmelik — SpatialOrderGNN Eğitim ve Ağırlık Kayıt Modülü
 Mimari RAG graflarından pozitif ve sert negatif çiftler üzerinde
 OrderEmbeddingLoss ile SpatialOrderGNN modelini eğitir ve ağırlıklarını kaydeder.
 
-ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR
+GNU General Public License v3.0 (GPL-3.0-only)
 Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas)
 """
 

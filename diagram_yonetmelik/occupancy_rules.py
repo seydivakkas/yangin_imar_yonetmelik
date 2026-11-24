@@ -2,7 +2,7 @@
 Binaların Yangından Korunması Hakkında Yönetmelik (BYKHY) ve İlgili Mevzuat Kapsamında
 Bina Kullanım Sınıfları, Kaçış Yolları ve Merdivenleri Kural Motoru ve Kontrol Listesi
 
-Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas) - ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR
+Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas) - GNU General Public License v3.0 (GPL-3.0-only)
 """
 
 import math

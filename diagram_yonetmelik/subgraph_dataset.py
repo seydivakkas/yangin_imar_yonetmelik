@@ -3,7 +3,7 @@ Binaların Yangından Korunması Hakkında Yönetmelik (BYKHY) & İmar Denetim M
 NetworkX Mimari Bölge Komşuluk Grafından (RAG) PyTorch Geometric için
 Pozitif ve Sert Negatif (Hard Negative) Altgraf Çiftleri Üreten Veri Yükleyici.
 
-ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR
+GNU General Public License v3.0 (GPL-3.0-only)
 Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas)
 """
 

@@ -439,10 +439,10 @@ class DXFAuditTableAnnotator:
         cur_y -= antet_h
 
         # -------------------------------------------------------------
-        # 7. LİSANS VE TELİF HAKKI ŞERHİ (Tüm Hakları Saklıdır Kuralı)
+        # 7. LİSANS VE TELİF HAKKI ŞERHİ (GPL-3.0-only)
         # -------------------------------------------------------------
         legal_notice = (
-            r"{\C8ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR | Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas) | "
+            r"{\C8GNU General Public License v3.0 (GPL-3.0-only) | Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas) | "
             r"DiagramYönetmelik AI Mimari & Yangın Denetim Sistemi}"
         )
         mt_legal = msp.add_mtext(legal_notice, dxfattribs={"layer": "DENETIM_OZET_TABLOSU_METIN", "char_height": 11.0, "width": table_width})

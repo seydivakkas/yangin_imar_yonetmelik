@@ -451,7 +451,7 @@ def serialize_building_3d_result(output: DiagramYonetmelikPipelineOutput) -> Dic
             "stamp": "%100 YÖNETMELİĞE TAM UYGUN" if is_compliant else f"DİKKAT: {len(violations_data)} İHLAL TESPİT EDİLDİ",
             "is_compliant": is_compliant,
             "author": "Seydi Eryılmaz (@seydivakkas)",
-            "license": "ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR (c) 2026"
+            "license": "GNU General Public License v3.0 (GPL-3.0-only) (c) 2026"
         }
     }
 

@@ -6,7 +6,7 @@ kat koridorlarından ve yangın merdivenlerinden geçerek bina dışındaki güv
 (Muster Point) ulaşmasını sağlayan Dijkstra/A* navigasyon grafı, durum makinesi (State Machine)
 ve takılma/ilerleme denetleyicisini (Stall Checker) içerir.
 
-Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas) - ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR
+Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas) - GNU General Public License v3.0 (GPL-3.0-only)
 """
 
 import math

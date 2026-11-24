@@ -1,29 +1,15 @@
 # Binaların Yangından Korunması Hakkında Yönetmelik (BYKHY)
 ## Kaçış Yolları, Merdivenleri ve Kullanım Sınıfları Denetim Mimarisi Raporu
 
-```
-ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR
+**Lisans:** GNU General Public License v3.0 (GPL-3.0-only)
 
-Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas)
+Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas). Projeye ait yazılım GPL v3.0 koşullarıyla kullanılabilir, değiştirilebilir ve dağıtılabilir. Tam metin: [LICENSE](LICENSE). Üçüncü taraf bileşenler ve harici paftalar kendi hak ve lisans koşullarına tabidir.
 
-Bu yazılım ve ilgili tüm dosyalar ("Yazılım") yalnızca görüntüleme ve eğitim
-amaçlı olarak paylaşılmıştır.
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-YASAKLAR:
-  1. Kopyalanamaz, çoğaltılamaz, dağıtılamaz veya yeniden yayınlanamaz.
-  2. Ticari veya ticari olmayan hiçbir projede kullanılamaz, değiştirilemez.
-  3. Alt lisanslanamaz, satılamaz veya devredilemez.
-  4. Tersine mühendislik yapılamaz.
+**Katkı:** Hata bildirimleri, testler, dokümantasyon ve Pull Request'ler için [CONTRIBUTING.md](CONTRIBUTING.md) dosyasına bakınız.
 
-İZİN VERİLEN KULLANIM:
-  - GitHub üzerinde görüntüleme ve okuma.
-  - Kişisel öğrenim amacıyla kodu inceleme (kopyalamadan).
-
-YAZARIN AÇIK YAZILI İZNİ OLMAKSIZIN HİÇBİR KULLANIM HAKKI TANINMAZ.
-İzin talepleri için: GitHub @seydivakkas
-```
-
-[![License: All Rights Reserved](https://img.shields.io/badge/license-All%20Rights%20Reserved-red?style=flat-square)](https://github.com/seydivakkas)
+**Uyarı:** Araştırma ve karar destek yazılımıdır; uzman denetiminin veya resmî uygunluk onayının yerine geçmez.
 
 ---
 
@@ -2779,7 +2765,7 @@ Sistem, statik veya sahte (mock) metin indirmek yerine; aktif seçili paftanın 
                             │ • Resmi Başlık + Çift Çerçeveli Onay Damgası│
                             │ • 4 Hücreli Metrik + 5 Sütunlu İhlal Tablosu│
                             │ • TMMOB / İtfaiye / Belediye İmza Blokları  │
-                            │ • Özel Lisans: (c) 2026 Seydi Eryılmaz      │
+                            │ • GPL-3.0: (c) 2026 Seydi Eryılmaz      │
                             └─────────────────────────────────────────────┘
 ```
 
@@ -2851,8 +2837,8 @@ Sistem, statik veya sahte (mock) metin indirmek yerine; aktif seçili paftanın 
 #### D. Lisans ve Telif Hakkı Kuralı
 Üretilen tüm DXF paftalarında, antet bloğunun en alt hücresine aşağıdaki resmi lisans şerhi otomatik olarak işlenir:
 ```
-ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR | Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas)
-DiagramYönetmelik AI Mimari & Yangın Denetim Sistemi | Proje Yalnızca Görüntüleme ve Eğitim Amaçlıdır.
+GNU General Public License v3.0 (GPL-3.0-only) | Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas)
+DiagramYönetmelik AI Mimari & Yangın Denetim Sistemi | Yazılım lisansı: GPL-3.0-only.
 ```
 
 ---

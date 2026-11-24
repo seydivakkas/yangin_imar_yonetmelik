@@ -3,7 +3,7 @@
                      HIZLI BAŞLANGIÇ VE KULLANIM REHBERİ
 ================================================================================
 
-Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas) — Tüm Hakları Saklıdır.
+Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas) — GPL-3.0-only.
 
 --------------------------------------------------------------------------------
 1. TEK TIKLA ÇALIŞTIRMA (EN KOLAY YÖNTEM)
@@ -62,9 +62,9 @@ klasör içindeki "durdur.bat" dosyasına çift tıklayınız.
 --------------------------------------------------------------------------------
 5. LİSANS BİLGİSİ
 --------------------------------------------------------------------------------
-ÖZEL LİSANS — TÜM HAKLAR SAKLIDIR
+GNU General Public License v3.0 (GPL-3.0-only)
 Telif Hakkı (c) 2026 Seydi Eryılmaz (@seydivakkas)
-Bu yazılım ve ilgili tüm dosyalar yalnızca görüntüleme ve eğitim amaçlıdır.
-İzinsiz kopyalanamaz, çoğaltılamaz veya ticari amaçla kullanılamaz.
+Bu yazılım GNU GPL v3.0 koşullarıyla kullanılabilir, değiştirilebilir ve dağıtılabilir.
+Tam lisans metni: LICENSE.
 ================================================================================
 
